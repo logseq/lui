@@ -189,6 +189,7 @@ let install renderer node ~materialize ~unmount =
           match Option.bind (row_at index)
             (fun id -> Store.property renderer.web_store id HeightValue) with
           | Some (IntValue height) when height > 0 -> float_of_int height
+          | Some (FloatValue height) when height > 0. -> height
           | _ -> 32.
     in
     let update_rows () =
@@ -228,6 +229,7 @@ let install renderer node ~materialize ~unmount =
       let height =
         match Store.property renderer.web_store node HeightValue with
         | Some (IntValue height) when height > 0 -> float_of_int height
+        | Some (FloatValue height) when height > 0. -> height
         | _ -> 300.
       in
       let gap =

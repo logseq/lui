@@ -144,7 +144,7 @@ let probes =
   List.map (fun value -> StringValue value) (List.sort_uniq String.compare (strings @ !literals))
   @ [BoolValue false; BoolValue true]
   @ List.map (fun value -> IntValue value) [-1; 0; 1; 2; 6; 7; 1000; 1001; 2147483647; 2147483648; 9007199254740991; 9007199254740992; 9007199254740993; max_int - 1; max_int; min_int]
-  @ List.map (fun value -> FloatValue value) [-1.; 0.; 0.01; 0.5; 1.; 2.; 6.; 1000.; Float.max_float]
+  @ List.map (fun value -> FloatValue value) [-1.; 0.; 0.01; 0.5; 1.; 2.; 6.; 63.25; 127.75; 200.5; 1000.; Float.max_float]
 
 let probe_array = Array.of_list probes
 let verdicts predicate =

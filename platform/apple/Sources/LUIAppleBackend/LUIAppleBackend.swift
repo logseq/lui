@@ -404,6 +404,15 @@ final class LUINodeModel: Identifiable {
     var surfaceMinHeight: Int? { properties[.minHeight]?.intValue }
     var surfaceMaxHeight: Int? { properties[.maxHeight]?.intValue }
 
+    // Point aliases share the wire property; existing integer accessors keep
+    // their source types for callers that explicitly request integer values.
+    var surfaceHeightPoints: Double? { properties[.height]?.dimensionValue }
+    var surfaceMaxWidthPoints: Double? { properties[.maxWidth]?.dimensionValue }
+    var surfaceMaxHeightPoints: Double? { properties[.maxHeight]?.dimensionValue }
+    var spinnerHeightPoints: Double { surfaceHeightPoints ?? Double(spinnerExtent) }
+    var iconHeightPoints: Double { surfaceHeightPoints ?? Double(iconExtent) }
+
+
     var spinnerExtent: Int {
         switch properties[.size]?.stringValue ?? "default" {
         case "sm": 16

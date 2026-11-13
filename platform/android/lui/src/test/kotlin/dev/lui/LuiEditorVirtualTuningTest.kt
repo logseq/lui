@@ -19,6 +19,32 @@ import org.junit.Test
 class LuiEditorVirtualTuningTest {
     @get:Rule val paparazzi = Paparazzi()
 
+    @Test fun `fractional image dimensions reach Compose without integer dp coercion`() {
+        val backend = LuiBackend()
+        assertTrue(backend.lastError, backend.applyBatch("""{"generation":1,"ops":[
+            {"op":"create-node","id":1,"kind":"image"},
+            {"op":"set-prop","id":1,"property":"width","value":92},
+            {"op":"set-prop","id":1,"property":"height","value":63.25},
+            {"op":"set-prop","id":1,"property":"max-width","value":127.75},
+            {"op":"set-prop","id":1,"property":"max-height","value":200.5}
+        ]}"""))
+        var measured = false
+        paparazzi.snapshot(name = "fractional-image") {
+            val density = LocalDensity.current.density
+            Box(Modifier.onGloballyPositioned {
+                measured = true
+                assertEquals(kotlin.math.round(92 * density).toInt(), it.size.width)
+                assertEquals(kotlin.math.round(63.25 * density).toInt(), it.size.height)
+            }) { backend.Content(1) }
+        }
+        assertTrue("the actual image was not laid out", measured)
+        assertFalse("mixed bounds must reject 63.25 above an integer maximum of 63",
+            backend.applyBatch("""{"generation":2,"ops":[
+                {"op":"set-prop","id":1,"property":"max-height","value":63}
+            ]}"""))
+        assertEquals(200.5, backend.node(1)?.prop("max-height")?.numberValue)
+    }
+
     @Test fun `readonly fields reject actual native semantics editing while remaining enabled`() {
         for (kind in listOf("text-field", "secure-field", "input", "search-field", "textarea", "combobox")) {
             val events = mutableListOf<LuiEvent>()

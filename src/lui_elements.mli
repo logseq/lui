@@ -346,6 +346,12 @@ val register_resize :
     a web DOM contract for delegated-event readers, CSS attribute
     selectors and e2e locators; native hosts parse-ignore the prop. *)
 val apply_universal :
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?shrink:float ->
   Lui_ui.ui_context ->
   int ->
@@ -416,10 +422,16 @@ val row :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -470,12 +482,18 @@ val column :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?min_width_signal:int Signal.signal ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?max_width_signal:int Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -522,10 +540,16 @@ val grid :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -565,10 +589,16 @@ val stack :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -616,10 +646,16 @@ val edge_inset :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -667,10 +703,16 @@ val overlay :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -719,10 +761,16 @@ val view_that_fits :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -763,10 +811,16 @@ val panel :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -806,10 +860,16 @@ val card :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -849,10 +909,16 @@ val alert :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -895,10 +961,16 @@ val bubble :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -945,10 +1017,16 @@ val box :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -999,10 +1077,16 @@ val scroll :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1043,10 +1127,16 @@ val list :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1119,10 +1209,16 @@ val virtual_list :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1176,10 +1272,16 @@ val tabs :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1218,10 +1320,16 @@ val bottom_tabs :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1259,10 +1367,16 @@ val bottom_tab :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1310,10 +1424,16 @@ val button_group :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1351,10 +1471,16 @@ val toggle_group :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1392,10 +1518,16 @@ val breadcrumb :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1433,10 +1565,16 @@ val pagination :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1474,10 +1612,16 @@ val table :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1515,10 +1659,16 @@ val table_row :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1557,10 +1707,16 @@ val table_cell :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1631,10 +1787,16 @@ val tree :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1684,10 +1846,16 @@ val resizable :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1739,10 +1907,16 @@ val split :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1792,10 +1966,16 @@ val drawer :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1838,10 +2018,16 @@ val status_bar :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1881,10 +2067,16 @@ val spacer :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1922,10 +2114,16 @@ val spinner :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -1963,10 +2161,16 @@ val icon :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2011,10 +2215,16 @@ val text :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2071,10 +2281,16 @@ val heading :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2126,10 +2342,16 @@ val paragraph :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2180,10 +2402,16 @@ val label :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2233,10 +2461,16 @@ val kbd :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2275,10 +2509,16 @@ val button :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2341,10 +2581,16 @@ val toggle_button :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2401,10 +2647,16 @@ val checkbox :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2454,10 +2706,16 @@ val switch_ :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2504,10 +2762,16 @@ val toggle :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2554,10 +2818,16 @@ val radio_group :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2595,10 +2865,16 @@ val radio :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2651,10 +2927,16 @@ val slider :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2699,10 +2981,16 @@ val number_stepper :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2752,10 +3040,16 @@ val progress :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2794,10 +3088,16 @@ val divider :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2836,10 +3136,16 @@ val separator :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2884,10 +3190,16 @@ val text_field :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2941,10 +3253,16 @@ val secure_field :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -2998,10 +3316,16 @@ val input :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3056,10 +3380,16 @@ val search_field :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3113,10 +3443,16 @@ val textarea :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3171,10 +3507,16 @@ val input_group :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3211,10 +3553,16 @@ val input_group_actions :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3251,10 +3599,16 @@ val select :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3307,10 +3661,16 @@ val combobox :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3371,10 +3731,16 @@ val dropdown_menu :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3469,10 +3835,16 @@ val dialog :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3515,10 +3887,16 @@ val sheet :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3582,10 +3960,16 @@ val toast :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3705,11 +4089,17 @@ val popover :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?max_width_signal:int Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3761,10 +4151,16 @@ val toolbar :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3803,10 +4199,16 @@ val accordion :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3850,10 +4252,16 @@ val menu_item :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -3918,10 +4326,16 @@ val list_item :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4012,10 +4426,16 @@ val avatar :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4060,10 +4480,16 @@ val image :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4115,10 +4541,16 @@ val media_surface :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4162,10 +4594,16 @@ val link :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4217,10 +4655,16 @@ val file_image :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4274,10 +4718,16 @@ val stepper :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4316,10 +4766,16 @@ val step :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4357,10 +4813,16 @@ val timeline :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
@@ -4397,10 +4859,16 @@ val timeline_item :
   ?corner_radius:int ->
   ?width:int ->
   ?height:int ->
+  ?height_points:float ->
+  ?height_points_signal:float Signal.signal ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_points:float ->
+  ?max_width_points_signal:float Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
+  ?max_height_points:float ->
+  ?max_height_points_signal:float Signal.signal ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->

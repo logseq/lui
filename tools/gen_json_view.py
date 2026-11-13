@@ -37,6 +37,9 @@ UNIVERSAL_ARG = {
     'container_relative_frame_inset':
         '(v_int props "container-relative-frame-inset")',
     'accessibility_identifier': '(v_str props "accessibility-identifier")',
+    'height_points': 's.s_height_points',
+    'max_width_points': 's.s_max_width_points',
+    'max_height_points': 's.s_max_height_points',
     'style_class': 's.s_class',
     'on_appear': '(ev "appear" emit props)',
 }
@@ -247,6 +250,8 @@ def main():
         kids = kids_expr(name, ret, parents)
         validation = (f'      require_supported_properties P.{restricted_properties[name]} props;\n'
                       if name in restricted_properties else '')
+        dimensions = '; '.join('\"' + label.replace('_', '-') + '\"' for label, _ in args if label in ('height', 'max_width', 'max_height'))
+        validation += f'      require_dimension_properties [{dimensions}] props;\n'
         out.append(f'    | "{kind}" ->\n{validation}      E.{name}{call_args(args, name)} {kids}\n')
     for name, kind, _, el_type, _ in restricted:
         out.append(
@@ -320,8 +325,10 @@ and actions_of ~emit nodes : E.input_group_actions_el option =
         else:
             kids = '[]'
         param = 'child_nodes' if tag != 'leaf' else '_child_nodes'
+        dimensions = '; '.join('\"' + label.replace('_', '-') + '\"' for label, _ in args if label in ('height', 'max_width', 'max_height'))
         out.append(f'''and build_{name} ~emit props {param} : E.{el_type} =
   let s = sty_of props in
+  require_dimension_properties [{dimensions}] props;
   E.{name}{call_args(args, name)} {kids}
 ''')
 
@@ -382,6 +389,33 @@ let v_int p n =
   | _ -> None
 let v_float p n = match get p n with Some (Num f) -> Some f | _ -> None
 let v_bool p n = match get p n with Some (Bool b) -> Some b | _ -> None
+
+(* These aliases author the same numeric wire field. Never round a fraction
+   or discard an explicitly malformed dimension. Other JSON fields retain
+   their existing decoding and unknown-extension policy. *)
+let dimension_prop props name =
+  let points_name = name ^ "-points" in
+  match get props name, get props points_name with
+  | Some _, Some _ -> invalid_arg ("Conflicting dimension aliases: " ^ name)
+  | None, None -> None, None
+  | canonical, points ->
+      let explicit_points = Option.is_some points in
+      let value = match canonical, points with Some value, _ | _, Some value -> value
+        | None, None -> assert false in
+      (match value with
+       | Num value when P.is_finite value && value >= 0. ->
+           if not explicit_points && Float.floor value = value
+              && value < -. (float_of_int min_int)
+           then Some (int_of_float value), None
+           else None, Some value
+       | _ -> invalid_arg ("Dimension must be a finite nonnegative number: " ^ name))
+
+let require_dimension_properties supported props =
+  List.iter (fun name ->
+    if not (List.mem name supported)
+       && (Option.is_some (get props name) || Option.is_some (get props (name ^ "-points")))
+    then invalid_arg ("Dimension is unsupported by constructor: " ^ name))
+    ["height"; "max-width"; "max-height"]
 
 let anchor_rect_prop props =
   match get props "anchor-rect" with
@@ -633,14 +667,20 @@ type sty = {
   s_radius : int option;
   s_width : int option;
   s_height : int option;
+  s_height_points : float option;
   s_min_width : int option;
   s_max_width : int option;
+  s_max_width_points : float option;
   s_min_height : int option;
   s_max_height : int option;
+  s_max_height_points : float option;
   s_class : string option;
 }
 
 let sty_of p =
+  let s_height, s_height_points = dimension_prop p "height" in
+  let s_max_width, s_max_width_points = dimension_prop p "max-width" in
+  let s_max_height, s_max_height_points = dimension_prop p "max-height" in
   {
     s_key = v_str p "key";
     s_gap = v_int p "gap";
@@ -664,11 +704,14 @@ let sty_of p =
     s_border_width = v_int p "border-width";
     s_radius = v_int p "corner-radius";
     s_width = v_int p "width";
-    s_height = v_int p "height";
+    s_height;
+    s_height_points;
     s_min_width = v_int p "min-width";
-    s_max_width = v_int p "max-width";
+    s_max_width;
+    s_max_width_points;
     s_min_height = v_int p "min-height";
-    s_max_height = v_int p "max-height";
+    s_max_height;
+    s_max_height_points;
     s_class = v_str p "style-class";
   }
 

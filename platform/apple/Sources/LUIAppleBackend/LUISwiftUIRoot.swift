@@ -546,7 +546,7 @@ private struct LUIDialogCustomSurface: View {
         .padding()
         .frame(
             width: presentation.model.property(.width).map { CGFloat($0.intValue ?? 0) },
-            height: presentation.model.property(.height).map { CGFloat($0.intValue ?? 0) }
+            height: presentation.model.property(.height).map { CGFloat($0.dimensionValue ?? 0) }
         )
     }
 }
@@ -1017,7 +1017,7 @@ private struct LUINodeView: View {
                     .scaleEffect(spinnerScale)
                     .frame(
                         width: CGFloat(model.spinnerWidth),
-                        height: CGFloat(model.spinnerHeight)
+                        height: CGFloat(model.spinnerHeightPoints)
                     )
                     .clipped()
             )
@@ -1026,12 +1026,12 @@ private struct LUINodeView: View {
                 LUIIconImage(
                     source: backend.iconSource(for: model.iconName),
                     bundle: backend.appIconBundle,
-                    size: CGFloat(model.iconHeight)
+                    size: CGFloat(model.iconHeightPoints)
             )
                 .scaledToFit()
                 .frame(
                     width: CGFloat(model.iconWidth),
-                    height: CGFloat(model.iconHeight)
+                    height: CGFloat(model.iconHeightPoints)
                 )
             )
         case .statusBar:
@@ -1115,7 +1115,7 @@ private struct LUINodeView: View {
     }
 
     private var spinnerScale: CGFloat {
-        let extent = max(CGFloat(model.spinnerWidth), CGFloat(model.spinnerHeight))
+        let extent = max(CGFloat(model.spinnerWidth), CGFloat(model.spinnerHeightPoints))
         guard extent > 0, extent < model.spinnerStyle.intrinsicExtent else {
             return 1
         }
@@ -1202,7 +1202,7 @@ private struct LUIBottomTabsView: View {
         // TabView has no intrinsic height; inside a ScrollView it collapses to
         // zero. With no explicit height, fill the nearest container (the host
         // scroll's visible frame) so callers don't have to guess a height.
-        if insideScroll && model.surfaceHeight == nil {
+        if insideScroll && model.surfaceHeightPoints == nil {
             return AnyView(tabs.containerRelativeFrame(.vertical))
         }
         return AnyView(tabs)
@@ -3070,7 +3070,7 @@ private struct LUIModalSurfaceContent: View {
 
     private var surfaceHeight: CGFloat? {
         model.kind == .sheet
-            ? model.property(.height).map { CGFloat($0.intValue ?? 0) }
+            ? model.property(.height).map { CGFloat($0.dimensionValue ?? 0) }
             : nil
     }
 }
@@ -3740,7 +3740,7 @@ private struct LUIAvatarView: View {
     @Environment(\.luiSemanticColors) private var semanticColors
 
     var body: some View {
-        let extent = CGFloat(model.surfaceWidth ?? model.surfaceHeight ?? 40)
+        let extent = CGFloat(model.surfaceWidth.map(Double.init) ?? model.surfaceHeightPoints ?? 40)
         ZStack {
             avatarBackground
             if let image = model.avatarDisplayImage(in: backend) {
@@ -3922,7 +3922,7 @@ private struct LUIFileImageView: View {
                 .resizable()
                 .aspectRatio(contentMode: model.property(.imageFit)?.stringValue == "fill" ? .fill : .fit)
                 .frame(width: model.surfaceWidth.map(CGFloat.init),
-                       height: model.surfaceHeight.map(CGFloat.init))
+                       height: model.surfaceHeightPoints.map(CGFloat.init))
                 .clipped()
         } else if failed {
             LUIIconImage(
@@ -4453,7 +4453,7 @@ private struct LUIDropdownMenuView: View {
         .padding(LUIDropdownMenuLayoutPolicy.contentPadding)
         .frame(
             minWidth: model.surfaceMinWidth.map(CGFloat.init),
-            maxWidth: model.surfaceMaxWidth.map(CGFloat.init) ?? (isStretch ? .infinity : nil),
+            maxWidth: model.surfaceMaxWidthPoints.map(CGFloat.init) ?? (isStretch ? .infinity : nil),
             alignment: .leading
         )
 #if os(macOS)
@@ -4577,7 +4577,7 @@ private struct LUIMenuTriggerView: View {
         return parent
     }
 
-    private func minimumExtent(fixed: Int?, minimum: Int?, maximum: Int?) -> CGFloat? {
+    private func minimumExtent(fixed: Double?, minimum: Int?, maximum: Double?) -> CGFloat? {
         if let minimum { return CGFloat(minimum) }
         return fixed == nil && maximum == nil ? 44 : nil
     }
@@ -4638,22 +4638,22 @@ private struct LUIMenuTriggerView: View {
             #if os(iOS)
             .frame(
                 width: sizingCell?.surfaceWidth.map(CGFloat.init),
-                height: sizingCell?.surfaceHeight.map(CGFloat.init),
+                height: sizingCell?.surfaceHeightPoints.map(CGFloat.init),
                 alignment: labelAlignment
             )
             .frame(
                 minWidth: minimumExtent(
-                    fixed: sizingCell?.surfaceWidth,
+                    fixed: sizingCell?.surfaceWidth.map(Double.init),
                     minimum: sizingCell?.surfaceMinWidth,
-                    maximum: sizingCell?.surfaceMaxWidth
+                    maximum: sizingCell?.surfaceMaxWidthPoints
                 ),
-                maxWidth: sizingCell?.surfaceMaxWidth.map(CGFloat.init),
+                maxWidth: sizingCell?.surfaceMaxWidthPoints.map(CGFloat.init),
                 minHeight: minimumExtent(
-                    fixed: sizingCell?.surfaceHeight,
+                    fixed: sizingCell?.surfaceHeightPoints,
                     minimum: sizingCell?.surfaceMinHeight,
-                    maximum: sizingCell?.surfaceMaxHeight
+                    maximum: sizingCell?.surfaceMaxHeightPoints
                 ),
-                maxHeight: sizingCell?.surfaceMaxHeight.map(CGFloat.init),
+                maxHeight: sizingCell?.surfaceMaxHeightPoints.map(CGFloat.init),
                 alignment: labelAlignment
             )
             #endif
@@ -5403,22 +5403,22 @@ private struct LUIButtonView: View {
                 // A minimum keeps Dynamic Type intrinsic height unconstrained.
                 .frame(
                     minWidth: minimumControlExtent(
-                        fixed: model.surfaceWidth,
+                        fixed: model.surfaceWidth.map(Double.init),
                         minimum: model.surfaceMinWidth,
-                        maximum: model.surfaceMaxWidth
+                        maximum: model.surfaceMaxWidthPoints
                     ),
-                    maxWidth: model.surfaceMaxWidth.map(CGFloat.init),
+                    maxWidth: model.surfaceMaxWidthPoints.map(CGFloat.init),
                     minHeight: minimumControlExtent(
-                        fixed: model.surfaceHeight,
+                        fixed: model.surfaceHeightPoints,
                         minimum: model.surfaceMinHeight,
-                        maximum: model.surfaceMaxHeight
+                        maximum: model.surfaceMaxHeightPoints
                     ),
-                    maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
+                    maxHeight: model.surfaceMaxHeightPoints.map(CGFloat.init)
                 )
                 .contentShape(Rectangle())
                 .modifier(LUIOptionalClipModifier(
                     cornerRadius: 0,
-                    clipsContent: model.surfaceMaxWidth != nil || model.surfaceMaxHeight != nil
+                    clipsContent: model.surfaceMaxWidthPoints != nil || model.surfaceMaxHeightPoints != nil
                 ))
         } else {
             control
@@ -5649,8 +5649,8 @@ private struct LUIButtonView: View {
     private var iconExtent: CGFloat {
         let visualExtent: CGFloat = usesDefaultTouchCell && isIconOnly && model.buttonSize == "default"
             ? 20 : LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
-        let maximumWidth = usesDefaultTouchCell ? model.surfaceMaxWidth.map(CGFloat.init) : nil
-        let maximumHeight = usesDefaultTouchCell ? model.surfaceMaxHeight.map(CGFloat.init) : nil
+        let maximumWidth = usesDefaultTouchCell ? model.surfaceMaxWidthPoints.map(CGFloat.init) : nil
+        let maximumHeight = usesDefaultTouchCell ? model.surfaceMaxHeightPoints.map(CGFloat.init) : nil
         return min(
             visualExtent,
             buttonWidth ?? .greatestFiniteMagnitude,
@@ -5669,17 +5669,14 @@ private struct LUIButtonView: View {
     }
 
     private var buttonHeight: CGFloat? {
-        let height = LUIButtonVisualPolicy.resolvedExtent(
-            explicit: model.surfaceHeight,
-            fallback: nil
-        )
+        let height = model.surfaceHeightPoints.map(CGFloat.init)
         return hitTargetFloor(height)
     }
 
     private var buttonWidth: CGFloat? {
         // Explicit bounds own this axis, including size=icon. Do not retain
         // its fixed fallback width underneath a caller's smaller hit cell.
-        let hasWidthBounds = model.surfaceMinWidth != nil || model.surfaceMaxWidth != nil
+        let hasWidthBounds = model.surfaceMinWidth != nil || model.surfaceMaxWidthPoints != nil
         let width = LUIButtonVisualPolicy.resolvedExtent(
             explicit: model.surfaceWidth,
             fallback: usesDefaultTouchCell && hasWidthBounds ? nil : LUIButtonVisualPolicy.defaultWidth(
@@ -5714,7 +5711,7 @@ private struct LUIButtonView: View {
 
     /// Explicit per-axis constraints opt out of the default 44pt minimum.
     /// Small control size changes visual chrome, not the reserved hit cell.
-    private func minimumControlExtent(fixed: Int?, minimum: Int?, maximum: Int?) -> CGFloat? {
+    private func minimumControlExtent(fixed: Double?, minimum: Int?, maximum: Double?) -> CGFloat? {
         guard usesDefaultTouchCell else { return nil }
         if let minimum { return CGFloat(minimum) }
         return fixed == nil && maximum == nil ? 44 : nil
@@ -6264,7 +6261,7 @@ private struct LUIRowView: View {
         // also makes the row greedy in a VStack. Keep it at its ideal height
         // unless the wire explicitly sizes it.
         if cross != "stretch" || model.derived.grow > 0
-            || model.surfaceHeight != nil || model.surfaceMinHeight != nil {
+            || model.surfaceHeightPoints != nil || model.surfaceMinHeight != nil {
             rowContent
                 .modifier(LUIContainerPressModifier(model: model, backend: backend))
         } else {
@@ -8145,10 +8142,10 @@ private struct LUIPlainContainerSurfaceModifier: ViewModifier {
             leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
             bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
             trailing: CGFloat(model.property(.paddingRight)?.intValue ?? horizontal)))
-        if model.surfaceWidth != nil || model.surfaceHeight != nil {
+        if model.surfaceWidth != nil || model.surfaceHeightPoints != nil {
             padded.frame(maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) ? .infinity : nil,
                          alignment: .leading)
-                .frame(width: model.surfaceWidth.map(CGFloat.init), height: model.surfaceHeight.map(CGFloat.init))
+                .frame(width: model.surfaceWidth.map(CGFloat.init), height: model.surfaceHeightPoints.map(CGFloat.init))
         } else if LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) {
             padded.frame(maxWidth: .infinity, alignment: .leading)
         } else { padded }
@@ -8166,6 +8163,18 @@ private struct LUISurfaceModifier: ViewModifier {
     /// bar-item target (see `LUIButtonView.hitTargetFloor`); this keeps the
     /// node's outer surface frame in step so it can't clip the hit region.
     private func floored(_ extent: Int?) -> Int? {
+        guard inHoistedToolbar,
+              model.kind == .button || model.kind == .toggleButton,
+              !model.buttonIconName.isEmpty, model.text.isEmpty
+        else { return extent }
+        #if os(iOS)
+        return max(extent ?? 0, 44)
+        #else
+        return extent
+        #endif
+    }
+
+    private func flooredPoints(_ extent: Double?) -> Double? {
         guard inHoistedToolbar,
               model.kind == .button || model.kind == .toggleButton,
               !model.buttonIconName.isEmpty, model.text.isEmpty
@@ -8249,18 +8258,18 @@ private struct LUISurfaceModifier: ViewModifier {
                     kind: model.kind,
                     requested: floored(model.surfaceWidth)
                 ).map(CGFloat.init),
-                height: floored(model.surfaceHeight).map(CGFloat.init)
+                height: flooredPoints(model.surfaceHeightPoints).map(CGFloat.init)
             )
             .modifier(LUIBodyLineControlModifier(
                 enabled: model.derived.styleClassTokens.contains("body-line"),
                 width: model.surfaceWidth.map(CGFloat.init),
-                minimumHeight: CGFloat(model.surfaceHeight ?? 24)
+                minimumHeight: CGFloat(model.surfaceHeightPoints ?? 24)
             ))
             .frame(
                 minWidth: model.kind == .resizable ? nil : model.surfaceMinWidth.map(CGFloat.init),
-                maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidth.map(CGFloat.init),
+                maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidthPoints.map(CGFloat.init),
                 minHeight: model.surfaceMinHeight.map(CGFloat.init),
-                maxHeight: model.surfaceMaxHeight.map(CGFloat.init),
+                maxHeight: model.surfaceMaxHeightPoints.map(CGFloat.init),
                 alignment: LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: model.kind)
                     ? .topLeading
                     : .center
@@ -8299,7 +8308,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 shape: shape,
                 isPill: model.kind != .avatar && LUIGlassShapePolicy.isPill(
                     cornerRadius: radius,
-                    height: floored(model.surfaceHeight).map(CGFloat.init)
+                    height: flooredPoints(model.surfaceHeightPoints).map(CGFloat.init)
                 ),
                 clipsContent: clipsContent && clipsInsideGlass,
                 clipRadius: radius
@@ -8925,36 +8934,40 @@ struct LUIResizableWidthState: Equatable {
     private(set) var sourceWidth: Int?
     private(set) var minimumWidth: Int?
     private(set) var maximumWidth: Int?
+    private(set) var maximumWidthPoints: Double?
     private(set) var width: CGFloat?
 
-    init(sourceWidth: Int?, minimumWidth: Int?, maximumWidth: Int?) {
+    init(sourceWidth: Int?, minimumWidth: Int?, maximumWidth: Int?, maximumWidthPoints: Double? = nil) {
         self.sourceWidth = sourceWidth
         self.minimumWidth = minimumWidth
         self.maximumWidth = maximumWidth
-        width = Self.clamp(sourceWidth.map(CGFloat.init), minimumWidth, maximumWidth)
+        self.maximumWidthPoints = maximumWidthPoints
+        width = Self.clamp(sourceWidth.map(CGFloat.init), minimumWidth, maximumWidthPoints ?? maximumWidth.map(Double.init))
     }
 
     mutating func reconcile(
         sourceWidth: Int?,
         minimumWidth: Int?,
-        maximumWidth: Int?
+        maximumWidth: Int?,
+        maximumWidthPoints: Double? = nil
     ) {
         let sourceChanged = self.sourceWidth != sourceWidth
         self.sourceWidth = sourceWidth
         self.minimumWidth = minimumWidth
         self.maximumWidth = maximumWidth
+        self.maximumWidthPoints = maximumWidthPoints
         width = Self.clamp(
             sourceChanged ? sourceWidth.map(CGFloat.init) : width,
             minimumWidth,
-            maximumWidth
+            maximumWidthPoints ?? maximumWidth.map(Double.init)
         )
     }
 
     mutating func drag(by delta: CGFloat, fallbackWidth: CGFloat) {
-        width = Self.clamp((width ?? fallbackWidth) + delta, minimumWidth, maximumWidth)
+        width = Self.clamp((width ?? fallbackWidth) + delta, minimumWidth, maximumWidthPoints ?? maximumWidth.map(Double.init))
     }
 
-    private static func clamp(_ width: CGFloat?, _ minimum: Int?, _ maximum: Int?) -> CGFloat? {
+    private static func clamp(_ width: CGFloat?, _ minimum: Int?, _ maximum: Double?) -> CGFloat? {
         guard var width else { return nil }
         if let minimum { width = max(width, CGFloat(minimum)) }
         if let maximum { width = min(width, CGFloat(maximum)) }
@@ -8975,7 +8988,8 @@ private struct LUIResizableView: View {
             initialValue: LUIResizableWidthState(
                 sourceWidth: model.surfaceWidth,
                 minimumWidth: model.surfaceMinWidth,
-                maximumWidth: model.surfaceMaxWidth
+                maximumWidth: model.surfaceMaxWidth,
+                maximumWidthPoints: model.surfaceMaxWidthPoints
             )
         )
     }
@@ -9014,14 +9028,15 @@ private struct LUIResizableView: View {
         }
         .onChange(of: model.surfaceWidth) { _, value in reconcile(sourceWidth: value) }
         .onChange(of: model.surfaceMinWidth) { _, _ in reconcile(sourceWidth: model.surfaceWidth) }
-        .onChange(of: model.surfaceMaxWidth) { _, _ in reconcile(sourceWidth: model.surfaceWidth) }
+        .onChange(of: model.surfaceMaxWidthPoints) { _, _ in reconcile(sourceWidth: model.surfaceWidth) }
     }
 
     private func reconcile(sourceWidth: Int?) {
         widthState.reconcile(
             sourceWidth: sourceWidth,
             minimumWidth: model.surfaceMinWidth,
-            maximumWidth: model.surfaceMaxWidth
+            maximumWidth: model.surfaceMaxWidth,
+            maximumWidthPoints: model.surfaceMaxWidthPoints
         )
     }
 }

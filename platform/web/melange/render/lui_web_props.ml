@@ -95,6 +95,7 @@ let refresh_popup_height renderer node kind surface =
       [
         (match property MaxHeight with
         | Some (IntValue height) -> Some (string_of_int height ^ "px")
+        | Some (FloatValue height) -> Some (Js.Float.toString height ^ "px")
         | _ -> None);
         (match property MaxHeightViewport with
         | Some (FloatValue height) ->
@@ -852,16 +853,25 @@ let rec apply_property renderer queue_split node kind dom_node property
   | HeightValue, IntValue height ->
       set_dimension kind dom_node "height" (string_of_int height ^ "px");
       if kind = Image then Widgets.update_image renderer node dom_node
+  | HeightValue, FloatValue height ->
+      set_dimension kind dom_node "height" (Js.Float.toString height ^ "px");
+      if kind = Image then Widgets.update_image renderer node dom_node
   | MinWidth, IntValue width ->
       set_style dom_node "min-width" (string_of_int width ^ "px")
   | MaxWidth, IntValue width ->
       let value = string_of_int width ^ "px" in
+      set_style dom_node "max-width" (if popup_kind kind then popup_limit "width" value else value)
+  | MaxWidth, FloatValue width ->
+      let value = Js.Float.toString width ^ "px" in
       set_style dom_node "max-width" (if popup_kind kind then popup_limit "width" value else value)
   | MinHeight, IntValue height ->
       set_style dom_node "min-height" (string_of_int height ^ "px")
   | MaxHeight, IntValue height ->
       if popup_kind kind then refresh_popup_height renderer node kind dom_node
       else set_style dom_node "max-height" (string_of_int height ^ "px")
+  | MaxHeight, FloatValue height ->
+      if popup_kind kind then refresh_popup_height renderer node kind dom_node
+      else set_style dom_node "max-height" (Js.Float.toString height ^ "px")
   | PlaceholderValue, StringValue placeholder ->
       apply_placeholder renderer node kind dom_node placeholder
   | AccessibilityLabel, StringValue label ->

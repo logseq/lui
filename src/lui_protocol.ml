@@ -1652,6 +1652,7 @@ let property_value_supported property value =
   | CornerRadius, IntValue value -> value >= 0
   | WidthValue, IntValue value -> value >= 0
   | HeightValue, IntValue value -> value >= 0
+  | (HeightValue | MaxWidth | MaxHeight), FloatValue value -> is_finite value && value >= 0.0
   | (WidthValue | HeightValue), StringValue "auto" -> true
   | MinWidth, IntValue value -> value >= 0
   | MaxWidth, IntValue value -> value >= 0
@@ -1849,13 +1850,35 @@ let float_property properties property fallback =
   | Some (FloatValue number) -> number
   | _ -> fallback
 
+(* Keep integer comparisons exact, including values beyond float's integer
+   precision. Mixed comparisons truncate only a finite, in-range float. *)
+let rec compare_dimensions left right =
+  match left, right with
+  | IntValue left, IntValue right -> Int.compare left right
+  | FloatValue left, FloatValue right -> Float.compare left right
+  | IntValue left, FloatValue right ->
+      if right >= -. (float_of_int min_int) then -1
+      else
+        let whole = int_of_float right in
+        let order = Int.compare left whole in
+        if order <> 0 then order
+        else if right > float_of_int whole then -1 else 0
+  | FloatValue _, IntValue _ -> -(compare_dimensions right left)
+  | _ -> invalid_arg "Dimension comparison requires numeric values"
+
+let dimension_property properties property fallback =
+  match Property_map.find_opt property properties with
+  | Some ((IntValue _ | FloatValue _) as value) -> value
+  | _ -> fallback
+
 let size_axis_supported properties fixed_property min_property max_property =
-  let minimum = int_property properties min_property 0 in
-  let fixed = int_property properties fixed_property minimum in
-  fixed >= minimum
+  let minimum = dimension_property properties min_property (IntValue 0) in
+  let fixed = dimension_property properties fixed_property minimum in
+  compare_dimensions fixed minimum >= 0
   &&
   match Property_map.find_opt max_property properties with
-  | Some (IntValue maximum) -> minimum <= maximum && fixed <= maximum
+  | Some ((IntValue _ | FloatValue _) as maximum) ->
+      compare_dimensions minimum maximum <= 0 && compare_dimensions fixed maximum <= 0
   | Some _ -> false
   | None -> true
 

@@ -246,6 +246,56 @@ let positional args =
 
 let last values = List.fold_left (fun _ value -> Some value) None values
 
+let dimension_labels = ["height"; "max_width"; "max_height"]
+
+let rec point_literal fuel = function
+  | _ when fuel = 0 -> None
+  | Bound (scope, expression) -> (
+      let recurse expression = point_literal (fuel - 1) (Bound (scope, expression)) in
+      match expression.pexp_desc with
+      | Pexp_constant (Pconst_float (text, _)) -> float_of_string_opt text
+      | Pexp_construct ({txt=Lident "Some";_}, Some value)
+      | Pexp_constraint (value, _) -> recurse value
+      | Pexp_ident {txt=Lident name;_} ->
+          point_literal (fuel - 1) (Option.value (Names.find_opt name scope.values) ~default:Unknown)
+      | Pexp_apply ({pexp_desc=Pexp_ident {txt=Lident ("~-." | "~-" );_};_}, [Nolabel,value]) ->
+          Option.map Float.neg (recurse value)
+      | Pexp_apply (fn, (Nolabel, {pexp_desc=Pexp_function (_,_,Pfunction_body body);_}) :: _)
+        when dsl_name scope fn=Some "reactive" -> recurse body
+      | _ -> None)
+  | Unknown | Nodes _ -> None
+
+let rec argument_present fuel label = function
+  | _ when fuel = 0 -> false
+  | _ when (match label with Labelled _ -> true | _ -> false) -> true
+  | Bound (scope, expression) as value -> (
+      match expression.pexp_desc with
+      | Pexp_construct ({txt=Lident "Some";_}, _) -> true
+      | Pexp_constant (Pconst_integer _ | Pconst_float _) -> true
+      | Pexp_ident {txt=Lident name;_} ->
+          argument_present (fuel - 1) label
+            (Option.value (Names.find_opt name scope.values) ~default:Unknown)
+      | _ -> Option.is_some (point_literal fuel value))
+  | Unknown | Nodes _ -> false
+
+let check_point_aliases loc args =
+  let family name = List.exists (fun (label,value) ->
+    match label with
+    | Labelled found | Optional found when found=name || found=name ^ "_signal" ->
+        argument_present 32 label value
+    | _ -> false) args in
+  List.iter (fun name ->
+    if (family name || (name="height" && family "point_size")) && family (name ^ "_points") then
+      Location.raise_errorf ~loc "LUI dimensions: conflicting integer and point aliases for %s" name;
+    List.iter (fun (label,value) ->
+      match label with
+      | Labelled found | Optional found when found=name ^ "_points" ->
+          (match point_literal 32 value with
+           | Some number when not (Float.is_finite number) || number < 0. ->
+               Location.raise_errorf ~loc "LUI dimensions: %s_points must be finite and nonnegative" name
+           | _ -> ())
+      | _ -> ()) args) dimension_labels
+
 let check_edge parent (child, loc) =
   let supported =
     if child = Schema.VirtualRows then parent = Schema.VirtualList
@@ -402,6 +452,9 @@ and apply_roots ?(detached = false) fuel scope fn args =
                   | Some (candidate, value, args) ->
                       let value =
                         match candidate with
+                        | Optional name when List.exists (fun dimension ->
+                            List.mem name [dimension; dimension ^ "_signal";
+                              dimension ^ "_points"; dimension ^ "_points_signal"]) dimension_labels -> value
                         | Optional _ -> Unknown
                         | _ -> value
                       in
@@ -451,6 +504,7 @@ and apply_roots ?(detached = false) fuel scope fn args =
     | _ -> (
         match Option.bind (dsl_name scope fn) Schema.constructor with
         | Some (kind, parent, children) ->
+            check_point_aliases fn.pexp_loc args;
             let values = positional args in
             (match (children, values) with
             | Schema.Children_list, children :: _ ->

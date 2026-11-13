@@ -183,10 +183,13 @@ enum LUIWireValue: Decodable, Equatable {
              .paddingHorizontal, .paddingVertical,
              .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
              .borderWidth, .cornerRadius,
-             .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight,
+             .width, .minWidth, .minHeight,
              .containerRelativeFrameInset, .scrollToken:
             guard let value = intValue else { return false }
             return value >= 0
+        case .height, .maxWidth, .maxHeight:
+            guard let value = dimensionValue else { return false }
+            return value.isFinite && value >= 0
         case .resizeEasing:
             guard let value = stringValue else { return false }
             return ["linear", "standard", "emphasized", "spring"].contains(value)
@@ -1867,10 +1870,12 @@ struct LUIRetainedTree {
         minimum: LUIProperty,
         maximum: LUIProperty
     ) throws {
-        let lower = node.properties[minimum]?.intValue ?? 0
-        let upper = node.properties[maximum]?.intValue ?? .max
-        let exact = node.properties[fixed]?.intValue ?? lower
-        guard lower <= upper, exact >= lower, exact <= upper else {
+        let lower = node.properties[minimum] ?? .int(0)
+        let upper = node.properties[maximum]
+        let exact = node.properties[fixed] ?? lower
+        guard exact.dimensionCompared(to: lower) != .orderedAscending,
+              upper.map({ lower.dimensionCompared(to: $0) != .orderedDescending
+                  && exact.dimensionCompared(to: $0) != .orderedDescending }) ?? true else {
             throw invalid("surface size constraints conflict")
         }
     }
@@ -1912,6 +1917,36 @@ extension LUIWireValue {
     var boolValue: Bool? {
         guard case let .bool(value) = self else { return nil }
         return value
+    }
+
+    var dimensionValue: Double? {
+        switch self {
+        case .int(let value): Double(value)
+        case .double(let value): value
+        default: nil
+        }
+    }
+
+    func dimensionCompared(to other: LUIWireValue) -> ComparisonResult {
+        switch (self, other) {
+        case let (.int(left), .int(right)):
+            return left < right ? .orderedAscending : (left > right ? .orderedDescending : .orderedSame)
+        case let (.double(left), .double(right)):
+            return left < right ? .orderedAscending : (left > right ? .orderedDescending : .orderedSame)
+        case let (.int(left), .double(right)):
+            if right >= -Double(Int.min) { return .orderedAscending }
+            let whole = Int(right)
+            if left < whole { return .orderedAscending }
+            if left > whole { return .orderedDescending }
+            return right > Double(whole) ? .orderedAscending : .orderedSame
+        case (.double, .int):
+            switch other.dimensionCompared(to: self) {
+            case .orderedAscending: return .orderedDescending
+            case .orderedDescending: return .orderedAscending
+            case .orderedSame: return .orderedSame
+            }
+        default: preconditionFailure("validated numeric dimensions required")
+        }
     }
 
     var doubleValue: Double? {

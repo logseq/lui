@@ -156,3 +156,29 @@ test('authored auto image width restores intrinsic pixels after an explicit fram
   assert.equal(pixels.styles.get('height'),'auto')
   assert.equal(f.pixels,pixels)
 })
+
+
+test('fractional point geometry preserves explicit pixels and retained image identity',()=>{
+  const f=fixture(),pixels=f.pixels
+  const number=value=>({TAG:3,_0:value})
+  const set=(name,value)=>{
+    Store.apply_batch(f.renderer.web_store,()=>f.box,{generation:++generation,
+      ops:list([Protocol.set_prop_op(1,prop(name),number(value))])})
+    Props.apply_property(f.renderer,()=>{},1,kind,f.box,prop(name),number(value))
+  }
+  // fixture() publishes its create batch as generation 1.
+  let generation=1
+  f.set([['width',92]])
+  generation=2
+  set('height',63.25)
+  set('max-width',127.75)
+  set('max-height',200.5)
+  assert.equal(f.box.styles.get('height'),'63.25px')
+  assert.equal(f.box.styles.get('max-width'),'127.75px')
+  assert.equal(f.box.styles.get('max-height'),'200.5px')
+  assert.equal(f.pixels,pixels)
+  assert.equal(f.pixels.styles.get('height'),'100%')
+  set('height',64.125)
+  assert.equal(f.box.styles.get('height'),'64.125px')
+  assert.equal(f.pixels,pixels)
+})

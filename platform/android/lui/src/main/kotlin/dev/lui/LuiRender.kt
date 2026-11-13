@@ -128,11 +128,11 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
     val width = if (node.kind == LuiNodeKind.drawer) null else node.prop("width")?.intValue
     // Sheets constrain their content height inside the native surface. A fixed
     // outer height also constrains Material's IME padding and can erase the body.
-    val height = if (node.kind == LuiNodeKind.sheet) null else node.prop("height")?.intValue
+    val height = if (node.kind == LuiNodeKind.sheet) null else node.prop("height")?.numberValue?.toFloat()
     val minWidth = node.prop("min-width")?.intValue ?: 0
-    val maxWidth = node.prop("max-width")?.intValue ?: Int.MAX_VALUE
+    val maxWidth = node.prop("max-width")?.numberValue?.toFloat() ?: Float.POSITIVE_INFINITY
     val minHeight = node.prop("min-height")?.intValue ?: 0
-    val maxHeight = node.prop("max-height")?.intValue ?: Int.MAX_VALUE
+    val maxHeight = node.prop("max-height")?.numberValue?.toFloat() ?: Float.POSITIVE_INFINITY
     var modifier: Modifier = this
     // Margin = space outside the visual box: applied first so background,
     // border and clip stay inside it. Compose PaddingValues can't go
@@ -156,12 +156,12 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
     }
     if (width != null) modifier = modifier.width(width.dp)
     if (height != null) modifier = modifier.height(height.dp)
-    if (minWidth > 0 || maxWidth != Int.MAX_VALUE || minHeight > 0 || maxHeight != Int.MAX_VALUE) {
+    if (minWidth > 0 || maxWidth.isFinite() || minHeight > 0 || maxHeight.isFinite()) {
         modifier = modifier.sizeIn(
             minWidth = minWidth.dp,
             minHeight = minHeight.dp,
-            maxWidth = if (maxWidth == Int.MAX_VALUE) Dp.Infinity else maxWidth.dp,
-            maxHeight = if (maxHeight == Int.MAX_VALUE) Dp.Infinity else maxHeight.dp,
+            maxWidth = if (maxWidth.isInfinite()) Dp.Infinity else maxWidth.dp,
+            maxHeight = if (maxHeight.isInfinite()) Dp.Infinity else maxHeight.dp,
         )
     }
     val isSurface = LuiKindRules.isOverlaySurface(node.kind)

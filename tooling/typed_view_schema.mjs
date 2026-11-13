@@ -37,6 +37,7 @@ const aliases = {
   shortcut_hint: ['tooltip-keys'], kind: ['input-type'], fit: ['image-fit'],
   first_width: ['first-pane-width'], point_size: ['width', 'height'],
   resizable_width: ['width'], accordion_height: ['height'],
+  height_points: ['height'], max_width_points: ['max-width'], max_height_points: ['max-height'],
   toolbar_gap: ['gap'], toolbar_class: ['style-class'], toast_class: ['style-class'],
   list_marker: ['list-style'], at: ['x', 'y'],
   level: ['heading-level'],
@@ -53,7 +54,7 @@ const constructorAliases = {
 
 export const typedViewSignature = `
 type view_value =
-  | ViewString | ViewBool | ViewInt | ViewFloat
+  | ViewString | ViewBool | ViewInt | ViewFloat | ViewNumber
   | ViewEnum of string list
   | ViewIcon of string list
   | ViewToken | ViewAttributes | ViewFloatTuple of int
@@ -184,8 +185,10 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         if (!property) throw new Error(`no wire property for typed argument: ${wire}.${label}`);
         const value = domain(label === 'at' ? 'float' : type);
         const previous = props.get(property);
-        if (previous && previous.value !== value) throw new Error(`conflicting typed property ${wire}.${propName}`);
-        props.set(property, {value, required: !optional || previous?.required === true});
+        const numericAlias = ['height', 'max-width', 'max-height'].includes(propName)
+          && previous && [previous.value, value].every(value => ['ViewInt', 'ViewFloat', 'ViewNumber'].includes(value));
+        if (previous && previous.value !== value && !numericAlias) throw new Error(`conflicting typed property ${wire}.${propName}`);
+        props.set(property, {value: numericAlias ? 'ViewNumber' : value, required: !optional || previous?.required === true});
       }
     }
     if (!extension && result === 't') {

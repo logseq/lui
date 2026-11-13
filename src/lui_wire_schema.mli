@@ -13,7 +13,7 @@ val all_properties : property list
 
 
 type view_value =
-  | ViewString | ViewBool | ViewInt | ViewFloat
+  | ViewString | ViewBool | ViewInt | ViewFloat | ViewNumber
   | ViewEnum of string list
   | ViewIcon of string list
   | ViewToken | ViewAttributes | ViewFloatTuple of int

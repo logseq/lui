@@ -511,18 +511,36 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
     }
 
     private fun validateSizeAxis(state: LuiNode, size: String, min: String, max: String) {
-        val sizeValue = state.properties[size]?.intValue
-        val minValue = state.properties[min]?.intValue
-        val maxValue = state.properties[max]?.intValue
-        if (sizeValue != null && minValue != null && sizeValue < minValue) {
+        val sizeValue = state.properties[size]
+        val minValue = state.properties[min]
+        val maxValue = state.properties[max]
+        if (sizeValue != null && minValue != null && compareDimensions(sizeValue, minValue) < 0) {
             throw LuiBackendException("$size below $min")
         }
-        if (sizeValue != null && maxValue != null && sizeValue > maxValue) {
+        if (sizeValue != null && maxValue != null && compareDimensions(sizeValue, maxValue) > 0) {
             throw LuiBackendException("$size above $max")
         }
-        if (minValue != null && maxValue != null && minValue > maxValue) {
+        if (minValue != null && maxValue != null && compareDimensions(minValue, maxValue) > 0) {
             throw LuiBackendException("$min above $max")
         }
+    }
+
+    private fun compareDimensions(left: LuiWireValue, right: LuiWireValue): Int = when {
+        left is LuiWireValue.IntValue && right is LuiWireValue.IntValue -> left.value.compareTo(right.value)
+        left is LuiWireValue.DoubleValue && right is LuiWireValue.DoubleValue -> when {
+            left.value < right.value -> -1
+            left.value > right.value -> 1
+            else -> 0
+        }
+        left is LuiWireValue.IntValue && right is LuiWireValue.DoubleValue -> {
+            if (right.value >= 9_223_372_036_854_775_808.0) -1 else {
+                val whole = right.value.toLong()
+                val order = left.value.compareTo(whole)
+                if (order == 0 && right.value > whole.toDouble()) -1 else order
+            }
+        }
+        left is LuiWireValue.DoubleValue && right is LuiWireValue.IntValue -> -compareDimensions(right, left)
+        else -> throw LuiBackendException("dimension comparison requires numeric values")
     }
 }
 

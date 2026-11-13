@@ -10,6 +10,52 @@ fn patch(generation: u64, ops: Value) -> Batch {
 }
 
 #[component]
+fn FractionalImageScenario() -> impl IntoElement {
+    let renderer = Renderer::new(|_, _| {});
+    renderer.apply(patch(1, json!([
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"image"},
+        {"op":"set-prop","id":2,"property":"url","value":"file:///tmp/fractional.png"},
+        {"op":"set-prop","id":2,"property":"width","value":92},
+        {"op":"set-prop","id":2,"property":"height","value":63.25},
+        {"op":"set-prop","id":2,"property":"max-width","value":127.75},
+        {"op":"set-prop","id":2,"property":"max-height","value":200.5},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+    ]))).unwrap();
+    renderer.set_root(1).unwrap();
+    let change = renderer.clone();
+    view().child(renderer.element()).child(nsh_base::button()
+        .child(text("Update fractional geometry")).on_press(move || {
+            let node = change.0.borrow().store.nodes[&2].incarnation;
+            assert!(change.apply(patch(2, json!([
+                {"op":"set-prop","id":2,"property":"max-height","value":63}
+            ]))).is_err());
+            assert_eq!(change.0.borrow().store.generation, 1);
+            change.apply(patch(2, json!([
+                {"op":"set-prop","id":2,"property":"height","value":64.125},
+                {"op":"set-prop","id":2,"property":"max-width","value":128.125},
+                {"op":"set-prop","id":2,"property":"max-height","value":201.25}
+            ]))).unwrap();
+            assert_eq!(change.0.borrow().store.nodes[&2].incarnation, node);
+        }))
+}
+
+#[test]
+fn fractional_image_geometry_is_exact_and_updates_without_native_remount() {
+    let mut app = Headless::start(EngineConfig::new(Root::of::<FractionalImageScenario>())).unwrap();
+    app.wait_for("id:lui-2").unwrap();
+    let before = app.screen().layout_nodes().into_iter()
+        .find(|node| node.test_id.as_deref() == Some("lui-2")).unwrap();
+    assert_eq!(before.bounds.size.width, px(92.0));
+    assert_eq!(before.bounds.size.height, px(63.25));
+    app.press("Update fractional geometry").unwrap();
+    let after = app.screen().layout_nodes().into_iter()
+        .find(|node| node.test_id.as_deref() == Some("lui-2")).unwrap();
+    assert_eq!(after.id, before.id);
+    assert_eq!(after.bounds.size.height, px(64.125));
+}
+
+#[component]
 fn ImageScenario() -> impl IntoElement {
     let loads = Arc::new(Mutex::new(Vec::new()));
     let seen = loads.clone();

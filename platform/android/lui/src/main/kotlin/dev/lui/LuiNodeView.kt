@@ -2434,7 +2434,7 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                         sheetState.expand()
                     }
                 }
-                LuiColumn(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) { boundedHeight ->
+                LuiColumn(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.numberValue?.toFloat()?.dp ?: Dp.Infinity)) { boundedHeight ->
                     if (node.text().isNotEmpty()) {
                         Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.headlineSmall)

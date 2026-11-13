@@ -144,6 +144,14 @@ let video = media_surface ~url:"file:///tmp/clip.mp4" []
 let live (source : string Signal.signal) =
   media_surface ~url:(reactive Fun.id source) []`,
       `open Lui_elements
+let dimensions (viewport : float Signal.signal) =
+  let thumbnail = image ~width:92 ~height_points:63.25 [] in
+  column ~max_width_points:127.75
+    ~max_height_points:(reactive (fun height -> max 0. (height -. 320.)) viewport)
+    [thumbnail; image ~height:63 []]
+let profiles = Lui_protocol.[profile WebOS WebHost; profile MacOS NshHost;
+  profile IOS SwiftUIHost; profile AndroidOS KotlinHost; generic_profile ()]`,
+      `open Lui_elements
 let radio ~text_signal:_ _ = button []
 let probe (source : bool Signal.signal) =
   column [radio ~text:(reactive string_of_bool source) []]`,
@@ -189,6 +197,16 @@ let probe (source : bool Signal.signal) =
       ["text_field ~on_dismiss:true []", /bool/],
       ...invalidSurfaceCases,
       ['list_item ~gap:4 []', /cannot be applied with label ~gap/],
+      ...['height', 'max_width', 'max_height'].flatMap(label => [
+        [`image ~${label}:63 ~${label}_points:63.25 []`, /LUI dimensions: conflicting/],
+        [`Lui_elements.image ~${label}_points:(-0.25) []`, /LUI dimensions:.*finite and nonnegative/],
+        [`let make = Lui_elements.image in make ~${label}_points:1e999 []`, /LUI dimensions:.*finite and nonnegative/],
+        [`let make ?${label}_points children = Lui_elements.image ?${label}_points children in make ?${label}_points:(Some (-0.25)) []`, /LUI dimensions:.*finite and nonnegative/],
+        [`image ~${label}_points:(reactive (fun _ -> -0.25) source) []`, /LUI dimensions:.*finite and nonnegative/],
+        [`image ~${label}:63 ~${label}_points:(reactive Fun.id source) []`, /LUI dimensions: conflicting/],
+      ]),
+      ['tooltip ~height_points:63.25 []', /cannot be applied with label ~height_points/],
+      ['file_picker ~max_height_points:63.25 []', /cannot be applied with label ~max_height_points/],
       ['Lui_elements.list_item ~gap:4 []', /cannot be applied with label ~gap/],
       ['let item = Lui_elements.list_item in item ~gap:4 []', /cannot be applied with label ~gap/],
       ['let item ?gap children = Lui_elements.list_item ?gap children in item []', /cannot be applied with label \?gap/],

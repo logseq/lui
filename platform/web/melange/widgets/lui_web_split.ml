@@ -37,6 +37,7 @@ let split_child_property renderer node index property =
 let split_child_width renderer node index property =
   match split_child_property renderer node index property with
   | Some (IntValue value) -> Some (float_of_int value)
+  | Some (FloatValue value) -> Some value
   | _ -> None
 
 (* Gap, minima, and the layout read are captured once per update — the old

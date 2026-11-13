@@ -3636,6 +3636,110 @@ let test_json_row_column_grid_columns () =
       Alcotest.(check bool) "valid linear layout never emits grid columns" false
         (Hashtbl.mem node.Drive.Model.props "columns")) [row;column])
 
+let test_fractional_dimensions () =
+  let open Lui_elements in
+  let open Lui_protocol in
+  List.iter (fun backend_profile ->
+    let backend = {(recording_backend ()) with backend_profile} in
+    let app = Lui_app.create backend 63.25 (fun _ value -> value)
+      (fun _ height _ -> image ~width:92
+        ~height_points:(reactive Fun.id height)
+        ~max_width_points:127.75 ~max_height_points:200.5 []) in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      ignore (Lui_app.start app);flush_app app;
+      let node=Lui_app.root_node app in
+      let property p = Property_map.find_opt p
+        (Hashtbl.find (Lui_app.runtime app).Lui_runtime.runtime_properties node) in
+      Alcotest.(check bool) "all maintained profiles preserve an authored 63.25 height" true
+        (property HeightValue=Some (FloatValue 63.25)
+         && property MaxWidth=Some (FloatValue 127.75)
+         && property MaxHeight=Some (FloatValue 200.5));
+      batches:=[];
+      ignore (Lui_app.send app 64.125);flush_app app;
+      Alcotest.(check bool) "reactive fractional dimensions retain their node" true
+        (Lui_app.root_node app=node && property HeightValue=Some (FloatValue 64.125));
+      let changed=all_ops () in
+      Alcotest.(check bool) "fractional updates never remove and re-add the property or node" false
+        (List.exists (function RemoveProp (_,HeightValue) | DropNode _ | CreateNode _ -> true | _ -> false) changed);
+      Lui_runtime.set_prop (Lui_app.runtime app) node HeightValue (IntValue 63);
+      flush_app app;
+      Lui_runtime.set_prop (Lui_app.runtime app) node HeightValue (FloatValue 63.25);
+      flush_app app;
+      Alcotest.(check bool) "retained integer-to-float replacement uses the same wire field" true
+        (Lui_app.root_node app=node && property HeightValue=Some (FloatValue 63.25));
+      List.iter (fun value ->
+        let before=all_ops () in
+        Alcotest.check_raises "dynamic point dimensions reject invalid numbers before host publication"
+          (Invalid_argument "Point dimension must be finite and nonnegative: height")
+          (fun () -> ignore (image ~height_points:value []));
+        Alcotest.(check bool) "invalid point construction emits nothing" true (all_ops ()=before))
+        [-0.25;nan;infinity;neg_infinity];
+      let integer=Sys.opaque_identity (Some 63) and points=Sys.opaque_identity (Some 63.25) in
+      Alcotest.check_raises "forwarded option aliases retain dynamic mutual exclusion"
+        (Invalid_argument "Conflicting integer and point aliases: height")
+        (fun () -> ignore (image ?height:integer ?height_points:points []));
+      (match backend_profile.profile_host with
+       | NshHost | KotlinHost ->
+           Alcotest.check_raises "float layout range is checked before native host emission"
+             (Invalid_argument "Point dimension exceeds backend layout range")
+             (fun () -> Lui_runtime.set_prop (Lui_app.runtime app) node MaxHeight (FloatValue Float.max_float))
+       | WebHost | SwiftUIHost | GenericHost ->
+           Lui_runtime.set_prop (Lui_app.runtime app) node MaxHeight (FloatValue Float.max_float);
+           flush_app app;
+           Alcotest.(check bool) "native float32 range does not restrict other backends" true
+             (property MaxHeight=Some (FloatValue Float.max_float)));
+      List.iter (fun invalid ->
+        let before=all_ops () and pending=ref None in
+        let rejected,unpublished=Fun.protect ~finally:(fun () ->
+          Option.iter (fun app -> ignore (Lui_app.dispose app)) !pending) (fun () ->
+          let rejected=try
+            let app=Lui_app.create backend invalid (fun _ value -> value)
+              (fun _ source _ -> image ~height_points:(reactive Fun.id source) []) in
+            pending:=Some app;ignore (Lui_app.start app);flush_app app;false
+          with Invalid_argument _ -> true in
+          rejected,all_ops ()=before) in
+        Alcotest.(check bool) "dynamic signal dimensions are validated on every actual profile" true rejected;
+        Alcotest.(check bool) "invalid initial point signals never publish to their host" true unpublished)
+        [-0.25;nan;infinity]))
+    [profile WebOS WebHost;profile MacOS NshHost;profile IOS SwiftUIHost;
+     profile AndroidOS KotlinHost;generic_profile ()];
+  let bounded fixed maximum = surface_size_supported
+    (Property_map.empty |> Property_map.add HeightValue fixed |> Property_map.add MaxHeight maximum) in
+  Alcotest.(check bool) "mixed integer/float bounds admit a valid fraction" true
+    (bounded (FloatValue 63.25) (IntValue 64));
+  Alcotest.(check bool) "mixed bounds reject a clipped fraction" false
+    (bounded (FloatValue 63.25) (IntValue 63));
+  Alcotest.(check bool) "integer-only bounds retain exact large-integer ordering" false
+    (bounded (IntValue max_int) (IntValue (max_int-1)));
+  Alcotest.(check bool) "mixed bounds do not round an integer down at the float precision boundary" false
+    (bounded (IntValue 9007199254740993) (FloatValue 9007199254740992.))
+
+let test_json_fractional_dimensions () =
+  let open Lui_json_view in
+  let sink ~id:_ ~kind:_ ~fields:_ = () in
+  List.iter (fun (field,value,expected) ->
+    let app=Lui_app.create (recording_backend ()) () (fun model () -> model)
+      (fun _ _ _ -> render ~on_event:sink
+        (Obj ["kind",Str "image";"width",Num 92.;field,value])) in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      ignore (Lui_app.start app);flush_app app;
+      Alcotest.(check bool) "JSON integer and point authoring preserve their intended wire numbers" true
+        (List.exists (function Lui_protocol.SetProp (_,Lui_protocol.HeightValue,value) -> value=expected | _ -> false) (all_ops ()))))
+    ["height",Num 63.25,Lui_protocol.FloatValue 63.25;
+     "height",Num 63.,Lui_protocol.IntValue 63;
+     "height-points",Num 63.,Lui_protocol.FloatValue 63.];
+  List.iter (fun field ->
+    List.iter (fun value ->
+      Alcotest.check_raises "JSON explicitly invalid dimensions fail without rounding or omission"
+        (Invalid_argument ("Dimension must be a finite nonnegative number: " ^ field))
+        (fun () -> ignore (render ~on_event:sink (Obj ["kind",Str "image";field,value]))))
+      [Num (-0.25);Num nan;Num infinity;Str "63.25px";Bool false;Null];
+    Alcotest.check_raises "JSON aliases cannot both author the same property"
+      (Invalid_argument ("Conflicting dimension aliases: " ^ field))
+      (fun () -> ignore (render ~on_event:sink
+        (Obj ["kind",Str "image";field,Num 63.;field ^ "-points",Num 63.25]))))
+    ["height";"max-width";"max-height"]
+
 let test_json_list_item_gap_contract () =
   let open Lui_json_view in
   let open Lui_protocol in
@@ -6524,6 +6628,8 @@ let () =
           Alcotest.test_case "typed virtual viewport aliases" `Quick test_json_virtual_viewport_contract;
           Alcotest.test_case "linear and grid column contracts" `Quick test_json_row_column_grid_columns;
           Alcotest.test_case "ListItem gap contract" `Quick test_json_list_item_gap_contract;
+          Alcotest.test_case "fractional typed dimensions" `Quick test_fractional_dimensions;
+          Alcotest.test_case "fractional JSON dimensions" `Quick test_json_fractional_dimensions;
           Alcotest.test_case "Textarea-only submit policy" `Quick test_json_submit_on_enter_contract;
           Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;
           Alcotest.test_case "tooltip and picker property contract" `Quick test_json_tooltip_and_file_picker_contract;

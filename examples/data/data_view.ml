@@ -157,6 +157,7 @@ let typed_value domain (Edn.Any value as data) =
   match domain, value with
   | S.ViewString, Edn.String _ | S.ViewBool, Edn.Bool _
   | S.ViewInt, Edn.Int _ | S.ViewFloat, Edn.Float _ -> decode_scalar ()
+  | S.ViewNumber, (Edn.Int _ | Edn.Float _) -> decode_scalar ()
   | (S.ViewEnum allowed | S.ViewIcon allowed), Edn.Keyword tag ->
       let name = Edn.keyword_to_string tag in
       if not (List.mem name allowed) then invalid ();
@@ -368,6 +369,7 @@ let view_shape_supported domain actual =
   | S.ViewBool -> C.accepts C.Bool actual
   | S.ViewInt -> C.accepts C.Int actual
   | S.ViewFloat -> C.accepts C.Float actual
+  | S.ViewNumber -> C.accepts C.Int actual || C.accepts C.Float actual
   | S.ViewAttributes -> C.accepts (C.Vector (C.Tuple [|C.String; C.String|])) actual
   | S.ViewFloatTuple count -> C.accepts (C.Tuple (Array.make count C.Float)) actual
   | S.ViewEnum allowed -> C.accepts (C.Enum (List.map keyword allowed)) actual

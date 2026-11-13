@@ -708,13 +708,17 @@ internal object LuiKindRules {
                 value.intValue?.let { it >= 0 } == true &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
-            "width", "height" ->
+            "width" ->
                 value.intValue?.let { it >= 0 } == true &&
                     kind != LuiNodeKind.tooltip
-            "min-width", "max-width", "min-height", "max-height" ->
+            "height" -> schemaValueSupported(property, value) && kind != LuiNodeKind.tooltip
+            "min-width", "min-height" ->
                 value.intValue?.let { it >= 0 } == true &&
                     (kind == LuiNodeKind.dialog ||
                         (!isModalSurface(kind) && kind != LuiNodeKind.tooltip))
+            "max-width", "max-height" -> schemaValueSupported(property, value) &&
+                (kind == LuiNodeKind.dialog ||
+                    (!isModalSurface(kind) && kind != LuiNodeKind.tooltip))
             "style-class" ->
                 value is LuiWireValue.Str &&
                     kind != LuiNodeKind.tooltip
@@ -1012,8 +1016,12 @@ internal object LuiKindRules {
             "connector", "multiple", "appear-enabled", "directory",
             "pointer-enabled", "read-only", "pointer-capture", "indeterminate",
             "toggle-detail-enabled" -> value is LuiWireValue.Bool
-            "height", "width", "min-width", "max-width", "min-height",
-            "max-height", "active", "gap", "border-width", "corner-radius",
+            "height", "max-width", "max-height" -> when (value) {
+                is LuiWireValue.IntValue -> value.intValue?.let { it >= 0 } == true
+                is LuiWireValue.DoubleValue -> value.value.isFinite() && value.value >= 0 && value.value <= Float.MAX_VALUE
+                else -> false
+            }
+            "width", "min-width", "min-height", "active", "gap", "border-width", "corner-radius",
             "padding-horizontal", "padding-vertical",
             "padding-top", "padding-right", "padding-bottom", "padding-left", "duration" ->
                 value.intValue?.let { it >= 0 } == true

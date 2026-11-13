@@ -1,5 +1,57 @@
 # LUI API migration guide
 
+## Fractional height and maximum bounds use explicit point aliases
+
+Existing `?height:int`, `?max_width:int` and `?max_height:int` labels retain
+their types, defaults and integer wire representation. Constructors that
+already expose those labels also expose `height_points`, `max_width_points`
+and `max_height_points`, with corresponding reactive signal labels. These
+aliases accept finite, nonnegative floats and emit the existing `height`,
+`max-width` and `max-height` properties as `FloatValue`. No wire property,
+value variant, unit parser or root metric is introduced.
+
+```ocaml
+image ~width:92 ~height_points:63.25 []
+column ~max_height_points:(reactive (fun h -> max 0. (h -. 320.)) viewport) children
+```
+
+Web uses CSS pixels, Apple uses points, Android uses dp and NSH uses native
+layout points, following the same convention as the existing integer labels.
+The authored fraction is retained until the platform's normal layout or pixel
+conversion. It is never rounded to an integer in OCaml or replaced with an
+image's intrinsic ratio. NSH and Android reject floats outside their finite
+float32 layout range before OCaml host emission; that platform restriction
+does not restrict the other backend profiles. Integer-only bound comparisons
+keep their existing exact ordering, including integers above float precision.
+
+An integer label or integer signal cannot compete with its point alias/signal
+on the same constructor. `icon`'s existing `point_size` also owns Height and
+cannot be combined with `height_points`. PPX diagnostics reject known
+conflicts and invalid float literals, including traced aliases, optional
+forwarding and constant reactive projections. Dynamic options and signal
+values retain runtime validation. Omit the integer label when adopting the
+point alias; do not pass both. Updating an already retained node from IntValue
+to FloatValue replaces its same property, preserving node and input identity.
+
+JSON view dimensions now retain fractional numeric values instead of rounding
+them through `v_int`. For these three fields, whole, in-range canonical
+numbers retain IntValue; fractions use FloatValue. Explicit `height-points`,
+`max-width-points` and `max-height-points` always select FloatValue. Canonical
+and point aliases cannot both appear, even with equal values. Explicit null,
+strings, booleans, negative and nonfinite values are rejected rather than
+omitted; remove the field to omit a dimension. For example,
+`{"kind":"image","width":92,"height":63.25}` now preserves height 63.25.
+The unknown extension-key policy and unrelated JSON numeric fields are unchanged.
+
+Generated typed-view metadata uses the additive `ViewNumber` domain only for
+these three integer/point pairs. Data/EDN view callers may continue supplying
+integers and may now supply floats for those dimensions; unrelated ViewInt and
+ViewFloat fields keep their strict domains. Exhaustive consumers of
+`Lui_wire_schema.view_value` must handle ViewNumber as either finite integer or
+float wire scalars. Existing Apple integer dimension accessors and resizable
+integer state fields retain their types; renderer geometry uses separate
+internal numeric accessors.
+
 ## NSH scroll viewports keep intrinsic content separate
 
 The existing native Scroll retains its canonical identity, reference, native
