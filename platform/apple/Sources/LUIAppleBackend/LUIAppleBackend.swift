@@ -1689,7 +1689,9 @@ public final class LUIAppleBackend {
             clearFilePickerOperation(node: id)
         }
         if perf { tDrop = CFAbsoluteTimeGetCurrent() - t0 }
-        for id in touched where !dropped.contains(id) {
+        // A destructive detach followed by creation can reuse an ID within
+        // this commit. Drop its old identity above, then publish the final tree.
+        for id in touched {
             collectAncestors(of: id, into: &descendantsRefresh)
             if let state = tree.nodes[id] {
                 if state.kind == .popover { popoverNodeIDs.insert(id) }
@@ -1731,7 +1733,9 @@ public final class LUIAppleBackend {
         // Child data reads the staged state of every child, so it stages
         // after the main pass: parents refresh even when only a child's
         // props (grow, alignment, anchor, enabled, style-class) changed.
-        descendantsRefresh.subtract(dropped)
+        descendantsRefresh.subtract(dropped.filter {
+            tree.nodes[$0] == nil && tree.extensionNodes[$0] == nil
+        })
         for id in descendantsRefresh {
             guard let model = models[id] else { continue }
             let changes = model.stageChildData(makeChildData(for: model))
