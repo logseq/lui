@@ -1700,10 +1700,15 @@ mod tests {
         ] {
             let source = node("box", json!({"container-relative-frame":wire}));
             let (actual, _) = compile_parts(&source, &theme(), viewport()).unwrap();
-            let expected = keys
-                .into_iter()
-                .map(|key| StyleDecl::Set(key, key.parse_value(StyleValue::Str("100%")).unwrap()))
-                .collect::<Vec<_>>();
+            let mut expected = vec![StyleDecl::Set(
+                StyleKey::FlexShrink,
+                StyleKey::FlexShrink.number_value(1.0).unwrap(),
+            )];
+            expected.extend(
+                keys.into_iter().map(|key| {
+                    StyleDecl::Set(key, key.parse_value(StyleValue::Str("100%")).unwrap())
+                }),
+            );
             assert_eq!(actual, expected, "canonical frame axes {wire}");
         }
         for value in [json!("future-axes"), json!(""), json!(42)] {
@@ -1716,11 +1721,14 @@ mod tests {
                 .is_err()
             );
         }
-        assert!(
+        assert_eq!(
             compile_parts(&node("box", json!({})), &theme(), viewport())
                 .unwrap()
-                .0
-                .is_empty()
+                .0,
+            vec![StyleDecl::Set(
+                StyleKey::FlexShrink,
+                StyleKey::FlexShrink.number_value(1.0).unwrap(),
+            )],
         );
     }
     #[test]
