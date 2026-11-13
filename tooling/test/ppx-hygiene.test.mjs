@@ -802,3 +802,23 @@ let () =
     assert.equal(run([join(dir, "derived")]).trim(), "owned and filtered")
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })
+
+
+test("pointer click counts keep a typed record boundary", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-pointer-count-"))
+  try {
+    for (const [value, valid] of [["0", true], ["2", true], ['"2"', false], ["2.0", false]]) {
+      writeFileSync(join(dir, "probe.ml"), `let detail : Lui_protocol.pointer_detail =
+  { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = ""; clicks = ${value} }
+`)
+      const result = spawnSync("opam", ["exec", "--", "ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
+        "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")], {cwd: root, encoding: "utf8"})
+      if (valid) assert.equal(result.status, 0, result.stdout + result.stderr)
+      else {
+        assert.notEqual(result.status, 0)
+        assert.match(result.stderr, /This expression has type (string|float)/)
+        assert.match(result.stderr, /expected of type int/)
+      }
+    }
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})

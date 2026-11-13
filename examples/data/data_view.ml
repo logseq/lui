@@ -195,7 +195,7 @@ let wire target property (Edn.Any data as value) =
       Some value
   | _, None -> None
 
-let pointer = { P.x = 0.; y = 0.; modifiers = 0; button = 0; target_class = "" }
+let pointer = { P.x = 0.; y = 0.; modifiers = 0; button = 0; target_class = ""; clicks = 0 }
 
 let event_specs =
   [

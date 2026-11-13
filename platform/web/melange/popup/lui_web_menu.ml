@@ -763,7 +763,7 @@ let attach_picker_press_event_bang = attach_picker_press_event
    detail rides the same branches that emit Press. *)
 let picker_emit_press_detail renderer node event =
   let candidate =
-    PressDetail (node, Lui_web_util.pointer_detail_of event)
+    PressDetail (node, Lui_web_util.pointer_detail_of ~clicks:(Lui_web_util.click_detail event) event)
   in
   if
     Store.enabled_node renderer node

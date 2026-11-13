@@ -13,7 +13,7 @@ external c_event :
   t_ext -> string -> int64 -> string -> string -> string -> int -> float -> int
   = "drive_target_event_bc" "drive_target_event"
 external c_event_detail :
-  t_ext -> string -> int64 -> float -> float -> int -> int -> string -> int
+  t_ext -> string -> int64 -> float -> float -> int -> int -> string -> int -> int
   = "drive_target_event_detail_bc" "drive_target_event_detail"
 external c_poll : t_ext -> int = "drive_target_poll"
 external c_next : t_ext -> string option = "drive_target_next"
@@ -158,7 +158,7 @@ let send_event t = function
     in
     let accepted =
       c_event_detail t.handle name (Int64.of_int n) d.x d.y d.modifiers
-        d.button d.target_class
+        d.button d.target_class d.clicks
     in
     settle_patches t;
     check_refusal t accepted

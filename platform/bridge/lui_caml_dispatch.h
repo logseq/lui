@@ -190,6 +190,33 @@ static int32_t lui_dispatch_pointer(const char *name, int64_t node, double x,
   CAMLreturnT(int32_t, accepted);
 }
 
+/* Counted presses append one argument to a new callback. The original
+   six-argument pointer callbacks and their exports remain ABI-compatible. */
+static int32_t lui_dispatch_pointer_clicks(const char *name, int64_t node,
+    double x, double y, int32_t modifiers, int32_t button,
+    const char *target_class, int32_t class_len, int32_t clicks,
+    lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  CAMLlocalN(argv, 7);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (node <= 0 || node > Max_long || clicks < 0 || clicks > 0x3fffffff || class_len < 0 ||
+      (target_class == NULL && class_len != 0)) CAMLreturnT(int32_t, 0);
+  if (callback != NULL) {
+    argv[0] = Val_long(node);
+    argv[1] = caml_copy_double(x);
+    argv[2] = caml_copy_double(y);
+    argv[3] = Val_long(modifiers);
+    argv[4] = Val_long(button);
+    argv[5] = caml_alloc_initialized_string(class_len, target_class != NULL ? target_class : "");
+    argv[6] = Val_long(clicks);
+    result = caml_callbackN_exn(*callback, 7, argv);
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
 static int32_t lui_dispatch_extension(const char *name, int64_t node,
                                       const char *identifier, int32_t id_len,
                                       const char *event_name, int32_t name_len,

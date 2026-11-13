@@ -230,6 +230,19 @@ LUI_EXPORT int32_t lui_ocaml_press_ex(int64_t node, int32_t modifiers) {
         target_class != NULL ? (int32_t)strlen(target_class) : 0);               \
   }
 
+LUI_EXPORT int32_t lui_ocaml_press_detail_clicks_utf8(
+    int64_t node, double x, double y, int32_t modifiers, int32_t button,
+    const char *target_class, int32_t class_length, int32_t clicks) {
+  int32_t accepted;
+  if (clicks < 0 || clicks > 0x3fffffff || class_length < 0 ||
+      (target_class == NULL && class_length != 0)) return 0;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_pointer_clicks("lui_ocaml_press_detail_clicks", node,
+      x, y, modifiers, button, target_class, class_length, clicks, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
 LUI_POINTER_EXPORT(lui_ocaml_press_detail, "lui_ocaml_press_detail")
 LUI_POINTER_EXPORT(lui_ocaml_pointer_down, "lui_ocaml_pointer_down")
 LUI_POINTER_EXPORT(lui_ocaml_pointer_up, "lui_ocaml_pointer_up")

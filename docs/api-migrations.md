@@ -6054,3 +6054,45 @@ list_item ~text:"Open" ~main:`start ~cross:`center []
 ```
 
 If application content needs its own spacing, keep Gap on an authored passive Row inside the ListItem, as maintained mobile query rows and journal status rows already do. Do not move the action into a nested button merely to add spacing. No backend, wire domain, native component or default is added or removed by this correction. Current App, mobile and journal source callers were audited as gap-free before changing the constructor; their valid ListItem labels remain.
+
+## Pointer detail preserves the platform click count
+
+`Lui_protocol.pointer_detail` appends `clicks : int`. Existing pointer
+constructors and callback names retain their behavior. `PressDetail` carries
+NSH `PressEvent.clicks` and Web `MouseEvent.detail`; `0` means the platform did
+not supply a count, including keyboard activation. Other pointer event kinds
+carry `0`. Counts are integers in `0..0x3fffffff`, the nonnegative range shared
+with 32-bit OCaml; malformed dynamic counts are rejected before dispatch.
+There is no time/position-based double-click inference or new subscription.
+
+Downstream code that creates a pointer record must supply the new field:
+
+```ocaml
+let detail : Lui_protocol.pointer_detail =
+  { x = 10.; y = 20.; modifiers = 0; button = 0;
+    target_class = ""; clicks = 0 }
+```
+
+Consumers may check `detail.clicks = 2` on the existing `PressDetail` callback,
+using that same event's position/owner. A missing count does not authorize
+emulating an OS double click. Existing Apple/Android six-argument callbacks
+remain unchanged and populate `clicks = 0`; their prior pointer routing stays
+supported. Their APIs do not yet promise a platform click count.
+
+The original C-string and UTF-8 pointer exports keep their exact signatures.
+A new required NSH export carries counted presses:
+
+```c
+int32_t lui_ocaml_press_detail_clicks_utf8(
+    int64_t node, double x, double y, int32_t modifiers, int32_t button,
+    const char *target_class, int32_t class_length, int32_t clicks);
+```
+
+It calls the registered OCaml `lui_ocaml_press_detail_clicks` with arguments
+`node x y modifiers button target_class clicks`. It preserves length-delimited
+class strings and rejects invalid lengths/counts before callback entry. The new
+NSH runtime validates this symbol while loading the library, before UI startup;
+rebuild both halves together. Older Apple/Android hosts continue using the
+unchanged six-argument exports with unknown count `0`. The Drive live JSON
+payload appends `clicks`; the FFI driver uses the counted export when available
+and refuses a nonzero count against a legacy target instead of dropping it.

@@ -1543,7 +1543,7 @@ let test_input_blur_callback () =
 let test_pointer_events () =
   let open Lui_protocol in
   let detail =
-    { x = 12.5; y = 34.5; modifiers = 11; button = 1; target_class = "a b" }
+    { x = 12.5; y = 34.5; modifiers = 11; button = 1; target_class = "a b"; clicks = 0 }
   in
   (* node extraction *)
   Alcotest.(check int) "press-detail node" 7
@@ -1669,7 +1669,7 @@ let test_pointer_dispatch () =
   let button = (drive_node s (Drive.Model.Kind "button")).Drive.Model.id in
   let detail =
     { Lui_protocol.x = 1.0; y = 2.0; modifiers = 0; button = 0;
-      target_class = "" }
+      target_class = ""; clicks = 0 }
   in
   drive_send s (Lui_protocol.PressDetail (button, detail));
   drive_send s (Lui_protocol.PointerEnter button);
@@ -1684,6 +1684,21 @@ let test_pointer_dispatch () =
        ignore
          (Lui_app.dispatch_event (drive_app s)
             (Lui_protocol.ValueChanged (button, 0.5))));
+  let open Lui_protocol in
+  Alcotest.(check int) "legacy pointer callbacks retain unknown click count" 0
+    (Lui_native_bridge.pointer_detail 1. 2. 0 0 "").clicks;
+  let counted = Lui_native_bridge.pointer_detail_clicks 1. 2. 0 0 "hit" 2 in
+  drive_send s (PressDetail (button, counted));
+  Alcotest.(check int) "counted press uses the existing owned handler" 2 !details;
+  List.iter (fun clicks ->
+    Alcotest.check_raises "malformed dynamic count rejected before callback"
+      (Invalid_argument "pointer click count must be a portable nonnegative int")
+      (fun () -> ignore (Lui_app.dispatch_event (drive_app s)
+        (PressDetail (button, {counted with clicks}))))) [-1; 0x40000000];
+  Alcotest.check_raises "non-click events cannot forge a click count"
+    (Invalid_argument "only press-detail carries a click count")
+    (fun () -> ignore (Lui_app.dispatch_event (drive_app s) (PointerDown (button, counted))));
+  Alcotest.(check int) "refused counts leave the same handler untouched" 2 !details;
   drive_dispose s
 
 let test_dispatch_drops_unset_default_echoes () =

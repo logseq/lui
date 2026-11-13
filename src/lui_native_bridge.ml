@@ -234,7 +234,12 @@ let agent bridge request =
     | patches -> reply ^ "\n" ^ patches)
 
 let pointer_detail x y modifiers button target_class =
-  {x; y; modifiers; button; target_class}
+  {x; y; modifiers; button; target_class; clicks = 0}
+
+let pointer_detail_clicks x y modifiers button target_class clicks =
+  if clicks < 0 || clicks > 0x3fffffff then
+    invalid_arg "pointer click count must be a portable nonnegative int";
+  { (pointer_detail x y modifiers button target_class) with clicks }
 
 let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   let register suffix value = register_named (prefix ^ "_" ^ suffix) value in
@@ -267,6 +272,9 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "press_detail" (fun id x y modifiers button target_class ->
       dispatch_event bridge
         (PressDetail (id, pointer_detail x y modifiers button target_class)));
+  register "press_detail_clicks" (fun id x y modifiers button target_class clicks ->
+      dispatch_event bridge
+        (PressDetail (id, pointer_detail_clicks x y modifiers button target_class clicks)));
   register "pointer_down" (fun id x y modifiers button target_class ->
       dispatch_event bridge
         (PointerDown (id, pointer_detail x y modifiers button target_class)));

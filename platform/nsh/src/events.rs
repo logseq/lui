@@ -43,6 +43,8 @@ pub struct PointerDetail {
     pub modifiers: i32,
     pub button: i32,
     pub target_class: String,
+    /// Platform click count; zero when this event does not carry one.
+    pub clicks: u32,
 }
 
 /// Layout-owned visibility, inherited through existing reactive owners. The
@@ -171,6 +173,7 @@ fn detail(position: Point<Points>, keys: Modifiers, button: Option<MouseButton>)
         },
         // This is a native surface, so there is no DOM target class.
         target_class: String::new(),
+        clicks: 0,
     }
 }
 
@@ -358,7 +361,7 @@ impl NativeEvents {
                         events.press_snapshot.set(None);
                         events.pointer(
                             PointerKind::PressDetail,
-                            detail(event.page_position, event.modifiers, None),
+                            PointerDetail { clicks: event.clicks, ..detail(event.page_position, event.modifiers, None) },
                         );
                         return;
                     }
@@ -377,7 +380,7 @@ impl NativeEvents {
                 }
                 events.pointer(
                     PointerKind::PressDetail,
-                    detail(event.page_position, event.modifiers, None),
+                    PointerDetail { clicks: event.clicks, ..detail(event.page_position, event.modifiers, None) },
                 );
                 if event.clicks == 2 && events.accepts("double-press-enabled", "double-press") {
                     (events.notify)(Event::DoublePress(id));

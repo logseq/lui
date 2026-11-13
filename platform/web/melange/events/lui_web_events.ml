@@ -211,7 +211,7 @@ let attach_toggle_event renderer node _kind dom_node =
    paths call this directly so suppressed clicks stay suppressed; other
    kinds get it from the plain click listener in attach_pointer_events. *)
 let emit_press_detail renderer node event =
-  let candidate = PressDetail (node, Util.pointer_detail_of event) in
+  let candidate = PressDetail (node, Util.pointer_detail_of ~clicks:(Util.click_detail event) event) in
   if
     enabled_node renderer node
     && Store.event_admitted renderer node candidate
@@ -766,7 +766,7 @@ let rec sync_pointer_events renderer node kind dom_node =
              W.Event.preventDefault event;
              W.Event.stopPropagation event
            end else
-             emit_detail (fun event -> PressDetail (node, Util.pointer_detail_of event)) event)
+             emit_detail (fun event -> PressDetail (node, Util.pointer_detail_of ~clicks:(Util.click_detail event) event)) event)
       in
       let attach_click = not (press_detail_via_click kind) in
       W.Element.addEventListener "pointerdown" pointer_down dom_node;

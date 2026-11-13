@@ -2190,6 +2190,15 @@ let event_is_value_echo application node event =
   | _ -> false
 
 let dispatch application event =
+  (match event with
+   | PressDetail (_, detail) | PointerDown (_, detail) | PointerUp (_, detail)
+   | PointerMove (_, detail) | PointerCancel (_, detail) | ContextMenuPress (_, detail)
+     when detail.clicks < 0 || detail.clicks > 0x3fffffff ->
+       invalid_arg "pointer click count must be a portable nonnegative int"
+   | PointerDown (_, detail) | PointerUp (_, detail) | PointerMove (_, detail)
+   | PointerCancel (_, detail) | ContextMenuPress (_, detail) when detail.clicks <> 0 ->
+       invalid_arg "only press-detail carries a click count"
+   | _ -> ());
   let node = canonical_node application (event_node event) in
   if not (node_live application node) then
     (* a DOM element can receive an in-flight event after being unmounted

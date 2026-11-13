@@ -372,7 +372,7 @@ let record_click_open_method element event =
 (* Client-space payload shared by the pointer-detail events. [modifiers]
    uses the PressModifiers bitmask (1=ctrl, 2=shift, 4=meta, 8=secondary
    button, 16=alt); [target_class] is the deepest hit element's class list. *)
-let pointer_detail_of event : Lui_protocol.pointer_detail =
+let pointer_detail_of ?(clicks = 0) event : Lui_protocol.pointer_detail =
   let mouse = pointer_mouse_event event in
   let button = W.MouseEvent.button mouse in
   { x = client_x mouse;
@@ -384,7 +384,8 @@ let pointer_detail_of event : Lui_protocol.pointer_detail =
       lor (if button = 2 then 8 else 0)
       lor (if W.MouseEvent.altKey mouse then 16 else 0);
     button;
-    target_class = event_target_class_name event }
+    target_class = event_target_class_name event;
+    clicks }
 
 (* Element construction. [attributes] is (name, value) pairs applied before
    children are appended, matching the original element/5 helper. *)

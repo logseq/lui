@@ -15,6 +15,9 @@
 extern int32_t lui_ocaml_press_detail(int64_t node, double x, double y,
                                       int32_t modifiers, int32_t button,
                                       const char *target_class);
+extern int32_t lui_ocaml_press_detail_clicks_utf8(int64_t node, double x,
+    double y, int32_t modifiers, int32_t button, const char *target_class,
+    int32_t class_length, int32_t clicks);
 extern int32_t lui_ocaml_virtual_window(int64_t node, int64_t generation,
                                         int64_t first, int64_t last,
                                         const int64_t *pins, int32_t count);
@@ -28,6 +31,25 @@ value stress_press_detail(value count) {
     lui_ocaml_press_detail(1, 1.25, 2.5, 3, 0, "hit");
   }
   caml_leave_blocking_section();
+  CAMLreturn(Val_unit);
+}
+
+value stress_press_detail_clicks(value count) {
+  CAMLparam1(count);
+  int iterations = Int_val(count);
+  int accepted = 1;
+  caml_enter_blocking_section();
+  for (int index = 0; index < iterations && accepted; index++) {
+    accepted = lui_ocaml_press_detail_clicks_utf8(1, 1.25, 2.5, 3, 0, "a\0b", 3, 2);
+  }
+  if (accepted) {
+    accepted = !lui_ocaml_press_detail_clicks_utf8(1, 1.25, 2.5, 3, 0, "a", 1, -1) &&
+      !lui_ocaml_press_detail_clicks_utf8(1, 1.25, 2.5, 3, 0, "a", 1, INT32_C(0x40000000)) &&
+      !lui_ocaml_press_detail_clicks_utf8(1, 1.25, 2.5, 3, 0, NULL, 1, 2) &&
+      !lui_ocaml_press_detail_clicks_utf8(1, 1.25, 2.5, 3, 0, "a", -1, 2);
+  }
+  caml_leave_blocking_section();
+  if (!accepted) caml_failwith("counted pointer dispatch failed validation or GC-safe transport");
   CAMLreturn(Val_unit);
 }
 

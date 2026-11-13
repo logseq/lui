@@ -567,7 +567,7 @@ let is_visible_range = function
    [Lui_runtime.dispatch]'s admission check, evaluated at mount time once
    the node's initial properties are in place. *)
 let pointer_detail_probe =
-  { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = "" }
+  { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = ""; clicks = 0 }
 
 let require_event_supported context node event label =
   let kind = Lui_ui.node_kind context node in

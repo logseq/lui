@@ -400,6 +400,15 @@ type ExtensionFn =
 type TextFn = unsafe extern "C" fn(i64, *const c_char, i32) -> i32;
 type NumberFn = unsafe extern "C" fn(i64, f64) -> i32;
 type PointerFn = unsafe extern "C" fn(i64, f64, f64, i32, i32, *const c_char, i32) -> i32;
+fn pointer_click_count(clicks: u32) -> Result<i32, String> {
+    if clicks > 0x3fff_ffff {
+        Err("pointer click count exceeds portable integer range".into())
+    } else {
+        Ok(i32::try_from(clicks).expect("validated portable click count"))
+    }
+}
+
+type CountedPointerFn = unsafe extern "C" fn(i64, f64, f64, i32, i32, *const c_char, i32, i32) -> i32;
 type RangeFn = unsafe extern "C" fn(i64, i64, i64) -> i32;
 type WindowFn = unsafe extern "C" fn(i64, i64, i64, i64, *const i64, i32) -> i32;
 type EditorSnapshotFn =
@@ -416,6 +425,7 @@ struct Exports {
     pointer_enter: Option<NodeFn>,
     pointer_leave: Option<NodeFn>,
     pointer: [Option<PointerFn>; 6],
+    press_detail_clicks: CountedPointerFn,
     text: TextFn,
     submit: NodeFn,
     navigate_previous: Option<NodeFn>,
@@ -493,6 +503,7 @@ impl Native {
                 double_press: optional!("lui_ocaml_double_press"),
                 pointer_enter: optional!("lui_ocaml_pointer_enter"),
                 pointer_leave: optional!("lui_ocaml_pointer_leave"),
+                press_detail_clicks: required!("lui_ocaml_press_detail_clicks_utf8"),
                 pointer: [
                     optional!("lui_ocaml_press_detail_utf8"),
                     optional!("lui_ocaml_pointer_down_utf8"),
@@ -660,6 +671,17 @@ impl Native {
                             if !detail.x.is_finite() || !detail.y.is_finite() {
                                 return Err("pointer coordinates must be finite".into());
                             }
+                            let clicks = pointer_click_count(detail.clicks)?;
+                            if *kind == PointerKind::PressDetail {
+                                (api.press_detail_clicks)(
+                                    *node, detail.x, detail.y, detail.modifiers, detail.button,
+                                    detail.target_class.as_ptr().cast(), length(detail.target_class.len())?,
+                                    clicks,
+                                )
+                            } else {
+                            if clicks != 0 {
+                                return Err("only press-detail carries a click count".into());
+                            }
                             let pointer = api.pointer[*kind as usize]
                                 .ok_or("OCaml library has no requested pointer ABI")?;
                             pointer(
@@ -671,6 +693,7 @@ impl Native {
                                 detail.target_class.as_ptr().cast(),
                                 length(detail.target_class.len())?,
                             )
+                            }
                         }
                         Event::Text { node, text } => {
                             (api.text)(*node, text.as_ptr().cast(), length(text.len())?)
@@ -963,5 +986,19 @@ mod snapshot_tests {
         assert!(EditorSnapshot::decode(r#"{"source":"A中","anchor":2,"caret":4}"#).is_err());
         assert!(EditorSnapshot::decode(r#"{"source":"A中","anchor":1,"caret":5}"#).is_err());
         assert!(EditorSnapshot::decode("null").unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod counted_pointer_tests {
+    use super::pointer_click_count;
+
+    #[test]
+    fn counted_pointer_boundary_rejects_overflow_instead_of_truncating() {
+        for count in [0, 1, 2, 0x3fff_ffff] {
+            assert_eq!(pointer_click_count(count).unwrap(), i32::try_from(count).unwrap());
+        }
+        assert!(pointer_click_count(0x4000_0000).is_err());
+        assert!(pointer_click_count(u32::MAX).is_err());
     }
 }

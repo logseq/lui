@@ -941,3 +941,60 @@ fn outside_mouse_end_cannot_cancel_a_reused_wire_identity() {
     assert!(cancelled(&events).is_empty());
     assert!(released(&events).is_empty());
 }
+
+#[component]
+fn CountedPressEvents() -> impl IntoElement {
+    let probe = engine_context::<Probe>().unwrap();
+    let observed = probe.events.clone();
+    let published = signal(0_u32);
+    let renderer = Renderer::new(move |event, _| {
+        if let Event::Pointer { kind: PointerKind::PressDetail, detail, .. } = &event {
+            published.set(detail.clicks);
+        }
+        observed.lock().unwrap().push(event);
+    });
+    renderer.apply(patch(1, json!([
+        {"op":"create-node","id":1,"kind":"box"},
+        {"op":"set-prop","id":1,"property":"width","value":220},
+        {"op":"set-prop","id":1,"property":"height","value":60},
+        {"op":"set-prop","id":1,"property":"pointer-enabled","value":true},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Counted press target"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}
+    ]))).unwrap();
+    renderer.set_root(1).unwrap();
+    view().flex_col().child(renderer.element())
+        .child(text(move || format!("Observed click count {}", published.get())))
+}
+
+#[test]
+fn actual_native_press_callbacks_keep_the_platform_click_count_on_the_existing_event() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let config = EngineConfig {
+        context: EngineContext::default().with(Probe {
+            column: false, events: events.clone(), rejected: Arc::new(Mutex::new(false)),
+        }),
+        ..EngineConfig::new(Root::of::<CountedPressEvents>())
+    };
+    let mut app = Headless::start(config).unwrap();
+    app.wait_for("Counted press target").unwrap();
+    let target = node_id(&app, "lui-1");
+    for clicks in [2, 1, 0] {
+        app.engine().control().dispatch_event(target, nsh_core::EventKind::Press,
+            nsh_core::EventPayload::Press(PressEvent {
+                position: point(px(5.0), px(8.0)),
+                page_position: point(px(52.0), px(18.0)),
+                clicks,
+                ..Default::default()
+            }));
+        app.wait_for(&format!("Observed click count {clicks}")).unwrap();
+        let observed = events.lock().unwrap();
+        assert!(observed.iter().any(|event| matches!(event,
+            Event::Pointer { node: 1, kind: PointerKind::PressDetail, detail }
+                if detail.clicks == clicks && detail.x == 52.0 && detail.y == 18.0)));
+        assert!(observed.iter().all(|event| !matches!(event, Event::DoublePress(_))),
+            "count metadata does not invent another double-press subscription");
+        drop(observed);
+        assert_eq!(node_id(&app, "lui-1"), target);
+    }
+}

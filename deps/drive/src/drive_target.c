@@ -28,6 +28,8 @@ typedef struct {
   int32_t (*press_ex)(int64_t, int32_t);
   int32_t (*press_detail)(int64_t, double, double, int32_t, int32_t,
                           const char *);
+  int32_t (*press_detail_clicks_utf8)(int64_t, double, double, int32_t, int32_t,
+                                    const char *, int32_t, int32_t);
   int32_t (*pointer_down)(int64_t, double, double, int32_t, int32_t,
                           const char *);
   int32_t (*pointer_up)(int64_t, double, double, int32_t, int32_t,
@@ -155,6 +157,7 @@ CAMLprim value drive_target_open(value pathv) {
   t->press = sym(lib, "lui_ocaml_press");
   t->press_ex = sym(lib, "lui_ocaml_press_ex");
   t->press_detail = sym(lib, "lui_ocaml_press_detail");
+  t->press_detail_clicks_utf8 = sym(lib, "lui_ocaml_press_detail_clicks_utf8");
   t->pointer_down = sym(lib, "lui_ocaml_pointer_down");
   t->pointer_up = sym(lib, "lui_ocaml_pointer_up");
   t->context_menu_press = sym(lib, "lui_ocaml_context_menu_press");
@@ -244,9 +247,9 @@ CAMLprim value drive_target_event_bc(value *argv, int argn) {
 CAMLprim value drive_target_event_detail(value tv, value namev,
                                          value nodev, value xv, value yv,
                                          value modifiersv, value buttonv,
-                                         value classv) {
+                                         value classv, value clicksv) {
   CAMLparam5(tv, namev, nodev, xv, yv);
-  CAMLxparam3(modifiersv, buttonv, classv);
+  CAMLxparam4(modifiersv, buttonv, classv, clicksv);
   drive_target *t = Target_val(tv);
   const char *name = String_val(namev);
   int64_t node = Int64_val(nodev);
@@ -256,7 +259,13 @@ CAMLprim value drive_target_event_detail(value tv, value namev,
   int32_t button = Int_val(buttonv);
   const char *target_class = String_val(classv);
   int ok = 0;
-  if (!strcmp(name, "press_detail") && t->press_detail)
+  if (caml_string_length(classv) > INT32_MAX || Int_val(clicksv) < 0 ||
+      Int_val(clicksv) > 0x3fffffff) CAMLreturn(Val_int(0));
+  if (!strcmp(name, "press_detail") && t->press_detail_clicks_utf8)
+    ok = t->press_detail_clicks_utf8(node, x, y, modifiers, button,
+      target_class, (int32_t)caml_string_length(classv), Int_val(clicksv));
+  else if (Int_val(clicksv) != 0) ok = 0;
+  else if (!strcmp(name, "press_detail") && t->press_detail)
     ok = t->press_detail(node, x, y, modifiers, button, target_class);
   else if (!strcmp(name, "pointer_down") && t->pointer_down)
     ok = t->pointer_down(node, x, y, modifiers, button, target_class);
@@ -270,7 +279,7 @@ CAMLprim value drive_target_event_detail(value tv, value namev,
 CAMLprim value drive_target_event_detail_bc(value *argv, int argn) {
   (void)argn;
   return drive_target_event_detail(argv[0], argv[1], argv[2], argv[3],
-                                   argv[4], argv[5], argv[6], argv[7]);
+                                   argv[4], argv[5], argv[6], argv[7], argv[8]);
 }
 
 CAMLprim value drive_target_poll(value tv) {

@@ -151,13 +151,16 @@ type wire_value =
    PointerUp and ContextMenuPress. [modifiers] uses the same bitmask as
    PressModifiers (1=ctrl, 2=shift, 4=meta, 8=secondary button, 16=alt).
    [target_class] carries the deepest hit element's class list on web;
-   hosts without a DOM emit an empty string. *)
+   hosts without a DOM emit an empty string. [clicks] is the platform's
+   consecutive click count for PressDetail; 0 means unavailable or a
+   non-click event. It must fit a portable nonnegative OCaml int. *)
 type pointer_detail = {
   x : float;
   y : float;
   modifiers : int;
   button : int;
   target_class : string;
+  clicks : int;
 }
 
 type event =
