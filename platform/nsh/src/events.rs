@@ -239,7 +239,10 @@ impl NativeEvents {
             if let Some(press) = press {
                 self.pointer(
                     PointerKind::PressDetail,
-                    PointerDetail { clicks: press.clicks, ..detail(press.page_position, press.modifiers, None) },
+                    PointerDetail {
+                        clicks: press.clicks,
+                        ..detail(press.page_position, press.modifiers, None)
+                    },
                 );
             }
         } else {
@@ -361,7 +364,10 @@ impl NativeEvents {
                         events.press_snapshot.set(None);
                         events.pointer(
                             PointerKind::PressDetail,
-                            PointerDetail { clicks: event.clicks, ..detail(event.page_position, event.modifiers, None) },
+                            PointerDetail {
+                                clicks: event.clicks,
+                                ..detail(event.page_position, event.modifiers, None)
+                            },
                         );
                         return;
                     }
@@ -380,7 +386,10 @@ impl NativeEvents {
                 }
                 events.pointer(
                     PointerKind::PressDetail,
-                    PointerDetail { clicks: event.clicks, ..detail(event.page_position, event.modifiers, None) },
+                    PointerDetail {
+                        clicks: event.clicks,
+                        ..detail(event.page_position, event.modifiers, None)
+                    },
                 );
                 if event.clicks == 2 && events.accepts("double-press-enabled", "double-press") {
                     (events.notify)(Event::DoublePress(id));

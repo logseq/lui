@@ -816,8 +816,8 @@ test("pointer click counts keep a typed record boundary", () => {
       if (valid) assert.equal(result.status, 0, result.stdout + result.stderr)
       else {
         assert.notEqual(result.status, 0)
-        assert.match(result.stderr, /This expression has type (int|string|float)/)
-        assert.match(result.stderr, /expected of type Lui_protocol.click_count/)
+        assert.match(result.stderr, /has type\s+(int|string|float)\b/)
+        assert.match(result.stderr, /expected of type\s+Lui_protocol\.click_count/)
       }
     }
   } finally { rmSync(dir, {recursive: true, force: true}) }
