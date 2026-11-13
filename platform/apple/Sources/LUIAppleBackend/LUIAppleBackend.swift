@@ -821,6 +821,7 @@ public final class LUIAppleBackend {
     // `commit` so `syncModalPresentation` can skip its full-tree DFS on
     // batches that cannot change any presentation.
     private var modalNodeCount = 0
+    private var popoverNodeIDs: Set<Int> = []
     private var eventDeferralDepth = 0
     private var deferredEvents: [LUIEvent] = []
     private var interactionLockedDrawers: Set<Int> = []
@@ -833,6 +834,7 @@ public final class LUIAppleBackend {
     let tooltipSession = LUITooltipSession()
     let modalPresentation = LUIModalPresentationStore()
     let filePreviewPresentation = LUIFilePreviewStore()
+    let anchoredPopovers = LUIAnchoredPopoverStore()
 
     public init(
         appIcons: [String: LUIAppleIconSource] = [:],
@@ -1197,6 +1199,7 @@ public final class LUIAppleBackend {
         withTransaction(Transaction(animation: nil)) {
             commit(tree, touched: touched, dropped: dropped)
         }
+        syncAnchoredPopovers()
         // A dialog/sheet's membership, anchor, or nesting only changes when
         // the structure moves or a presentation-relevant node mutates —
         // property-only patches elsewhere never do, so skip the tree walk.
@@ -1478,7 +1481,7 @@ public final class LUIAppleBackend {
     func performDismiss(node: Int) throws {
         guard let model = models[node],
               model.kind == .select || model.kind == .combobox ||
-                model.kind == .dropdownMenu || model.kind == .dialog ||
+                model.kind == .dropdownMenu || model.kind == .popover || model.kind == .dialog ||
                 model.kind == .sheet || model.kind == .toast ||
                 model.kind == .filePreview ||
                 model.kind == .filePicker else {
@@ -1639,6 +1642,7 @@ public final class LUIAppleBackend {
         var descendantsRefresh = Set<Int>()
         for id in dropped { collectAncestors(of: id, into: &descendantsRefresh) }
         for id in dropped {
+            popoverNodeIDs.remove(id)
             if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }
             if hostQueries.imageQueries.contains(id) { hostQueries.imageQueries.remove(id) }
             hostQueries.scrollQueries.remove(id)
@@ -1659,6 +1663,7 @@ public final class LUIAppleBackend {
         for id in touched where !dropped.contains(id) {
             collectAncestors(of: id, into: &descendantsRefresh)
             if let state = tree.nodes[id] {
+                if state.kind == .popover { popoverNodeIDs.insert(id) }
                 descendantsRefresh.insert(id)
                 let t1 = CFAbsoluteTimeGetCurrent()
                 if let model = models[id] {
@@ -1879,6 +1884,53 @@ public final class LUIAppleBackend {
         } else {
             onEvent?(event)
         }
+    }
+
+    private func syncAnchoredPopovers() {
+        guard !popoverNodeIDs.isEmpty else {
+            anchoredPopovers.synchronize([:])
+            return
+        }
+        var anchors: [String: (Int, ObjectIdentifier)] = [:]
+        var pending = rootIDs.reversed().map { $0 }
+        var visited: Set<Int> = []
+        while let id = pending.popLast() {
+            guard visited.insert(id).inserted else { continue }
+            if let model = models[id] {
+                if let name = model.property(.accessibilityIdentifier)?.stringValue,
+                   anchors[name] == nil {
+                    anchors[name] = (id, ObjectIdentifier(model))
+                }
+                pending.append(contentsOf: model.children.reversed())
+            } else if let model = extensionModels[id] {
+                if let name = model.properties["accessibility-identifier"]?.stringValue,
+                   anchors[name] == nil {
+                    anchors[name] = (id, ObjectIdentifier(model))
+                }
+                pending.append(contentsOf: model.children.reversed())
+            }
+        }
+        var items: [Int: LUIAnchoredPopoverPresentation] = [:]
+        for id in popoverNodeIDs.sorted() {
+            guard let model = models[id],
+                  model.property(.display)?.stringValue != "none",
+                  model.hasNativePopoverAnchor else { continue }
+            let anchor: (Int, ObjectIdentifier)?
+            if let target = model.property(.anchorTarget)?.stringValue {
+                anchor = anchors[target]
+            } else {
+                var root = id
+                while let parent = models[root]?.parent ?? extensionModels[root]?.parent { root = parent }
+                if root == id { root = rootIDs.first(where: { $0 != id }) ?? id }
+                anchor = models[root].map { (root, ObjectIdentifier($0)) }
+                    ?? extensionModels[root].map { (root, ObjectIdentifier($0)) }
+            }
+            guard let (anchorID, identity) = anchor else { continue }
+            items[anchorID] = LUIAnchoredPopoverPresentation(
+                model: model, anchorID: anchorID, anchorIdentity: identity,
+                anchorRect: model.popoverAnchorRect)
+        }
+        anchoredPopovers.synchronize(items)
     }
 
     private func syncModalPresentation() {

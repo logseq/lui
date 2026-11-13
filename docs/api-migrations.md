@@ -1,5 +1,28 @@
 # LUI API migration guide
 
+## Unreleased: Apple retained popover presentation and menu child content
+
+Apple popovers with `anchor-target`, `anchor-rect`, or `at` now use native
+popover presentation. For example, ``~anchor_target:"pages-more" ~anchor:`below
+~anchor_alignment:`end_`` attaches to the retained node whose
+`accessibility-identifier` is `pages-more`; it no longer occupies an inline
+layout slot. Named targets can mount later and can be standard or extension
+nodes. Explicit rectangles and `at` use window coordinates. Native attachment
+edges, alignment points, alignment offsets and spacing follow the existing
+anchor properties; the platform performs screen collision handling.
+Popovers without positioning properties retain their inline behavior.
+
+Native dismissal emits the existing `dismiss` event for the popover, so
+applications should handle `~on_dismiss` by removing its retained subtree.
+Updates to a dismissed retained identity do not reopen it. Removing and
+recreating it presents a new identity, including when the numeric ID is reused;
+late native callbacks cannot dismiss that replacement. Programmatic removal
+does not synthesize another dismissal event.
+
+Menu items render their retained child content when supplied (including rows
+with Text and icons). Items without children use their own text, then their
+accessible name. Existing menu-item press events keep the menu item's ID.
+
 ## Unreleased: Apple input focus, native sidebar synchronization and safe resync
 
 Apple hosts can call `backend.requestFocus(nodeID:) -> Bool` for standard

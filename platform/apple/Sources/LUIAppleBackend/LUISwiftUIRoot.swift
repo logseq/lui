@@ -585,6 +585,7 @@ enum LUIUnmodifiedNodePolicy {
 struct LUIAnyNodeView: View, Equatable {
     let nodeID: Int
     let backend: LUIAppleBackend
+    @Environment(\.luiPresentedPopoverID) private var presentedPopoverID
     private let retainedSnapshot: LUIRetainedNodeSnapshot
     private static let probesEnabled = ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil
 
@@ -619,12 +620,16 @@ struct LUIAnyNodeView: View, Equatable {
         let _ = perfProbe()
         Group {
             if let model = backend.model(id: nodeID) {
-                LUINodeView(model: model, backend: backend)
+                if model.kind != .popover || !model.hasNativePopoverAnchor
+                    || presentedPopoverID == model.id {
+                    LUINodeView(model: model, backend: backend)
+                }
             } else if let model = backend.extensionModel(id: nodeID) {
                 LUIExtensionNodeView(model: model, backend: backend)
             }
         }
         .modifier(LUIFrameReportModifier(nodeID: nodeID, backend: backend))
+        .modifier(LUIAnchoredPopoverModifier(nodeID: nodeID, backend: backend))
     }
 }
 
@@ -921,8 +926,6 @@ private struct LUINodeView: View {
         case .filePreview:
             return AnyView(EmptyView())
         case .popover:
-            // Native popover positioning is not implemented yet: render the
-            // children inline so the content stays reachable.
             return AnyView(
                 VStack(
                     alignment: .leading,
@@ -4521,11 +4524,21 @@ private struct LUIMenuItemView: View {
                     )
                     .modifier(LUIMenuItemForegroundModifier(model: model))
             }
-            Text(verbatim: model.text)
-                .modifier(LUIMenuItemForegroundModifier(
-                    model: model,
-                    usesExplicitForeground: false
-                ))
+            if model.children.contains(where: { model.childData.layout[$0]?.kind != .contextMenu }) {
+                ForEach(model.children, id: \.self) { childID in
+                    if model.childData.layout[childID]?.kind != .contextMenu {
+                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                            .allowsHitTesting(false)
+                    }
+                }
+            } else {
+                Text(verbatim: model.text.isEmpty
+                    ? (model.accessibilityLabel(in: backend) ?? "") : model.text)
+                    .modifier(LUIMenuItemForegroundModifier(
+                        model: model,
+                        usesExplicitForeground: false
+                    ))
+            }
             if expands {
                 Spacer(minLength: LUIDropdownMenuLayoutPolicy.trailingSpacing)
             }
