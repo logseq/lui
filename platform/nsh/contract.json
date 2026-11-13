@@ -311,19 +311,22 @@
     ],
     "height": [
       "string",
-      "int"
+      "int",
+      "float"
     ],
     "min-width": [
       "int"
     ],
     "max-width": [
-      "int"
+      "int",
+      "float"
     ],
     "min-height": [
       "int"
     ],
     "max-height": [
-      "int"
+      "int",
+      "float"
     ],
     "container-relative-frame": [
       "string"
@@ -11775,15 +11778,15 @@
   ],
   "sourceHashes": {
     "schema/components.json": "faf04ae970a9cf25b9680abb8fb8c69f70ea03a16920092547e31b9d7f9cce87",
-    "src/lui_protocol.ml": "c02ae8d971c7c09018479fb4b3175875e42e7fc703e3fcb6f3c3b1f71c4981ce",
+    "src/lui_protocol.ml": "2779a6611dd19fccfea1b7effabc7e87b62e466f8ad6425bfd58ce8e56bc6e1f",
     "src/lui_protocol.mli": "76764172d00d74f465107c0dbeb4ee89bb2a4d539d8d57c0875eedcfdccfe8c4",
-    "src/lui_wire_schema.ml": "b3e7c6c31dc2d31dea2a0b205a0ede37fb264d32abd823345eb92237868bc350",
-    "src/lui_elements.ml": "ea1d419e9901dfaccee5eb78fd278b39750af4cebbbc1485104fbdf9f80e7205",
-    "src/lui_elements.mli": "fb7f1e46532ac539c42d5b125cfcbf92408dc8bb541204808b1ea0444cb2c5e2",
-    "tooling/typed_view_schema.mjs": "b0d2d2446e36d9abbdd3da3340c617b14ffc45f29fc9277cb46042ffe4c0b27b",
+    "src/lui_wire_schema.ml": "3eeb6964cfd70add344d7c3c4641d4a7610e5d3d37dcb680ea7b36db3de45048",
+    "src/lui_elements.ml": "5b60050ecad44129a8d9e4ed80beb62e1d8e64c4c0def4dcfa11568a881eb72e",
+    "src/lui_elements.mli": "1dbc3cc6513150261ccbae5affc292a858728c49720885b73a079399407361b4",
+    "tooling/typed_view_schema.mjs": "076e3747e1301d9356426ed53decb2a6ed23afd403abc1ba586c375505b683de",
     "tooling/generate_component_schema.mjs": "4b246287c1b078f40de190a3184052a26919f58a020aea6a233da8ecfbf74a79",
     "src/lui_extension.ml": "6e6ee44f5fb52348bff68309c1745a3f103edf5db7d3ccf794c5bb4e377abebb",
-    "tooling/export_native_contract.ml": "7d5c15dfc296435fc1310ce12b51e61eb6ed38dc3c016623d34b609b7327172e",
+    "tooling/export_native_contract.ml": "64cbe6c1814c3bd3ae8aec5c78b2b513b0a4972ba76d951a27d952182fddadf5",
     "tooling/generate_nsh_contract.py": "da4f95eca159c88d2f1b991df0451cd8d8c480f1a05bd5c3ec17b7a374610216",
     "tooling/nsh_contract_codegen.py": "9f55c624eb925a917ae731b3eb2d3fa93cbab1266e5d7b9dc1e9191ba6eee1fd"
   }

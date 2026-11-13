@@ -322,6 +322,9 @@ pub(super) fn property_value_supported(property: &str, value: Scalar<'_>) -> boo
         ("corner-radius", Scalar::Int(value)) => value >= 0_i64,
         ("width", Scalar::Int(value)) => value >= 0_i64,
         ("height", Scalar::Int(value)) => value >= 0_i64,
+        ("height" | "max-width" | "max-height", Scalar::Float(value)) => {
+            is_finite(value) && (0.0_f64..=3.4028234663852886e38_f64).contains(&value)
+        }
         ("width" | "height", Scalar::String("auto")) => true,
         ("min-width", Scalar::Int(value)) => value >= 0_i64,
         ("max-width", Scalar::Int(value)) => value >= 0_i64,
