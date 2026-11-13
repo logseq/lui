@@ -3636,6 +3636,45 @@ let test_json_row_column_grid_columns () =
       Alcotest.(check bool) "valid linear layout never emits grid columns" false
         (Hashtbl.mem node.Drive.Model.props "columns")) [row;column])
 
+let test_json_list_item_gap_contract () =
+  let open Lui_json_view in
+  let open Lui_protocol in
+  List.iter (fun backend_profile ->
+    let presses = ref 0 in
+    let sink ~id ~kind ~fields:_ =
+      if kind="press" then (
+        Alcotest.(check string) "valid JSON ListItem retains its sink identity" "item" id;
+        incr presses) in
+    let backend = {(recording_backend ()) with backend_profile} in
+    let app = Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ -> render ~on_event:sink
+        (Obj ["kind",Str "list-item";"id",Str "item";"text",Str "Item";
+          "main",Str "start";"cross",Str "center";"padding-horizontal",Num 8.])) in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      ignore (Lui_app.start app);
+      flush_app app;
+      let node = Lui_app.root_node app in
+      let emitted property value = List.exists (function
+        | SetProp (id,p,v) -> id=node && p=property && v=value
+        | _ -> false) (all_ops ()) in
+      Alcotest.(check bool) "valid JSON ListItem preserves main/cross and padding on every host" true
+        (emitted MainAlignment (StringValue "start")
+         && emitted CrossAlignment (StringValue "center")
+         && emitted PaddingHorizontal (IntValue 8));
+      let before = all_ops () in
+      List.iter (fun gap ->
+        Alcotest.check_raises "dynamic ListItem gap fails before mounting instead of being dropped"
+          (Invalid_argument "Unsupported property for list-item: gap")
+          (fun () -> let _view = render ~on_event:sink
+            (Obj ["kind",Str "list-item";"text",Str "Item";"gap",gap]) in ());
+        Alcotest.(check bool) "invalid dynamic ListItem gap never emits to the host" true
+          (all_ops ()=before)) [Num 4.;Str "4";Bool false;Null];
+      ignore (Lui_app.dispatch_event app (Press node));
+      flush_app app;
+      Alcotest.(check int) "the valid JSON ListItem still dispatches exactly one Press" 1 !presses))
+    [profile WebOS WebHost;profile MacOS NshHost;profile IOS SwiftUIHost;
+     profile AndroidOS KotlinHost;generic_profile ()]
+
 let test_json_submit_on_enter_contract () =
   let open Lui_json_view in
   let single_line = ["text-field";"secure-field";"input";"search-field"] in
@@ -6484,6 +6523,7 @@ let () =
           Alcotest.test_case "typed checked/selected aliases" `Quick test_typed_checked_selected_aliases;
           Alcotest.test_case "typed virtual viewport aliases" `Quick test_json_virtual_viewport_contract;
           Alcotest.test_case "linear and grid column contracts" `Quick test_json_row_column_grid_columns;
+          Alcotest.test_case "ListItem gap contract" `Quick test_json_list_item_gap_contract;
           Alcotest.test_case "Textarea-only submit policy" `Quick test_json_submit_on_enter_contract;
           Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;
           Alcotest.test_case "tooltip and picker property contract" `Quick test_json_tooltip_and_file_picker_contract;

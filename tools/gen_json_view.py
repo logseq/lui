@@ -240,6 +240,7 @@ def main():
     restricted_properties = {'context_menu': 'ContextMenu',
                              'tooltip': 'Tooltip', 'file_picker': 'FilePicker',
                              'row': 'Row', 'column': 'Column',
+                             'list_item': 'ListItem',
                              'text_field': 'TextField', 'secure_field': 'SecureField',
                              'input': 'Input', 'search_field': 'SearchField'}
     for name, kind, args, ret in normal:

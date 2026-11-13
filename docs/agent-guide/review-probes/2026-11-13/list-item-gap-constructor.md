@@ -55,3 +55,29 @@ successful-action stderr required to be empty and no competing build jobs.
 The standalone main library run passed all 260 tests. These local candidate
 results still do not replace actual maintained-platform CI or an App rebuild
 against the eventually published immutable LUI revision.
+
+## Dynamic JSON rejection found during review
+
+Read-only review of candidate `1d11644e20974278486b69abee1cff5fb10a5b32`
+identified an additional boundary regression. Regeneration correctly removed
+ListItem's invalid `?gap` forwarding, but its JSON branch was absent from the
+generator's `restricted_properties` table. A JSON ListItem carrying `gap`
+would therefore stop reaching the canonical runtime rejection and instead
+silently drop that property. The existing low-level wire test did not exercise
+this separate dynamic frontend. This is a source finding, not a newly executed
+failing test.
+
+The follow-up adds only `list_item: ListItem` to that existing generator table
+and regenerates `src/lui_json_view.ml`, producing the same early canonical
+property check already used for other restricted constructors. A new recording
+regression requires Num/Str/Bool/Null Gap values to fail before view construction
+and host emission under all five maintained profiles. Positive controls mount a
+valid JSON ListItem, preserve main/cross/padding, then dispatch its real Press
+to the existing sink exactly once. No global JSON policy, new validator,
+backend, constructor or wire domain is introduced; unknown extension handling
+elsewhere is unchanged.
+
+Only the source generator ran during this follow-up. No compiler, test suite,
+native application or worker ran. The earlier local counts above qualify the
+parent candidate; the follow-up still requires the affected/full suites and
+maintained-platform CI before application pins change.

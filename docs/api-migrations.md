@@ -5959,6 +5959,15 @@ delivery remains a separate application qualification.
 
 `list_item` no longer exposes `?gap`. Canonical ListItem has never admitted Gap on any backend, so the former call type-checked but raised when mounted. Invalid direct, qualified, aliased, optional-forwarded and reactive gap calls now fail OCaml type checking. Valid calls, including `~main`, `~cross`, padding, content and action handlers, are unchanged on NSH, Web, Apple/iOS, Android and Generic profiles. Dynamic low-level wire/property attempts still fail the existing kind/property boundary.
 
+The generated JSON-view ListItem path also checks its known canonical properties
+before constructing a view. For example, `{"kind":"list-item","gap":4}` is
+rejected as `Unsupported property for list-item: gap`, regardless of whether
+`gap` is a number, string, boolean or null. Removing an invalid typed label must
+not turn that dynamic input into a silently ignored option. This reuses the
+existing per-kind JSON validation policy; unknown extension-property handling
+elsewhere is unchanged. Valid JSON ListItems keep alignment, padding and the
+existing event sink.
+
 ```ocaml
 (* Previously type-checked, but was rejected on every host when mounted. *)
 list_item ~text:"Open" ~gap:4 []
