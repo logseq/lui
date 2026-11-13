@@ -362,11 +362,12 @@ struct PointerPicker {
 fn PointerOnlyPicker() -> impl IntoElement {
     let probe = engine_context::<PointerPicker>().unwrap();
     let published = signal(0_u32);
+    let observed = probe.events.clone();
     let renderer = Renderer::new(move |event, _| {
         if let Event::Pointer { kind: PointerKind::PressDetail, detail, .. } = &event {
             published.set(detail.clicks);
         }
-        probe.events.lock().unwrap().push(event);
+        observed.lock().unwrap().push(event);
     });
     renderer
         .apply(patch(
