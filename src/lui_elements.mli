@@ -72,7 +72,6 @@ type host_kind = Lui_protocol.host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
-  | MyGoHost
 
 type image_loading = [ `eager | `lazy_ ]
 

@@ -9,7 +9,7 @@ description: How to run and test LUI demo apps — the standalone web demos in p
 
 Prefer `tooling/lui_agent.mjs` over pixels or accessibility queries when a test
 only needs to act on and read the OCaml tree. The shared runtime answers, so
-one script drives MyGo, Apple, Android and Web alike (see
+one script drives Apple, Android and Web alike (see
 `docs/api-migrations.md`, "one lui-agent protocol on every host"):
 
 ```sh
@@ -20,10 +20,11 @@ expect "text:Event: press"
 type prop:accessibility-identifier=events-editor "agent 你好"
 wait "text:Event: text-changed:agent 你好" 2
 EOF
-# MyGo (also macOS hosts in DEBUG builds, and the iOS simulator through
-# SIMCTL_CHILD_LUI_AGENT_LISTEN):
-LUI_AGENT_LISTEN=127.0.0.1:49380 go -C platform/mygo run ./cmd/lui-mygo -library "$components" &
-node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact "$components" --script /tmp/flow.agent
+# Apple Components on the iOS simulator (DEBUG build):
+bash tooling/mobile/build_components_ios_simulator.sh
+xcrun simctl install booted _build/mobile-components/ios-simulator/LUIComponents.app
+SIMCTL_CHILD_LUI_AGENT_LISTEN=127.0.0.1:49380 xcrun simctl launch booted dev.lui.components
+node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact _build/mobile-components/ios-simulator/LUIComponents.app --script /tmp/flow.agent
 # Android debug build:
 adb shell am start -n dev.lui.components/.MainActivity --ei lui-agent-port 49380
 adb forward tcp:49380 tcp:49380   # then the same --tcp command

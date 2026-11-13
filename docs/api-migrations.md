@@ -1,5 +1,51 @@
 # LUI API migration guide
 
+## Unreleased: desktop backend removal (breaking)
+
+The native Go desktop backend, its Go module, host commands, capabilities,
+generated contract manifest, exporters, build/test scripts and CI workflow have
+been removed. There is no compatibility backend or alias.
+
+Downstream hosts must use `platform/apple` for macOS/iOS SwiftUI,
+`platform/android` for Android, or `platform/web` for Web/Melange.
+Logseq keeps Electron for Windows/Linux desktop builds; LUI does not provide a
+native Windows/Linux desktop backend.
+
+The removed OCaml host constructor is no longer part of `host_kind` in
+`Lui_protocol` or `Lui_elements`. Remove its match arms and select
+`SwiftUIHost`, `KotlinHost` or `WebHost` for the actual host. Native host code
+`5` is retired: it resolves to `GenericHost` and grants no bounded-row
+capability. Rebuild downstream OCaml code; serialized OCaml values containing
+the removed constructor are not compatible. Maintained host codes remain
+`1` (Web), `2`/`258` (SwiftUI) and `4`/`260` (Kotlin).
+
+For example, migrate a macOS host profile to:
+
+```ocaml
+let backend = {
+  Lui_protocol.backend_profile =
+    Lui_protocol.profile Lui_protocol.MacOS Lui_protocol.SwiftUIHost;
+  apply_batch;
+}
+```
+
+Build the Apple backend through the root Swift package:
+
+```sh
+swift build
+# Shared OCaml gallery library for the maintained Apple host:
+opam exec --switch=5.5.0 -- dune build examples/components/native/liblui_components.dylib
+LUI_COMPONENTS_NATIVE_LINK_INPUTS="$PWD/_build/default/examples/components/native/liblui_components.dylib" \
+  swift build --package-path examples/components/ios-swiftui --product LUIComponentsApp
+```
+
+Keep `platform/bridge`, `platform/services`, existing reducers and views, and
+the mobile build tooling. Maintained host wire contracts, schemas and extension
+fingerprints are unchanged. `shrink` and `on_focus_within` remain Web-only;
+SwiftUI/Kotlin/Generic profiles continue to reject those opt-ins. Run
+`make generate-component-schema` to regenerate the remaining shared, Apple and
+Android schema artifacts; no desktop Go contract is generated.
+
 ## Unreleased: native navigation sheet action foregrounds
 
 Apple navigation sheet toolbar actions honor the button's existing `foreground`
@@ -30,7 +76,7 @@ TextField("Email address", text: $email)
 
 ## Unreleased: one lui-agent protocol on every host
 
-Scripts and coding agents can now drive a running app the same way on MyGo,
+Scripts and coding agents can now drive a running app the same way on
 Apple, Android and Web. The shared OCaml runtime answers every request, so
 each host only carries strings.
 
@@ -82,18 +128,6 @@ The new APIs, by layer:
   `0` when refused; in that case read `lui_ocaml_last_error` and resync as
   after any refused call. The batches go to the patch callback given to
   `lui_ocaml_start`, then `reply` receives the reply object.
-- **MyGo.** `(*Runtime).Agent(request) (string, error)` applies the batches and
-  resyncs after a refusal. `ServeAgent(address, onUI)` and
-  `ServeAgentFromEnv(onUI)` serve one loopback TCP client, one line per
-  request, with lines capped at 1 MiB. `cmd/lui-mygo` listens when
-  `LUI_AGENT_LISTEN=127.0.0.1:PORT` is set.
-
-  ```go
-  server, err := runtime.ServeAgentFromEnv(func(fn func()) {
-      mygo.RunOnMain(func() { fn(); window.Invalidate() })
-  })
-  ```
-
 - **Android.**
   - `LuiBridge.agent(request): String` blocks until the OCaml thread answers
     and queues the batches for the sink.
@@ -146,7 +180,6 @@ The build scripts now write `<artifact>.lui-build.json`. It holds the
 artifact digest and the sha256 of every input file. The scripts that write it
 are:
 
-- the MyGo Todos and Components builds;
 - the Android and iOS Components builds;
 - the Navigation simulator build;
 - the macOS `build-app.sh` scripts;
@@ -158,10 +191,10 @@ with code `3`. `--unchecked` skips the check. `node tooling/lui_build_receipt.mj
 check --artifact PATH` runs the check alone.
 
 ```sh
-components=$(./tooling/build_mygo_components.sh)
-LUI_AGENT_LISTEN=127.0.0.1:49380 go -C platform/mygo run ./cmd/lui-mygo -library "$components" &
-node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact "$components" \
-  'press prop:accessibility-identifier=events-button' 'expect "text:Event: press"'
+OPAMSWITCH=5.5.0 bash examples/todos/macos-appkit/build-app.sh
+LUI_AGENT_LISTEN=127.0.0.1:49380 examples/todos/macos-appkit/.build/debug/LUITodos.app/Contents/MacOS/LUITodos &
+node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact examples/todos/macos-appkit/.build/debug/LUITodos.app \
+  'hello' 'tree'
 ```
 
 ### Compatibility
@@ -180,13 +213,12 @@ unknown node kinds, and unknown properties. Extra object fields — on the
 batch or on an operation — are now ignored when their names are not part of
 the operation schema, including nested objects, arrays, and null. Previously
 only extra scalars were skipped, so a newer encoder's object field failed
-the OCaml decoder while MyGo accepted it.
+the OCaml decoder.
 
 Canonical encoder bytes are unchanged. Required fields stay scalars:
 `"value": {"nested": true}` is still rejected. Duplicate keys are unchanged
-(the first operation field wins; the last `generation` wins). Hosts that
-want the MyGo duplicate-key rule should not emit duplicate keys; the shared
-fixtures use unique keys.
+(the first operation field wins; the last `generation` wins). Hosts should not
+emit duplicate keys; the shared fixtures use unique keys.
 
 ```ocaml
 let batch =
@@ -236,10 +268,6 @@ Host contract, implemented by every maintained host in this release:
   `next_delay`, arms one wakeup and calls `clock_tick` with monotonic
   milliseconds when it fires. Bridges built with `Lui_native_bridge.register`
   get the OCaml side automatically.
-- MyGo: `OpenRuntime` binds the four symbols when all are present (older
-  libraries keep working without timers), arms a `time.AfterFunc` that only
-  invalidates the window and ticks in the next frame. New
-  `Runtime.AdvanceClock(ms)` and `Runtime.SetClockPaused(bool)`.
 - Android: `LuiBridge` reschedules a `Handler.postAtTime` wakeup on the
   `lui-ocaml` thread after every dispatch, ticking with
   `SystemClock.uptimeMillis()`. New JNI exports `nativeClockTick`,
@@ -312,17 +340,6 @@ resync. OCaml callers can read the same record with
 
 Every maintained host now consumes it:
 
-- **MyGo**: `Runtime.Dispatch` returns a `*luimygo.RuntimeError` (`Phase`,
-  `Node`, `Message`) and resyncs before returning. Initialization failures
-  wrap the same error.
-
-  ```go
-  var failure *luimygo.RuntimeError
-  if errors.As(runtime.Dispatch(event), &failure) {
-      log.Printf("LUI %s failed at node %v: %s", failure.Phase, failure.Node, failure.Message)
-  }
-  ```
-
 - **Android**: `LuiBridge` logs the failure, requests a snapshot through the
   existing resync path and notifies the optional `LuiBridge.failureListener` on
   the main thread with a `LuiRuntimeFailure`. A failed `start` reports its
@@ -362,12 +379,11 @@ Every maintained host now consumes it:
   still surface as uncaught JavaScript errors and no patches are dropped, so
   nothing changes there.
 
-## Unreleased: independent flex shrink on Web and MyGo
+## Unreleased: independent flex shrink on Web
 
 `row`, `column` and `box` accept `?shrink:float`. The typed `ShrinkValue`
 property uses wire name `shrink` and accepts only finite, nonnegative floats.
-Only these three standard kinds admit it. Web maps it to CSS `flex-shrink`;
-MyGo uses the existing `Element.Shrink` without an SDK or dependency update.
+Only these three standard kinds admit it. Web maps it to CSS `flex-shrink`.
 Generic, SwiftUI and Kotlin profiles reject explicit shrink values; Apple and
 Android also reject direct standard wire patches rather than ignoring them.
 Extensions/raw markup do not gain a shrink property or escape hatch.
@@ -388,12 +404,12 @@ row ~flex_wrap:`nowrap
 Use the existing typed overflow property on the strip for clipping. Shrink on
 the strip itself does not disable shrinking its children. Remove unnecessary
 child `grow` props to keep intrinsic sizing; do not substitute `grow:0` for
-`shrink:0`, because MyGo's `Grow` also changes an auto basis to zero percent.
+`shrink:0`.
 
-## Unreleased: opt-in container focus-within observation (Web and MyGo)
+## Unreleased: opt-in container focus-within observation (Web)
 
 `row`, `column` and `box` accept `?on_focus_within:(bool -> unit)` on
-Web/Melange and MyGo. Installing the callback enables the new boolean
+Web/Melange. Installing the callback enables the new boolean
 `focus-within-enabled` property and receives `FocusWithinChanged (node, within)`.
 Without the callback/property, observation is off and existing views are unchanged.
 The callback does not make the container focusable or change keyboard traversal.
@@ -402,17 +418,12 @@ After mount/enable settles, the observer publishes one current snapshot, then
 only distinct transitions. True means focus is on the container or inside its
 rendered subtree. Moving between descendants does not emit an exit/reentry pair.
 Web coalesces local `focusin`/`focusout` checks at the microtask boundary, also
-checking after retained child removal. MyGo shares its existing `FocusWithin`
-read with appearance styling and delivers through the committed event queue.
-Neither backend treats a popup/portal outside the subtree as inside merely
-because it is attached to a trigger. Window activation is not a second condition
+checking after retained child removal. Web does not treat a popup/portal outside
+the subtree as inside merely because it is attached to a trigger.
+Window activation is not a second condition
 on retained focus membership; this is not an application-activation callback.
 
-MyGo rejects `~on_focus_within` on ``box ~display:`contents``: a transparent
-box has no native element to observe. The same restriction applies to raw wire
-nodes with `display="contents"` and `focus-within-enabled=true`. Observe a real
-row, column or non-transparent box instead. Web can observe this combination
-through its retained DOM subtree.
+Web can observe focus within transparent boxes through their retained DOM subtree.
 
 Disabled/inert ancestors normalize membership to false, including a terminal
 false for a previously focused subtree. Re-enabling observes current membership
@@ -426,7 +437,7 @@ including explicit false; Apple and Android raw-wire hosts reject it too.
 Cross-platform applications must omit the callback on those paths, not expect
 silent no-event support. No Apple/Android focus framework or focusable group is
 introduced. Their existing focus behavior and appearance properties are unchanged.
-Rebuild the shared OCaml application and Web/MyGo host together for the added
+Rebuild the shared OCaml application and Web host together for the added
 event constructor and native `lui_ocaml_focus_within_changed` bool callback.
 Older native libraries remain usable without this opt-in; attempting to deliver
 the new event to a library without its callback fails explicitly.
@@ -440,19 +451,6 @@ row ~on_focus_within:(fun within -> Signal.set toolbar_focused within)
 
 Combine that signal with the existing hover state to drive typed toolbar opacity.
 No new focus-within opacity property or data migration is needed.
-
-## Unreleased: MyGo links in text flow
-
-Text-content `link` nodes inside a native text flow now use MyGo's inline Link
-instead of a block LinkBase. The actual native parent determines the mapping,
-including through `box` nodes with `display=contents` and extension renderers. Existing
-link text, nested text styling and URL activation remain available without
-application changes. For example, `text [link ~text:"Guide" ~url:guide_url []]`
-stays within one paragraph instead of failing native text-child validation.
-
-Links outside text flow retain their existing block/icon layout. Icons and
-arbitrary layout children still belong outside a text flow; native text-child
-validation is unchanged. No API, wire format or SDK pin changes are required.
 
 ## Unreleased: Android editable Combobox menu focus
 
@@ -484,25 +482,9 @@ OCaml model state remains authoritative across page switches; navigation is
 host-only and introduces no public LUI component. Its mobile E2E runner uses
 the checked-in `platform/android/gradlew` wrapper.
 
-## Unreleased: desktop input metadata
-
-The pinned MyGo SDK preserves `InputEvent.PhysicalKey` and optional layout
-`Text` on keydown and keyup. DOM-style adapters can map Shift+1 to
-`code=Digit1` and `keyChar=!`; non-ASCII text is retained as UTF-8.
-The native backend supplies the text; absent metadata
-stays absent, with no synthesized US-keyboard shift table. Text metadata is
-not a text-input commit and must not be inserted a second time. Darwin uses
-`NSEvent.characters`, Linux uses GDK key values, and Windows uses a
-non-mutating keyboard-layout query (Windows 10 version 1607 or newer).
-
-Pointer capture preserves an active primary gesture when another button is
-pressed or released. Non-primary events still reach the capture owner; they
-do not end the primary gesture.
-
 ## Unreleased: preserve Apple and Android backends
 
-The MyGo migration changes the default desktop renderer, not mobile support.
-Apple/iOS and Android remain maintained backends alongside MyGo desktop and
+Apple/iOS and Android remain maintained backends alongside macOS SwiftUI and
 Web/Melange. Their backend sources, packages, example hosts, mobile tooling,
 Drive probes and CI jobs are restored after their unintended removal.
 
@@ -524,8 +506,8 @@ must keep their native backend dependencies:
 
 Restoration does not rename public APIs, change host defaults or event
 semantics, or change wire batches and capability negotiation. Keep existing
-SwiftUI/Kotlin host integrations; do not replace them with MyGo. The separate
-desktop migration still relocates the shared C bridge to `platform/bridge`
+SwiftUI/Kotlin host integrations. The separate desktop migration still relocates
+the shared C bridge to `platform/bridge`
 as described below; it does not restore the retired SDL renderer.
 
 ## Unreleased: modal surface transitions
@@ -545,13 +527,11 @@ dialog ~transition:"opacity 200ms ease-out, transform 200ms ease-out"
 
 Web applies this declaration to the real retained modal surface, preserving
 its opening/closing animation, focus restoration, and exit-paint lifecycle.
-MyGo accepts the shared property but applies state changes immediately;
-CSS animation remains a documented host exception. Applications need no
-backend capability guard. Omitted transitions keep the existing host defaults.
+Omitted transitions keep the existing host defaults.
 
-## Unreleased: MyGo desktop and portable host services
+## Unreleased: retired SDL renderer and portable host services
 
-MyGo (`platform/mygo`) is now the default desktop renderer. The former
+The former
 `platform/native` OCaml/SDL renderer, its executables, packaging tools,
 renderer-specific plugins and native test jobs are removed, not deprecated.
 There are no compatibility aliases or fallback renderer. Web/Melange and
@@ -598,56 +578,20 @@ Every other public library formerly supplied by `platform/native` is removed:
   `lui.plugin_webview`, and the `lui_pkg` executable.
 
 The shared `lui` runtime/element API remains. Keep reducers, signals and views
-in OCaml and pass their existing shared application library to MyGo. For
-example, replace an SDL host linked to `lui.host`/`lui.window` and a build
-dependency on `platform/native/lui_ocaml_bridge.c` with:
+in OCaml and embed the shared application library with `platform/apple` on
+macOS/iOS, `platform/android` on Android, or `platform/web` for Web output.
+Replace renderer-specific Dune libraries with `lui` and only the portable
+services actually used. Replace custom
+`../../../platform/native/lui_ocaml_bridge.c` and adjacent header dependencies
+with `../../../platform/bridge/...` at the same relative depth.
 
-```sh
-# The builder links platform/bridge/lui_ocaml_bridge.c.
-library=$(./tooling/build_mygo_todos.sh)
-go -C platform/mygo run ./cmd/lui-mygo -library "$library"
-
-# Components uses the same shared ABI and existing OCaml Gallery.
-components=$(./tooling/build_mygo_components.sh)
-go -C platform/mygo run ./cmd/lui-mygo -library "$components" -title Components
-```
-
-Downstream apps replace renderer-specific Dune libraries with `lui` and only
-the portable services they actually use, then embed a MyGo host as described
-in [the MyGo guide](../platform/mygo/README.md#embed-a-backend). Replace any
-custom `../../../platform/native/lui_ocaml_bridge.c` and adjacent header
-dependencies with `../../../platform/bridge/...` at the same relative depth.
 The old `examples/components/webview-shell` depended on removed `lui.webapp`
-and `lui.webview` and is deleted; use the native MyGo Components host above
-or the existing Web build in a browser, not an SDL WebView wrapper.
+and `lui.webview` and is deleted; use the Apple Components host or the existing
+Web build described in [the Component gallery guide](../examples/components/README.md).
 
 Historical entries below describing the removed renderer record previous
 releases; they do not promise those APIs remain available. Build and schema
 checks do not establish visual parity or native interaction acceptance.
-
-## MyGo standard dropdown menus
-
-Standard standalone `dropdown-menu` components now present through MyGo's
-native context-menu implementation, using the same `menu-item`, `menu-trigger`,
-disabled/checked state, nested menus and action handlers as `context-menu`.
-Selection dispatches the live item's `press` before one owner `dismiss`;
-cancellation dispatches only `dismiss`. Retired items cannot receive a choice.
-Keep `~on_dismiss` wired to remove the model-owned menu and mount a new menu
-identity for each opening. No wire properties or events change.
-
-```ocaml
-dropdown_menu ~at:(x, y) ~on_dismiss:(fun _ -> close_menu ())
-  [menu_item ~text:label ~on_press:(fun _ -> run_action ()) []]
-```
-
-Custom content and styled items still use the retained in-window menu route.
-Hosts may set `luimygo.Config{RetainedMenus: true}` to use retained menus for
-standard content too. Native shortcut hints remain descriptive labels, not new
-accelerator registrations. Web rendering and its component API are unchanged.
-The MyGo dependency includes the additive build-scoped
-`Element.OpenContextMenuAt(x, y)` hook; do not replace the SDK pin with an older
-version lacking it. Applications should use LUI components, not a second menu
-specification or host-specific action-tag table.
 
 ## Unreleased: Apple minimum scroll viewport reference
 
@@ -785,18 +729,6 @@ are not device-input evidence. See
 [`platform/android/drive/README.md`](../platform/android/drive/README.md)
 for complete integration, input and cleanup limits.
 
-## Unreleased: MyGo overlay theme foreground
-
-MyGo dialogs, sheets and popovers now initialize their detached panel's text
-color from the current scoped theme, matching their themed backgrounds. Plain
-text and inherited labels no longer fall back to the window's default foreground
-when opened under a nested dark theme. Explicit child foreground properties
-continue to override this default; no schema or wire change is required.
-
-For example, a sheet beneath a column with `theme-mode="dark"` now displays its
-title and unstyled text in the dark theme's foreground without per-label colors.
-Do not add a `foreground` property to the sheet: that property is not supported
-by the sheet kind.
 ## Unreleased: Native icon prop paints above state backgrounds
 
 On the retained Native host, an `icon` prop on `menu-item` and
@@ -841,8 +773,7 @@ Applications that use popovers as menu containers should pass the existing
 typed ``~role:`menu`` only on those containers, not on ordinary dialogs.
 
 Explicit `anchor` values, viewport collision handling, pointer corridors, hover
-and keyboard behavior are unchanged. No constructor, wire, schema, native-host
-or MyGo changes are required.
+and keyboard behavior are unchanged. No constructor, wire, schema or native-host changes are required.
 
 ## Unreleased: Web nested-layer Escape ownership
 
@@ -858,18 +789,6 @@ Applications should keep `dialog ~on_dismiss:close_dialog` and
 `popover ~on_dismiss:close_popover` as the owners of dismissal rather than closing
 both in a document Escape shortcut. No constructor, wire, native-host or other
 keyboard behavior changes are required.
-
-## Unreleased: MyGo select trigger chrome
-
-Standard MyGo `select` triggers now align their label to the leading edge and
-reserve space for one built-in trailing chevron. The label can shrink within
-authored dimensions; the chevron inherits the control's foreground and disabled
-appearance. Existing size, padding, variant and icon props still apply.
-
-Use `select ~text:current ~on_press:open_menu []` without adding an application
-chevron. Remove a previously authored arrow workaround to avoid duplicate arrows.
-Press, Down-key activation, disabled behavior, popup-button accessibility and
-model-owned menu lifetime are unchanged. No wire or schema migration is required.
 
 ## Unreleased: Apple closed drawer visibility
 
@@ -917,15 +836,7 @@ no wire or schema migration is required.
 This guide records changes applications must consider when updating LUI.
 Keep it alongside the implementation: every public constructor, wire contract,
 default, event or compatibility change must receive an entry before release.
-Changes below are unreleased work following PR #271; host qualification is
-tracked in [the MyGo parity plan](agent-guide/004-component-api-mygo-parity.md).
-
-The Native OCaml renderer is outside this parity update except for the
-input contracts explicitly qualified below. Its paint-property
-inventory check is temporarily deferred until that inventory recognizes
-`read-only`, `overscan` and `item-extent`; these features are not qualified on
-that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
-covered separately.
+Changes below are unreleased work following PR #271.
 
 ## Unreleased: Android button content alignment
 
@@ -1305,7 +1216,7 @@ store/manager handoff is added. macOS retains its existing
 `NSPasteboard.setString` BOOL result; other backends and their input limits
 are unchanged and are not newly qualified by this Linux change.
 
-## Unreleased: component API and MyGo parity
+## Unreleased: shared component API
 
 ### Apple drawer swipes can interrupt transitions
 
@@ -1321,82 +1232,6 @@ No wire or application code migration is required. Continue acknowledging each
 example, after an opening gesture emits `checked=true`, publishing `selected=true`
 while the user has begun closing acknowledges that opening gesture without
 restarting its animation or cancelling the closing drag.
-
-### Host commands on standard MyGo text editors
-
-MyGo `Config` now accepts two optional, typed hooks:
-
-```go
-InputValue   func(Node, *string)
-InputControl func(Node, ui.Element, string)
-```
-
-`InputValue` runs after ordinary model text reconciliation and immediately
-before constructing the native `TextInput` or `TextArea`. It may update that
-build's text through the pointer. `InputControl` runs after construction and
-input-handler setup, receiving the resulting text for focus and selection
-binding. It runs before the existing focus-transition sample, retained handle
-binding and autofocus logic; their relative order is unchanged.
-
-Both hooks run synchronously on the UI thread during live construction, never
-in `view-that-fits` measurement probes. Do not retain the text pointer, Element
-or its Context beyond the call. Nodes are detached read snapshots. Hooks cover
-the text-editing paths of `text-field`, `secure-field`, `input`, `search-field`,
-`textarea` and `combobox`. They do not run for specialized ColorWell/TimeInput
-branches or custom renderers that replace the standard control. Nil hooks
-preserve existing behavior; wire vocabulary and other platforms are unchanged.
-Existing keyed Config literals need no changes; positional literals must be
-updated for the added fields, preferably by switching to keyed initialization.
-
-An imperative value command does not synthesize `OnChange`, `TextChanged` or
-Dispatch, and does not persist a new model value. Keep the existing controlled
-reducer and ordinary text reconciliation. The host still owns command queues,
-node incarnation/epoch checks, invalidation and post-layout `AfterFrame`
-acknowledgement/retirement. Publish and apply a node's creation before sending
-commands for it; these hooks do not buffer missing references or repair message
-ordering. Apply selection to the actual Element during construction. MyGo
-selection offsets count runes: DOM-style UTF-16 offsets must be converted by
-the host against the text passed to `InputControl`, without splitting surrogate
-pairs. Any returned DOM offsets are build-time observations, not a substitute
-for querying the native selection during an input event.
-
-For a host with existing incarnation-scoped helpers, configure the standard
-renderer rather than copying it or adding component-specific exceptions:
-
-```go
-backend := luimygo.New(luimygo.Config{
-    Dispatch: runtime.Dispatch,
-    InputValue: services.BindInputValue,
-    InputControl: func(n luimygo.Node, e ui.Element, text string) {
-        services.BindInputControl(n, e, text)
-    },
-})
-```
-
-Here `BindInputValue` has signature `func(luimygo.Node, *string)` and
-`BindInputControl` may return UTF-16 `(start, end int)`; the closure deliberately
-discards those results. Existing raw/extension renderers retain their own
-bindings; the hooks do not duplicate their dispatch or command ownership.
-
-### Bounded and content-sized Stacks on MyGo
-
-The MyGo `stack` adapter now passes its allocated width and height through
-each synthetic layer wrapper to its children. A bounded Stack no longer lets
-an automatic content-height floor enlarge a nested Stack beyond that allocation.
-Stacks without a bounded size still measure to their largest intrinsic child,
-and removing that child lets the Stack shrink. Explicit child sizes, minimums,
-maximums and margins remain effective; layer order, `z-index`, pointer
-pass-through and retained child identity are unchanged.
-
-Keep the finite shell constraint on the outer Stack, and use `grow: 1` and
-`min-height: 0` on the inner flow Column and Scroll that share its height.
-For example, an outer Stack with `height-viewport: 1` in an 897-DIP viewport,
-containing a nested Stack and a Column with a 48-DIP header, now gives its
-growing Scroll the remaining 849 DIPs even when the Scroll content is 1280
-DIPs tall. Do not repeat the full viewport height on the Scroll: that would
-ignore the header's share. Applications that require a content-sized Stack
-should continue to leave its size unconstrained rather than add viewport
-or fill constraints. No wire vocabulary or other host behavior changes.
 
 ### Owned pointer gestures on Row and Box
 
@@ -1424,7 +1259,7 @@ box ~pointer_capture:true
 Applications should also discard owned preview state when their view unmounts;
 a removed node cannot receive subsequent application events. Existing nodes
 without capture retain their pointer/press behavior and do not subscribe to
-movement or cancellation. The feature is implemented on Web and MyGo; adding
+movement or cancellation. The feature is implemented on Web; adding
 the shared vocabulary does not qualify other native hosts for captured gestures.
 
 The Web DOM setter now accepts `pointer-capture` and clears its capability marker
@@ -1434,12 +1269,6 @@ any active preview. Native DOM capture still begins only on an admitted trusted
 primary down, not when the property is applied. Existing typed handles, including
 the example above, require no migration or application fallback.
 
-MyGo's toolkit adds `HandleCapturedPointer` and `InputPointerCancel`. Use this
-handler instead of `HandleInput` when successful release must differ from
-cancellation. A primary down returning true owns the gesture. Existing
-`HandleInput` consumers retain their legacy synthetic-release deactivation
-behavior; they are not silently migrated to cancellation.
-
 Row and Box also admit `NavigationKey` when `?on_navigation_key` is provided:
 arrows, Home/End, PageUp/PageDown, Enter, Space and Escape, preserving Shift.
 No handler means no navigation subscription. Keyboard focus still belongs to
@@ -1447,19 +1276,14 @@ the application's normal typed focus/role configuration.
 
 ### Row and Box navigation focus ownership
 
-On Web, MyGo and the Native OCaml window hosts, Row/Box navigation callbacks
-only receive keys owned by that focused container, never keys from a descendant
-checkbox or editor.
-Web stops propagation after an admitted navigation event. MyGo makes an
-interactive navigation-enabled container focusable and registers shortcuts
-only while its handle owns focus; filtering only inside a subtree shortcut
-callback would still consume the child's default key behavior.
-Disabled and inert ancestors block navigation. Other controls retain their
-existing navigation behavior; no handler still means no subscription.
-Applications can replace a container's raw keydown bridge with
-`row ~on_navigation_key:handle_row_key ...` without intercepting keys typed
-inside child controls. Web containers retain the application's normal
-focus configuration, such as `~data_attrs:["tabindex", "0"]`.
+On Web, Row/Box navigation callbacks only receive keys owned by that focused
+container, never keys from a descendant checkbox or editor. Web stops
+propagation after an admitted navigation event. Disabled and inert ancestors
+block navigation. Other controls retain their existing navigation behavior;
+no handler still means no subscription. Applications can replace a container's
+raw keydown bridge with `row ~on_navigation_key:handle_row_key ...` without
+intercepting keys typed inside child controls. Web containers retain the
+application's normal focus configuration, such as `~data_attrs:["tabindex", "0"]`.
 
 Native OCaml makes navigation-enabled Row/Box containers focusable for pointer
 and Tab focus. Only the actually focused node receives navigation; child
@@ -1489,8 +1313,8 @@ The Web DOM setter now accepts `toggle-detail-enabled` and clears its capability
 marker on removal. This fixes a render failure for typed `~on_toggle_detail`
 subscriptions; existing consumers require no migration or event fallback.
 
-Mixed rendering and accessibility state are currently implemented only on Web
-and MyGo. Those hosts also implement mixed-to-true proposals and
+Mixed rendering and accessibility state are currently implemented only on Web.
+Web also implements mixed-to-true proposals and
 `ToggleChangedDetail` events.
 Apple and Android recognize the shared property vocabulary and perform typed
 admission; this does not qualify them for these behaviors.
@@ -1531,245 +1355,6 @@ fresh read because intermediate updates may be coalesced. Existing callers that
 read after `Lui_app.flush` require no changes; callers that intentionally need a
 published view snapshot must read their borrowed model signal instead.
 
-### MyGo transparent dynamic anchors
-
-`box` nodes with `display="contents"` now render their children directly into
-the current native parent, without creating a MyGo `Column` or consuming a
-native element key. These are the transparent structural anchors emitted when
-reactive, conditional or keyed branches nest. For example, the retained tree
-`text -> box(display=contents) -> text` renders as inline text rather than
-panicking when MyGo encounters a box inside a text paragraph.
-
-The retained anchor, parent links, descendant order and incarnation keys remain
-intact. Appearance still dispatches once per committed incarnation, never from
-an unselected fitting probe; hidden anchors suppress their subtree and retired
-incarnations remain stale. The anchor has no native bounds, focus target or
-independent pointer surface. Box layout and paint properties do not create a
-surface for it; put those properties and direct native interactions on a real
-container or descendant instead. Retained ancestry remains available to hosts
-and continues to enforce disabled/inert event filtering.
-
-No OCaml API, wire format, dependency pin or application migration is required
-for generated dynamic anchors. Do not replace the enclosing `text` with a
-column or flatten arbitrary boxes as a workaround. A real `box`, `icon` or
-other non-text child remains invalid inside native text, even through a contents
-anchor; put it beside the text in a typed row. This change applies specifically
-to structural `box` anchors, not to all component kinds with a display prop.
-
-### MyGo authored switch chrome
-
-Switches with authored dimensions, padding, foreground, background, border or
-corner radius now use MyGo's public `SwitchBase` for their input, focus and
-accessibility behavior. The shared renderer sizes the thumb inside the authored
-padding and resolves its color from `foreground`, including scoped theme tokens
-and existing state foreground overrides. The track continues to consume the
-ordinary background, border and radius properties. Layout-only placement and
-semantic class names do not select this rendering path.
-
-For example, a `switch` with `width=32`, `height=18`, `padding=3` and
-`foreground="var(--background)"` now has a 12-DIP thumb painted in the resolved
-background color, rather than MyGo's default white thumb. Its checked state,
-`toggle-enabled` subscription, disabled behavior and `toggle-changed` proposal
-and acknowledgement contract are unchanged. Removing the authored chrome
-properties restores the default MyGo `Switch`; switches without those properties
-retain their existing native look. No wire or dependency-pin changes are needed.
-
-### MyGo spacer hit transparency
-
-`spacer` is a layout void and no longer owns pointer hits, matching the Native
-and Web hosts. Internal `stack` and `overlay` placement wrappers are also
-hit-transparent; real descendants still receive input normally. This fixes
-full-window placeholders covering otherwise active controls. No wire or event
-subscription changes are required. For example, `stack [button; spacer []]`
-now lets the button receive native activation and document click capture;
-preventing that capture still cancels the activation.
-
-Ordinary transparent `box` nodes retain their existing hit behavior. Do not use
-`spacer` as an interactive surface; use a container or control instead.
-
-### MyGo inherited pointer policy
-
-The MyGo adapter now maps the existing `pointer-enabled` protocol to MyGo's
-public `Element.PointerEvents(bool)`: false suppresses the entire native
-subtree, including internal captions; unset descendants inherit; explicit true
-opts a subtree back in. This applies to standard nodes and raw extensions
-bound with `Backend.BindHostElement`. No wire changes or Logseq-specific
-workarounds are needed.
-
-As on Native, presented `dialog`, `sheet`, `popover`, `dropdown-menu`,
-`context-menu`, `toast` and drawers without a `selected` prop default to enabled
-below a disabled ancestor. Explicit false still wins, and a permanent host
-marked `data-overlay-layer=true` never implicitly opts in. For example,
-`overlay ~pointer_enabled:false [button ~pointer_enabled:true ...]` accepts
-input only in the opted-in button; other controls and native labels remain
-transparent. Existing ordinary containers without a pointer policy retain
-their previous hit behavior. Capture returning true still cancels activation;
-paint, layout and keyboard focus are unchanged by the pointer policy.
-
-Embedding hosts must select the same MyGo fork version as this adapter in
-their root `go.mod`; Go does not inherit dependency replacements. The fork
-must provide both `Element.PointerEvents` and the bounded-row
-`ListState.Requested`/`SetKeyIndex` APIs. The integrated pin retains both
-contracts, plain-hit document click capture and the native handle-lifetime
-fixes; choosing an older pointer-only or bounded-row-only candidate is not a
-compatible substitute.
-
-### MyGo decoded image dimensions
-
-Embedding hosts can call `Backend.NaturalImageSize(id)` on the UI goroutine to
-read `(width, height, ready)` for standard `image`, `file-image` and `avatar`
-nodes. Dimensions come from the current decoded pixels, including any
-`max-pixel-size` downsampling, not layout size, cropping or avatar placeholders.
-URL/path assets must match the current retained node's source and decode limit;
-drop/recreation and snapshots discard that node's decoded state. Host-registered
-images use the current image registration only when no URL takes precedence.
-
-The query performs no I/O and starts no decode. Pending, lazy/unloaded, failed,
-stale, unsupported, missing and closed resources return `(0, 0, false)`. Query
-again after a frame processes the renderer's normal decode completion; do not
-acknowledge an unavailable result as a guessed size or decode the source again.
-
-### MyGo host theme defaults and authored variables
-
-Embedding hosts can install per-window defaults with
-`Backend.SetThemeDefaults(map[string]string)` between frames on the UI goroutine.
-The map is copied and replaces previous host defaults; `nil` clears it. These
-defaults do not change model-owned nodes or emit patches. Scoped `theme` props
-override them only inside that subtree. Native widget semantic slots now use
-the same defaults as explicit typed paint properties, including focus/status
-colors. No application migration is required when host defaults are unused.
-
-`ComputeThemeVariables(parent, declarations)` computes custom properties before
-inheritance, invalidates cycles (including unused fallback references), and
-handles `initial`, `inherit` and `unset`. `ResolveThemeValue(value, computed)`
-substitutes nested `var()` expressions and empty fallbacks. These APIs process
-declarations, not selectors, layout, utility classes or a stylesheet cascade.
-Hosts must supply their authored palette and application layers explicitly.
-
-Custom renderers can call `Backend.ResolveColor(context, value)` during their
-build to use the current scoped tokens, adaptive colors and functional CSS
-colors. Unknown values/cycles return an error rather than a successful default.
-The existing internal fallback for unresolved standard paint values is unchanged.
-
-Authored `font-family`, `font-size` and `line-height` now substitute `var()`
-against those same scoped tokens before calling native typography APIs. This
-includes nested fallbacks and adaptive values. Invalid substitutions leave the
-native inherited/default typography unchanged instead of passing unresolved
-expressions as font names. No host API or wire changes are required.
-
-MyGo also accepts `em` typography lengths on the existing native 16-DIP baseline,
-matching its `rem` handling and the OCaml native text adapter. These units are
-not browser-style ancestor-relative computed lengths. Unitless `line-height`
-remains a font-size multiplier; `px`, `em` and `rem` line heights are fixed DIPs.
-
-### MyGo document input capture
-
-Hosts can install `ui.Context.CaptureInput` once per view build and resolve its
-opaque target with `Backend.InputNode`. This matches the actual committed focus
-or hit ancestry, including internal children of standard controls and extension
-elements registered with `BindHostElement`; it never infers targets from boxes.
-The resulting `InputNode.Node` is a snapshot. Check `InputNode.Current()` before
-using a saved press or deferred event: removing and remounting the same numeric
-node ID invalidates it. Use only on the UI thread. The MyGo target itself expires
-as soon as its capture callback returns.
-
-This API needs MyGo's public `CaptureInput`/`InputTarget.Distance` API. Hosts must
-update that dependency alongside this change. Existing element input callbacks
-continue to run unless capture returns true. Observational capture must return
-false so focused controls retain editing, IME, clipboard and native menu commands.
-Do not also forward the same DOM event from a local extension handler: dispatch
-once through the application's existing document capture/bubble implementation.
-
-The pinned MyGo also reports one capture-only `InputClick` on ordinary live hits
-without native gestures, such as a `column` or a bound raw `ui.Box`. The same
-committed hit incarnation must remain enabled and hit-testable through release;
-a drag, prevented down/up, window blur, removed capture or retired hit cancels
-the candidate. Native buttons retain their existing activation/default rules.
-Hosts that synthesized clicks for plain nodes or attached placeholder `OnClick`
-handlers solely for document delegation must remove those workarounds. Keep one
-`CaptureInput` -> `Backend.InputNode` -> document dispatch route; do not add native
-press/focus semantics to ordinary content just to observe its click. Embedding
-root modules must select the adapter's updated MyGo replacement as well.
-
-The pinned MyGo also keeps built-in inspector input private to developer tools.
-Application `CaptureInput` no longer observes inspector-focused key down/up,
-text, composition or commands, or pointer/scroll hits in the committed inspector
-subtree. A press on an inspector control stays isolated when moving or releasing
-outside the panel. Inspector native controls still receive their input even if
-application capture would prevent it; application targets retain their normal
-capture and default-prevention behavior. Remove host-side forwarding of inspector
-input to document shortcuts; do not install application handlers on the inspector
-to work around this boundary. No LUI wire schema or host callback change is needed.
-As Go does not inherit replacements, embedding applications must update their
-root `go.mod` along with this adapter, for example:
-
-```go
-replace github.com/egoist/mygo => github.com/logseq/mygo v0.0.0-20261026012209-183f6afcb33a
-```
-
-### MyGo committed menu owners and scroll observation
-
-`Backend.OpenMenuOwners(c)` returns unique, ID-sorted `InputNode` snapshots for
-actual still-open native menus, retained context menus, dropdowns and popovers.
-Call after final layout (for example in `AfterFrame`) or between frames on the
-UI thread. An `AfterFrame` callback may be registered before `Backend.View`;
-reading committed ownership does not depend on text-record callback ordering.
-Only actual presentation builders register candidates; the query
-checks native active/committed-pending presentation state or retained dismissal
-state plus committed panel and owner identities. It does not scan the retained
-tree, infer opening from widget existence, measure bounds, or change input.
-Probes, omitted panels, hidden/inert/disabled owners, closed presentations and
-retired incarnations do not resolve. Before a changed model has committed, the
-query returns no owners rather than mixing model and presentation generations.
-
-Native/context menus report their host. Dropdowns report the actual trigger or
-placement anchor; a popover's `anchor-target` resolves outside its portal too.
-A coordinate-only popup has no retained external anchor, so its own retained
-popup node is the presentation owner. Supply a real `anchor-target` when a host
-must protect a triggering row; coordinates never imply that row's identity.
-Do not retain the result as an open-state cache: query each committed frame and
-check `InputNode.Current()` before using a saved snapshot. Same-ID recreation
-does not revive an earlier incarnation. Protect only the returned owners and
-their actual retained ancestors, not every menu/widget node or the whole tree:
-
-```go
-c.AfterFrame(func() {
-    for _, owner := range backend.OpenMenuOwners(c) {
-        if owner.Current() {
-            pinRetainedAncestors(owner.Node.ID)
-        }
-    }
-})
-```
-
-`Backend.CommittedScrollOffset(c, id)` returns `(x, y float32, known bool)` for
-any actual committed scroll host, including a normal `box` with `overflow:auto`.
-It reads MyGo's public `Handle.ScrollOffset(c)`, not private engine state or
-geometry differences. Call after layout on the UI thread. Non-scrollers,
-probes, hidden, missing, stale and uncommitted hosts report `known == false`;
-zero with `known == true` is a real scroll start. The axes match `ScrollState`.
-Do not infer scroll end from an unknown value:
-
-```go
-if x, y, known := backend.CommittedScrollOffset(c, containerID); known {
-    observeCommittedOffset(containerID, x, y)
-}
-```
-
-The older `Backend.ScrollOffset(id)` still reads retained typed scroll state,
-including an unapplied `ScrollTo`; its errors and all scroll command/token
-semantics are unchanged. Migrate viewport observations to the new committed
-query, but do not replace command handling. These APIs need the adapter's new
-MyGo pin (`Context.NativeMenuOpen` and `Handle.ScrollOffset`); embedding root
-modules must update their replacement too, since Go does not inherit it. No
-LUI wire schema, default input or event forwarding changes are required.
-
-The same MyGo pin finalizes Handle identity only after actual committed layout,
-including deferred `view-that-fits` and virtual rows. Hosts can read public
-`Bounds`/`FocusWithin` from `AfterFrame` without replaying input or focus, eagerly
-building rejected candidates, or fabricating geometry. Omitted bindings and
-same-ID recreated owners cannot keep an old committed identity alive.
-
 ### Bounded row generation for virtual lists
 
 `virtual_list` continues to accept literal children and `keyed` sources. Those
@@ -1790,7 +1375,7 @@ virtual_list ~height:400 ~overscan:5 ~item_extent:32. [
 ]
 ```
 
-The business data source and its key index remain complete. On Web, MyGo,
+The business data source and its key index remain complete. On Web,
 SwiftUI and Kotlin hosts that advertise window feedback,
 only requested rows, overscan and active interaction pins own mounted scopes,
 signals, handlers and host controls. Overlapping windows preserve row identity;
@@ -1815,12 +1400,6 @@ keeps a positive estimate or a host minimum of one pixel. This avoids
 repeatedly expanding the mounted window when blank rows collapse during layout;
 positive compact rows retain their measured heights.
 
-Custom hosts must recognize the new `MyGoHost` case when matching
-`host_kind`. Existing host cases keep their order; native host code 5 selects
-MyGo. The MyGo loader selects that profile only if the optional
-`lui_ocaml_virtual_window(node,generation,first,last,pins,count)` export exists;
-older application libraries keep the Generic eager profile.
-
 SwiftUI and Kotlin retain their semantic platform profiles, including native
 extension selection. Their native startup handshake uses these codes:
 
@@ -1840,7 +1419,7 @@ bounded rows. An unrelated or unknown host code does not enable this capability.
 `Lui_app.create`, `create_with_extensions`, `create_reloadable` and
 `create_reloadable_with_extensions`, and both `Lui_runtime.create` constructors,
 accept an optional `~virtual_rows:bool` override. The default is true for Web,
-MyGo, SwiftUI and Kotlin profiles and false for Generic. The override is fixed
+SwiftUI and Kotlin profiles and false for Generic. The override is fixed
 before mounting the view and persists through reload without changing the host
 profile. Custom native initializers must pass the negotiated capability:
 
@@ -1898,22 +1477,11 @@ actions on their viewport even when interactive rows cover its content.
 The Apple C bridge now closes its ARC-owned window safely during reset.
 The existing reset entry point and application lifecycle API are unchanged.
 
-### Large-batch memory and handle ownership
+### Large-batch encoder memory
 
-The shared OCaml encoder and MyGo decoder now process large batches without
-retaining per-operation JSON copies. MyGo applies JSON operations directly in
-its rollback journal instead of retaining a complete operation array, and the
-native receiver reads its owned wire string without another full byte copy.
-Duplicate fields, final generation checks and complete-document validation
-retain their existing atomic semantics. Wire bytes, integer precision and
-application APIs are unchanged. Rebuild application libraries to include the
-encoder improvement.
-
-MyGo also releases abandoned handle bindings while preserving live hidden
-handles and pending focus. Embedded Go applications must update their root
-replacement to `github.com/logseq/mygo@v0.0.0-20261025230925-e952b021e9be`, as shown
-in the [embedding guide](../platform/mygo/README.md#embed-a-backend). The upstream
-module path and application imports remain unchanged.
+The shared OCaml encoder processes large batches without retaining
+per-operation JSON copies. Wire bytes, integer precision and application APIs
+are unchanged. Rebuild application libraries to include the encoder improvement.
 
 ### Nested toolbar focus ownership
 
@@ -1924,8 +1492,7 @@ groups retain their own roving focus behavior. Applications need no source chang
 
 ### Toast keyboard dismissal
 
-On Web, Escape now dismisses the open toast containing keyboard focus, matching
-MyGo. Escape outside a toast, during IME composition, or after another handler
+On Web, Escape now dismisses the open toast containing keyboard focus. Escape outside a toast, during IME composition, or after another handler
 consumes the event leaves notifications open. Applications should handle the
 existing dismiss event by removing that toast from their model. Independent
 notifications retain their own lifetimes.
@@ -1952,8 +1519,7 @@ Applications using the constructor need no source change. Custom hosts and
 wire consumers must recognize the two new properties. Legacy semantic
 attributes remain readable during migration. Explicit typed properties take
 precedence; removing a typed property restores the legacy attribute or host
-default. Removing both restores the default. The MyGo default overscan is five
-rows on either side; the fallback item estimate is 32 logical pixels.
+default. Removing both restores the host default.
 
 Prefer constructor arguments over hand-written semantic attributes:
 
@@ -1987,36 +1553,6 @@ boolean property. Removing it restores editable behavior. Applications that
 used `disabled` solely to prevent edits may switch to `read_only` when users
 should retain selection and copying.
 
-### Controlled proposals require model acknowledgement
-
-MyGo controls now reconcile after each input callback, including callbacks that
-produce no patch. If an application leaves `text`, `value`, `checked`, `selected`
-or expansion state unchanged, its proposal is rejected and the control restores
-that value. Accepted or normalized model values become the next displayed value.
-Caret, focus and active IME composition remain host-owned.
-
-Applications that previously relied on a no-op callback to keep a toolkit edit
-must store the proposal in their model and bind the corresponding property.
-For example, use `~on_input:(on_input send (fun text -> SetText text))` together
-with `~text:(reactive Model.text model)` rather than a no-op input callback.
-
-### MyGo validates complete final node contracts
-
-MyGo now follows canonical LUI per-kind property and child rules, including
-required labels, finite values, paired anchors, complete image crop regions,
-consistent size/range constraints and exclusive split sizing modes. Validation
-occurs against the final batch state, so property order and temporary
-incompleteness inside a batch remain valid. Rejected batches preserve the live
-tree and control identity.
-
-Custom wire producers must fix invalid batches previously accepted by the
-MyGo adapter. Examples: a button needs nonempty text or an accessibility label;
-a table contains rows and each row contains cells; a text field may host a
-context menu but cannot contain arbitrary controls; a split cannot set both
-`value` and `first-pane-width`. Public constructors continue to supply the
-appropriate interaction flags. Their validation now matches canonical event
-support for text, numeric and toggle controls.
-
 ### Tabs, lifecycle and scroll results
 
 Ordinary `tabs` keep their application-owned content. Arrow keys activate the
@@ -2031,68 +1567,12 @@ reusing an ID after removal does not revive old queued callbacks. Scroll request
 tokens preserve exact OCaml integers, including neighboring values above 2^53;
 each distinct token starts a new request.
 
-### MyGo image and media ownership
-
-The Go host registers ordinary pixels with `RegisterImage` and video frames
-with `PresentMediaSurfaceFrame`. IDs must be positive and pixels non-nil. Both
-methods copy caller buffers before publication. Calls belong to the UI
-goroutine. Invalid replacements preserve the previous valid resource;
-`UnregisterImage` and `UnregisterMediaSurface` retire it. Standard image and
-media nodes no longer need application renderer registrations.
-
-### MyGo compatibility module and custom icons
-
-The desktop adapter pins the [logseq/mygo compatibility fork](https://github.com/logseq/mygo/tree/lui-bounded-virtual-rows)
-for measured fitting, tunable lists, frame completion and native lifecycle
-behavior. The fork preserves the upstream `github.com/egoist/mygo` module path,
-Go imports and upstream documentation links. Existing Go and OCaml application
-imports are unchanged.
-
-The adapter selects the immutable fork version with a Go `replace` directive.
-Go does not inherit dependency replacements: applications embedding this adapter
-must copy its MyGo replacement into their own root `go.mod`. See the exact
-[embedding commands](../platform/mygo/README.md#embed-a-backend). No vendored
-source checkout is required.
-
-Canonical icons remain built in. Custom `app:slug` icons use
-`RegisterIcon(name,svg)` and `UnregisterIcon(name)`. Registration copies and parses
-SVG data; invalid replacements preserve the previous icon. These are host
-resource APIs and do not require a component renderer override.
-
-### MyGo host disposal and file services
-
-Go hosts must call `Backend.Close()` on the UI goroutine after closing their
-OCaml `Runtime` session. Closing is idempotent. Committed node removal and
-snapshots cancel node-owned asynchronous work immediately; failed batches do
-not cancel live work. Host-registered image/media IDs survive snapshots and
-are released by explicit unregister calls or backend closure.
-
-The optional `Config.FileServices` interface replaces only the operating-system
-file dialog boundary; the default implementation uses MyGo native dialogs.
-Standard picker and preview nodes need no application renderers. Picker request
-and completion tokens keep their original string/integer type and exact value;
-applications acknowledge a result by setting `completion` to its request token.
-Tokens already acknowledged on mount do not launch another dialog.
-
-Desktop file previews are owned LUI presentations with dismissal, selectable
-UTF-8 text, raster images and paginated PDF rendering. They do not launch an
-external application. Unsupported or missing files show an owned error view.
-Native macOS dialog cancellation has been verified against a real NSOpenPanel.
-Other host live-service qualification remains tracked in the support inventory.
-
 ### Complete native event payloads
 
-The MyGo bridge now carries pointer details, navigation keys, scroll completion,
-visible ranges, scroll edges and picker payloads through the actual OCaml event
-subscriptions. Strings preserve UTF-8 and embedded NULs; integers preserve values
-above JavaScript's exact-number range. Invalid coordinates, modifier/button
-values, ranges and native integer/length overflows are rejected before native
-entry.
-
-Existing C-string pointer exports remain available to existing hosts. New
-length-carrying `lui_ocaml_*_utf8` pointer exports carry `target_class` without
-truncation. Custom native bridge loaders targeting the new MyGo host must link
-the matching rebuilt application library rather than an older cached binary.
+The shared native C ABI includes length-carrying `lui_ocaml_*_utf8` pointer
+exports for `target_class` without truncation. Existing C-string pointer
+exports remain available. Custom native bridge loaders using these exports
+must link the matching rebuilt application library.
 
 ## PR #271: removed line-break component
 
@@ -2101,83 +1581,6 @@ Replace separate-line content with a `column`, or use a newline inside one text
 value when it belongs to the same text run. Do not register a custom standard
 `br` renderer: it does not restore a removed protocol kind. Raw HTML extensions
 keep their independent HTML element rules.
-
-## MyGo production host services
-
-Desktop adapters can use `Backend.Bounds`, `RequestFocus`, `ScrollTo` and
-`ScrollOffset` on the UI thread instead of relying on demo-only geometry hooks
-or inspecting backend state. `Bounds(c, id)` reports window DIPs from committed
-layout, with `false` for missing, hidden, unmounted or closed nodes. Measure
-after a committed frame; do not treat unavailable geometry as a zero rectangle.
-
-`RequestFocus(id)` requests focus for the current retained node, including before
-its first render. It is not a focus acknowledgement. Unknown or dropped nodes
-are errors; requests do not survive drop/recreation or a replacement snapshot.
-`ScrollTo(id, x, y)` accepts finite DIPs on scroll/list/virtual-list nodes and
-clamps to the content at layout. It rejects an active token-controlled scroll;
-replace those requests through the standard scroll-token protocol instead.
-
-Extensions and custom renderers opt into host services by binding their primary
-control during rendering:
-
-```go
-element := ui.Box(c).Focusable()
-if err := backend.BindHostElement(node.ID, element); err != nil {
-    // Propagate this adapter error; do not claim a focus or geometry result.
-    panic(err)
-}
-```
-
-Standard nodes are already bound. Existing extension renderer signatures and
-wire schemas do not change. No model-controlled text/selection is mutated by
-these services; editors must obtain source and selection from their model.
-
-## MyGo committed text geometry
-
-`Backend.TextGeometry(context, nodeID)` exposes the retained text actually
-painted by MyGo, including a text node's range in a rich inline paragraph.
-Use it after layout (`Context.AfterFrame`) or between frames on the UI thread.
-It returns `(ui.CommittedText, bool)`: missing, hidden, unmounted, closed or
-patched-but-not-committed nodes report false. The value expires at the next
-MyGo build; every query then reports false. Do not retain it across builds.
-
-`Text`, `Caret`, `SelectionRects`, `IndexAt` and `Lines` use rune offsets
-relative to the bound text node, and window-space DIPs including scrolling
-and transforms. Applications with UTF-8 byte or UTF-16 model offsets must
-convert at their own boundary, and map atomic/decorative runs explicitly.
-The API never shapes a second approximation or owns an editable document.
-Requires MyGo's public `Handle.TextGeometry` / `CommittedText` API.
-`Backend.CommittedBounds(context, nodeID)` follows the same generation guard
-and reports the transformed window-space box for non-text container origins.
-
-## MyGo live native-input snapshots
-
-`Backend.InputTextSnapshot(context, nodeID)` returns `(text, anchor, caret, ok)`
-from the actual native TextInput/TextArea edit state. Unlike committed geometry,
-it includes already-consumed edits before the next layout/bound-value update.
-It does not process queued input, mutate selection, or cache model text. Text
-excludes marked/preedit content; anchor/caret count runes, retain direction,
-and must be converted explicitly for UTF-8/UTF-16 application protocols.
-This trusted host query also reads secure-field text without redaction.
-
-The window-stable `ui.Context` may be retained for this specific UI-thread query
-in `CaptureInput` before default handling or `OnChange` after input. This does
-not make build APIs or retained `ui.Element` queries safe in callbacks.
-Requires MyGo's public `Handle.TextSnapshot` API; no wire schema changes.
-
-```go
-if text, anchor, caret, ok := backend.InputTextSnapshot(windowContext, nodeID); ok {
-    dispatchInputSnapshot(text, anchor, caret)
-}
-```
-
-Standard native fields are bound automatically. A raw/custom renderer must call
-`backend.BindHostElement(node.ID, input)` on its actual native input each build,
-before registering handlers; do not bind an enclosing box or a substitute buffer.
-Unavailable, hidden, disabled, retired, remounted-before-commit, non-input and
-closed nodes report `ok=false`. There is no stale-model fallback. Ordinary patch
-generation changes do not invalidate this live query; drop/recreate and snapshot
-replacement retire the binding immediately. Re-render to bind the new incarnation.
 
 ## Upgrade checks for application maintainers
 
@@ -2188,9 +1591,7 @@ replacement retire the binding immediately. Re-render to bind the new incarnatio
 5. Exercise model rejection/normalization, keyboard navigation, resource
    replacement and stale async callbacks on each host the application ships.
 
-The existing DOM backend remains available. MyGo's browser renderer requires a
-separate browser runtime bridge; the desktop dynamic-library bridge cannot be
-used directly in a browser.
+The Web/Melange backend remains available for browser hosts.
 
 ## Apple virtual-list viewport changes
 
@@ -2230,11 +1631,9 @@ required; other hosts are unchanged.
 
 ## Primary pointer capture retains non-primary events
 
-Web and MyGo Row/Box `pointer-capture` no longer filters out non-primary
+Web Row/Box `pointer-capture` no longer filters out non-primary
 `PointerDown`/`PointerUp`. The LUI handler does not start or end its primary drag
-state for those buttons. MyGo keeps translating its secondary button to protocol
-button `2` and its middle button to protocol button `1`. This does not add
-simultaneous-button gesture support to the underlying native SDK.
+state for those buttons.
 
 Applications can keep `~pointer_capture:true` for primary dragging and handle
 `PointerUp (_, detail)` with `detail.button = 1` for middle-click actions. Do not

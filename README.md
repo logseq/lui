@@ -8,9 +8,6 @@ LUI is a retained, cross-platform UI runtime written in OCaml and powered by
 state, diffing, and patch generation stay in OCaml; each backend applies those
 patches to real UI objects:
 
-- **Desktop (default)**: the MyGo backend (`platform/mygo`) uses native
-  desktop controls and the shared OCaml C ABI, with runnable Todos and
-  Components hosts and headless interaction tests.
 - **Apple**: one SwiftUI backend shared by iOS and macOS (`platform/apple`,
   `LUIAppleBackend` Swift package).
 - **Web**: a Melange companion library (`platform/web/melange`) plus the
@@ -18,8 +15,9 @@ patches to real UI objects:
 - **Android**: a Kotlin/Jetpack Compose backend (`platform/android`,
   package `dev.lui`) applying patches to native Android UI.
 
-MyGo is the default desktop renderer, not a replacement for mobile backends.
-Apple/iOS and Android remain maintained: downstream applications including
+macOS desktop uses the Apple SwiftUI backend. Logseq keeps Electron for
+Windows/Linux desktop builds. Apple/iOS and Android remain maintained:
+downstream applications including
 [`logseq/mobile`](https://github.com/logseq/mobile) and
 [`logseq/logseq_journal`](https://github.com/logseq/logseq_journal) rely on
 the native packages and bridge contracts. Desktop renderer migrations must
@@ -28,12 +26,12 @@ preserve these integrations.
 Apple uses one JSON object per atomic `patch_batch` at its
 native host boundary; `Lui_wire` encodes the protocol directly. The Web
 backend runs in the same process as the OCaml application and applies typed
-patches to DOM nodes — no JSON bridge, no JavaScript UI framework. MyGo,
+patches to DOM nodes — no JSON bridge, no JavaScript UI framework.
 Apple and Android hosts share the `lui_ocaml_*` C ABI in
 `platform/bridge/lui_ocaml_bridge.c`; each host applies wire batches
 incrementally. OCaml owns the application, not a second desktop renderer.
 The former SDL-based OCaml renderer has been removed; see the
-[breaking-change migration](docs/api-migrations.md#unreleased-mygo-desktop-and-portable-host-services).
+[breaking-change migration](docs/api-migrations.md#unreleased-desktop-backend-removal-breaking).
 
 ## Layout
 
@@ -44,7 +42,6 @@ examples/gallery/     headless component-gallery demo
 platform/apple/       SwiftUI backend (SwiftPM package + tests)
 platform/web/         Melange DOM library, stylesheet, icons
 platform/android/     Kotlin Android backend (Gradle, dev.lui package)
-platform/mygo/        MyGo native desktop backend (Go module + host + tests)
 platform/bridge/      shared lui_ocaml_* C ABI and GC stress runner
 platform/services/    portable lui.plugin and lui.plugin_fetch libraries
 schema/               canonical component schema (components.json)
@@ -100,19 +97,17 @@ root directly). See the Theming section of
 
 ## Examples
 
-Run the default desktop backend on macOS or Linux (Go 1.27.3+):
+Run native macOS examples with the Apple SwiftUI backend:
 
 ```sh
-library=$(./tooling/build_mygo_todos.sh)
-go -C platform/mygo run ./cmd/lui-mygo -library "$library"
-
-components=$(./tooling/build_mygo_components.sh)
-go -C platform/mygo run ./cmd/lui-mygo -library "$components" -title Components
+OPAMSWITCH=5.5.0 bash examples/todos/macos-appkit/build-app.sh
+open examples/todos/macos-appkit/.build/debug/LUITodos.app
 ```
 
+For the macOS/iOS Components host and Android/Web builds, see the
+[Component gallery guide](examples/components/README.md).
 The `examples/*/native` directories build shared OCaml application libraries
-for hosts; they are not the removed renderer. See the
-[MyGo guide](platform/mygo/README.md) for embedding and system requirements.
+for hosts; they are not the removed renderer.
 
 Both demos mount a real `Lui_app` against a printing backend, so running them
 shows the generated patch batches:
@@ -138,8 +133,6 @@ dune build @all  # all OCaml application, bridge and portable service targets
 make test        # schema contract tests + dune @runtest
 make test-ocaml  # alcotest suite only
 make test-apple  # SwiftUI backend tests (macOS)
-make test-mygo   # MyGo backend tests with race detection
-make test-mygo-integration # actual OCaml Todos through MyGo
 ```
 
 Per-platform backend builds and test recipes are documented under each
@@ -180,5 +173,4 @@ make generate-component-schema
 It emits the shared OCaml protocol/wire and PPX nesting artifacts,
 `platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift`, and
 `platform/android/lui/src/main/kotlin/dev/lui/LuiWireSchema.kt`.
-The Make target also exports the MyGo contract and generated Go schema.
 CI runs `--check`, so generated files must be committed.

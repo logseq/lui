@@ -113,14 +113,13 @@ let host_kind = function
   | 1 -> WebHost
   | 2 | 258 -> SwiftUIHost
   | 4 | 260 -> KotlinHost
-  | 5 -> MyGoHost
   | _ -> GenericHost
 
 let profile platform_code host_code =
   Lui_protocol.profile (operating_system platform_code) (host_kind host_code)
 
 let virtual_rows_supported = function
-  | 1 | 5 | 258 | 260 -> true
+  | 1 | 258 | 260 -> true
   | _ -> false
 
 let backend bridge host_profile =

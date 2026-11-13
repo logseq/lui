@@ -6,7 +6,7 @@ import { listenWs, run } from "../../../tooling/lui_agent.mjs"
 import { createStaticServer } from "../../../tooling/serve_web.mjs"
 import { createPlaywrightSession } from "./playwright-session.mjs"
 
-// The script the MyGo host runs; the agent protocol makes it host-agnostic.
+// The shared agent protocol keeps this script host-agnostic.
 const script = [
   "hello",
   "press prop:accessibility-identifier=events-button",

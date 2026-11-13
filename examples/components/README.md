@@ -1,25 +1,11 @@
 # Component gallery
 
 This showcase renders the same OCaml model, reducer, and component tree
-(`examples/gallery`) on MyGo desktop, Apple and Android hosts. The platform directories
+(`examples/gallery`) on Apple, Android and Web hosts. The platform directories
 contain only lifecycle, event, and rendering bridge code; interactive state lives in
 the shared OCaml application.
 
-## Desktop (MyGo)
-
-MyGo is the default desktop host. Build the shared OCaml application library
-and launch it from the repository root:
-
-```sh
-library=$(./tooling/build_mygo_components.sh)
-go -C platform/mygo run ./cmd/lui-mygo -library "$library" -title Components
-```
-
-See the [MyGo guide](../../platform/mygo/README.md) for Go and system
-dependencies. The former `webview-shell` example was removed with the OCaml
-desktop renderer; Web output still runs in a browser.
-
-## Apple
+## Apple (macOS desktop and iOS)
 
 The SwiftUI host (`ios-swiftui/`) uses `NavigationSplitView`: iPhone gets the
 standard pushed list/detail flow, while iPad and macOS show the component

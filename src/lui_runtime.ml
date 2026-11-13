@@ -171,7 +171,7 @@ let create_with_extensions ?virtual_rows scheduler backend registry =
   let virtual_rows = match virtual_rows with
     | Some supported -> supported
     | None -> (match backend.backend_profile.profile_host with
-      | WebHost | SwiftUIHost | KotlinHost | MyGoHost -> true
+      | WebHost | SwiftUIHost | KotlinHost -> true
       | GenericHost -> false) in
   Lui_extension.freeze registry;
   {
@@ -1855,14 +1855,14 @@ let notify_segment_property application node property value =
 let set_prop application node property value =
   if property = FocusWithinEnabled then
     (match application.runtime_backend.backend_profile.profile_host with
-     | WebHost | MyGoHost -> ()
+     | WebHost -> ()
      | SwiftUIHost | KotlinHost | GenericHost ->
          invalid_arg "focus-within observation is unsupported by backend profile");
   let node = canonical_node application node in
   let kind = require_standard_node_kind application node in
   if property = ShrinkValue then
     (match application.runtime_backend.backend_profile.profile_host with
-     | WebHost | MyGoHost -> ()
+     | WebHost -> ()
      | GenericHost | SwiftUIHost | KotlinHost ->
          invalid_arg "shrink is unsupported by backend profile");
   if not (property_supported kind property) then
@@ -1885,15 +1885,6 @@ let set_prop application node property value =
     | Some values -> values
     | None -> Property_map.empty
   in
-  if application.runtime_backend.backend_profile.profile_host = MyGoHost &&
-     kind = Box &&
-     (match property, value with
-      | FocusWithinEnabled, BoolValue true ->
-          Property_map.find_opt DisplayValue current = Some (StringValue "contents")
-      | DisplayValue, StringValue "contents" ->
-          Property_map.find_opt FocusWithinEnabled current = Some (BoolValue true)
-      | _ -> false)
-  then invalid_arg "focus-within observation is unsupported on MyGo box display=contents";
   if Property_map.find_opt property current <> Some value then begin
     notify_segment_property application node property (Some value);
     (* A segment callback may have updated another property on this node. *)

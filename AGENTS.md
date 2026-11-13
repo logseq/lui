@@ -5,7 +5,7 @@
 - MUST NOT modify any dune file during development unless explicitly asked
 
 See `.agents/skills/` for platform-specific development guides and `docs/agent-guide/` for design specifications.
-- **Supported backends**: MyGo is the default desktop backend; Apple/iOS, Android and Web/Melange remain maintained. Desktop migrations must preserve the Apple Swift packages, Android Gradle/JNI backend and mobile build/test tooling used by `logseq/mobile` and `logseq/logseq_journal`. Do not retire mobile backends without explicit approval.
+- **Supported backends**: macOS desktop is served by the Apple SwiftUI backend; Android, iOS and Web/Melange remain maintained. Logseq keeps Electron for Windows/Linux desktop builds. Desktop migrations must preserve the Apple Swift packages, Android Gradle/JNI backend and mobile build/test tooling used by `logseq/mobile` and `logseq/logseq_journal`. Do not retire mobile backends without explicit approval.
 - **Reactive API (mandatory)**: Always load `.agents/skills/lui-reactive/SKILL.md` before writing or editing view code that builds `Lui_elements`. Direct `dyn` calls are forbidden; `reactive` is the only reactive form.
 - Avoid O(n²) `List` patterns such as `List.concat` and repeated `List.append` on large sequences; when the project already depends on the `rrbvec` package, use `Rrbvec` vectors instead.
 - All PR descriptions and code comments must be written in English.

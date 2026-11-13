@@ -2061,5 +2061,5 @@ let view context model_source send : t =
     | _ -> sections
   in
   match Lui_ui.host context with
-  | GenericHost | MyGoHost -> scroll ~grow:1. [ column sections ]
+  | GenericHost -> scroll ~grow:1. [ column sections ]
   | WebHost | SwiftUIHost | KotlinHost -> column sections

@@ -33,7 +33,7 @@ val prune_state_scopes :
   ('a, Signal.scope) Hashtbl.t -> ('a, 'b) Hashtbl.t -> bool
 
 (** [virtual_rows] overrides bounded row-source support without changing the
-    backend's semantic platform profile. It defaults to true for Web, MyGo,
+    backend's semantic platform profile. It defaults to true for Web,
     SwiftUI and Kotlin, and false for Generic hosts. Native embedding code must
     pass its negotiated capability before the view is mounted. *)
 val create_with_extensions :

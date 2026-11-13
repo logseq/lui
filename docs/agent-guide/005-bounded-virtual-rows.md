@@ -3,18 +3,18 @@
 Goal: Keep LUI and host UI nodes proportional to the visible window and active interaction pins while retaining the complete application data source.
 
 Architecture: Add a structural lazy row source inside the existing VirtualList component and reconcile only its requested window through the existing keyed lifecycle.
-Web, MyGo, SwiftUI and Kotlin request bounded windows with stable row pins; older hosts retain eager behavior through an explicit capability fallback.
+Web, SwiftUI and Kotlin request bounded windows with stable row pins; older hosts retain eager behavior through an explicit capability fallback.
 Retain the completed encoder and streaming transaction improvements, and exclude active collection policies from this fix.
 
-Tech Stack: OCaml, ocaml-signal, Melange, the existing Web virtualizer, Go, MyGo ListColumn, SwiftUI, Jetpack Compose, JNI and the shared native C ABI.
+Tech Stack: OCaml, ocaml-signal, Melange, the existing Web virtualizer, SwiftUI, Jetpack Compose, JNI and the shared native C ABI.
 
-Related: Builds on [004-component-api-mygo-parity.md](004-component-api-mygo-parity.md) and the follow-up memory PR #274.
+Related: See [the API migration guide](../api-migrations.md) and the follow-up memory PR #274.
 
 ## Problem statement
 
 The current Gallery creates 100,000 LUI row nodes before the host virtualizes their views.
 Each row also owns a signal, scope, handlers and keyed bookkeeping.
-After diagnostic collection, the loaded application still retains approximately 167 MiB of OCaml objects and 72 MiB of Go objects, before allocator capacity and temporary batches.
+After diagnostic collection, the loaded application still retains approximately 167 MiB of OCaml objects, before allocator capacity and temporary batches.
 Changing collection timing does not remove this representation cost.
 
 Business data and a compact key index may remain proportional to source length.
@@ -34,7 +34,6 @@ Keep initial test drafts outside the repository until their target interfaces ar
 | Controlled values | An editor's model value survives eviction/remount; retired-incarnation events cannot edit a replacement. |
 | PPX | A derived reactive source is owned per mount and disposed once, without disposing borrowed sources. |
 | Protocol | Counts, generation and sparse index vectors validate atomically, including extension-root rows, invalid pins and duplicate/out-of-range indices. |
-| MyGo | Real ListColumn scrolling and bottom jumps preserve full logical extent with bounded LUI/backend/control counts and interaction pins. |
 | Web | Chromium, Firefox and WebKit verify full scroll extent, window convergence, variable row measurement, anchors, focus, pointer hold, composition and portal owners. |
 | SwiftUI | Actual native scrolling and bounded row rendering, far jumps, viewport feedback, focused editor identity, composition and pointer/popup ownership preserve a bounded committed tree across reorder and resync. |
 | Kotlin | Actual Compose LazyColumn scrolling, focused far reorder, selection and pointer/popup pins preserve native interaction and a bounded committed tree. |
@@ -66,9 +65,8 @@ Using scroll_target without that mapping must produce an explicit validation err
 The structural source must be the sole direct child of VirtualList and must reject other parents or competing dynamic segments.
 Existing eager children and keyed collections retain their existing behavior.
 
-Append MyGoHost to the existing host vocabulary without reordering earlier cases.
-Map native host code 5 to it and support lazy generation on all four implemented host families.
-MyGo advertises code 5 only when the new optional window ABI is available.
+Support lazy generation on the three maintained host families.
+Native host code 5 is retired and grants no capabilities.
 Keep semantic SwiftUIHost and KotlinHost profiles unchanged.
 Native codes 258 and 260 advertise bounded-row support in addition to the existing SwiftUI code 2 and Kotlin code 4.
 Updated native clients probe the optional version entry point and retain codes 2/4 with older libraries.
@@ -100,7 +98,7 @@ Ignore stale source generations and filter dead, foreign or nonchild pins withou
 Maintenance feedback must not depend on a user-visible enabled flag or an application event handler.
 
 Add optional lui_ocaml_virtual_window(node, generation, first, last, pins, count) to the native bridge.
-Copy and root the integer list under the registered thread's OCaml lock; retain the Go slice only through the synchronous foreign call.
+Copy and root the integer list under the registered thread's OCaml lock; retain host memory only through the synchronous foreign call.
 Missing exports preserve older-library loading and the eager profile fallback.
 
 ## Task 1: Protocol and capability contract
@@ -108,7 +106,7 @@ Missing exports preserve older-library loading and the eager profile fallback.
 1. Write canonical validation, event round-trip and older-library compatibility tests.
 2. Update src/lui_protocol.ml and .mli, src/lui_wire_schema.ml, platform host aliases, src/lui_extension.ml and the applicable Gallery host match.
 3. Add typed window dispatch in src/lui_native_bridge.ml, platform/bridge/lui_caml_dispatch.h and platform/bridge/lui_ocaml_bridge.c.
-4. Extend tooling/export_mygo_contract.ml, then regenerate schema/components.json and the maintained MyGo manifest through existing tooling.
+4. Regenerate the shared component artifacts from schema/components.json through existing tooling.
 5. Verify schema freshness, event ordinals, integer precision, malformed input and atomic final validation.
 
 Do not modify Dune files or suppress warnings.
@@ -142,23 +140,11 @@ Persistent editor/selection state belongs to application data; focus and active 
 Relevant ownership integration is in platform/web/melange/core/lui_web_layers.ml.
 Check snapshot resync and stationary-viewport pin changes, not just ordinary scroll events.
 
-## Task 4: MyGo sparse collection and native feedback
-
-1. Add real ListColumn/Tester regressions to platform/mygo/collections_test.go and native runtime integration tests.
-2. Update platform/mygo/collections.go to use logical total count and sparse committed children, preserving the eager adapter.
-3. Expose the toolkit's actual contiguous requested window and focused/dragged row pins through a focused, tested change in the authorized logseq/mygo fork.
-4. Reuse toolkit focus/selection behavior and include pressed/composing/popup-owner rows where necessary.
-5. Coalesce VirtualWindow feedback after committed layout and route it through the optional runtime binding in platform/mygo/runtime.go.
-6. Validate protocol support, snapshots, stale requests and source reorder with real OCaml Gallery interaction.
-7. Pin the immutable fork version, preserve upstream module identity and update required downstream replacements and support documentation.
-
-Never vendor the toolkit or commit build/cache artifacts.
-
-## Task 5: Gallery, migration and release acceptance
+## Task 4: Gallery, migration and release acceptance
 
 1. Migrate examples/gallery/view.ml from keyed to virtual_rows inside its existing virtual_list, following .agents/skills/lui-reactive/SKILL.md.
-2. Record source/API, host-profile, wire and lifecycle changes with concrete examples in docs/api-migrations.md and platform/mygo/README.md.
-3. Run focused tests, core tests, schema/PPX checks, real OCaml integration, browser coverage and the complete Go race suite.
+2. Record source/API, host-profile, wire and lifecycle changes with concrete examples in docs/api-migrations.md.
+3. Run focused tests, core tests, schema/PPX checks, real OCaml integration and browser coverage.
 4. Measure the ordinary release through idle, representative controls, 100,000-row loading/scrolling and Clear, including physical footprint and compression.
 5. Verify node/scope/handler/control counts stay bounded while scrolling far and after repeated load/clear cycles.
 6. Update PR #274 with final before/after results and exact-head CI evidence; mark ready only after the acceptance gates pass.
@@ -193,7 +179,7 @@ Serialize every Dune invocation across the three implementation owners.
 ## Testing Details
 
 Use real OCaml application/runtime lifecycles and host input rather than tests that only inspect metadata shapes.
-Allocation budgets run without race instrumentation; behavioral Go tests still run with races.
+Run allocation budgets separately from behavioral tests.
 Measure release artifacts with no debug hooks, externally forced collection, active GC scheduling or parallel local CPU-heavy jobs.
 Serialize every Dune command, including wrapper scripts.
 Require all final PR checks to pass on the actual final commit.
@@ -214,7 +200,6 @@ Require all final PR checks to pass on the actual final commit.
 ## Resolved contract decisions
 
 The missing-target index sentinel is -1, and the internal window interval is half-open.
-The pinned MyGo fork exposes actual requested windows, active interaction pins and authoritative source key lookup without changing its upstream module identity.
 An individual row may contain an arbitrarily large subtree, so bounds are stated in mounted rows plus their descendant nodes, not a universal absolute node count.
 
 ---
