@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+## Unreleased: Apple minimum row height preserves tall content
+
+A non-growing Row with default/stretch cross alignment and no explicit height
+keeps its intrinsic height through the outer minimum-height surface. For
+example, a `min-height: 24` row containing 261pt of stacked content stays 261pt
+under parent compression instead of collapsing to 24pt around overflowing
+children. Growing, explicitly sized and absolutely positioned rows keep their
+existing sizing behavior.
+
 ## Unreleased: Apple native search focus capability
 
 Hoisted iOS search fields now consume host focus requests once and report

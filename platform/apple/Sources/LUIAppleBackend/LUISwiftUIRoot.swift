@@ -8199,6 +8199,17 @@ enum LUISurfaceFramePolicy {
         return (kind == .textarea && classes.contains("composer-input")) ||
             (kind == .column && classes.contains("composer-surface"))
     }
+    // The minimum-height surface must preserve a stretch row's ideal height
+    // under parent compression. Positioned and explicitly sized rows stay flexible.
+    @MainActor
+    static func rowIsIntrinsicHeight(model: LUINodeModel) -> Bool {
+        model.kind == .row
+            && (model.property(.cross)?.stringValue ?? "stretch") == "stretch"
+            && model.derived.grow <= 0
+            && model.surfaceHeight == nil
+            && model.derived.absoluteInsets == nil
+    }
+
     static func usesTopLeadingAlignment(kind: LUINodeKind) -> Bool {
         kind == .textarea
     }
@@ -8493,7 +8504,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 vertical: LUISurfaceFramePolicy.usesIntrinsicHeight(
                     kind: model.kind,
                     styleClass: model.derived.styleClass
-                )
+                ) || LUISurfaceFramePolicy.rowIsIntrinsicHeight(model: model)
             )
             .modifier(
                 LUIContainerRelativeFrameModifier(
