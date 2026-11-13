@@ -25,7 +25,8 @@ final class LUIHostFocusState {
 
 public extension LUIAppleBackend {
     /// Request focus for a focusable control, including one awaiting mount.
-    /// Text inputs are focusable on both platforms; on macOS `button` and
+    /// Text inputs are focusable on both platforms; `searchField` focus and
+    /// ownership require iOS 18 or later on iOS. On macOS `button` and
     /// `menuItem` also qualify. True means accepted, not that native focus
     /// has completed. The latest request wins and is consumed once by the
     /// original retained node.
@@ -45,6 +46,7 @@ public extension LUIAppleBackend {
 
     /// The currently focused control — a text input, or on macOS a
     /// `button`/`menuItem` — or nil when another native control holds focus.
+    /// Search-field ownership on iOS requires iOS 18 or later.
     /// Dropped/replaced node identities are never returned.
     var focusedNodeID: Int? {
         guard let focused = hostFocus.owner?.model, model(id: focused.id) === focused else { return nil }
@@ -56,7 +58,13 @@ extension LUIAppleBackend {
     private func isFocusableTextInput(_ model: LUINodeModel) -> Bool {
         guard model.isEnabled else { return false }
         switch model.kind {
-        case .textField, .secureField, .input, .searchField, .textarea: return true
+        case .textField, .secureField, .input, .textarea: return true
+        case .searchField:
+            #if os(iOS)
+            // Search activation on iOS 17 does not identify keyboard focus.
+            if #unavailable(iOS 18.0) { return false }
+            #endif
+            return true
         default: return false
         }
     }
