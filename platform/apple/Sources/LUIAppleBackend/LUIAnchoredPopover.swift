@@ -71,7 +71,11 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
     @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
     @State private var anchorFrame = CGRect.zero
-    @State private var contentSize: CGSize?
+    private struct ContentMeasurement {
+        let presentationID: ObjectIdentifier
+        let size: CGSize
+    }
+    @State private var contentMeasurement: ContentMeasurement?
 
     func body(content: Content) -> some View {
         let item = backend.anchoredPopovers.presentation(at: nodeID)
@@ -82,6 +86,9 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
                         $0.frame(in: .global)
                     } action: { anchorFrame = $0 }
                 }
+            }
+            .onChange(of: item?.id) { _, next in
+                if next == nil { contentMeasurement = nil }
             }
             .popover(
                 item: Binding<LUIAnchoredPopoverPresentation?>(
@@ -113,16 +120,24 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
             .frame(minWidth: item.model.property(.anchorAlignment)?.stringValue == "stretch"
                 ? (item.anchorRect?.width ?? anchorFrame.width) : nil)
             .fixedSize()
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                guard backend.anchoredPopovers.presentation(at: nodeID)?.id == item.id else { return }
+                contentMeasurement = ContentMeasurement(presentationID: item.id, size: size)
+            }
         if let height = item.model.property(.availableHeight)?.doubleValue.map({ CGFloat($0) }) {
             // One mounted content tree preserves native controls and drafts
             // as its ideal height crosses the viewport limit.
             ScrollView(.vertical) { content }
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(height: min(contentSize?.height ?? height, height))
+                .frame(height: min(contentSize(for: item)?.height ?? height, height))
         } else {
             content
         }
+    }
+
+    private func contentSize(for item: LUIAnchoredPopoverPresentation) -> CGSize? {
+        guard let contentMeasurement, contentMeasurement.presentationID == item.id else { return nil }
+        return contentMeasurement.size
     }
 
     private func attachmentAnchor(_ item: LUIAnchoredPopoverPresentation?) -> PopoverAttachmentAnchor {
@@ -143,7 +158,7 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
         let fraction: CGFloat = alignment == "end" ? 1 : (alignment == "center" ? 0.5 : 0)
         // Native popovers center their cross axis on the attachment point.
         // Include the rendered content extent to align its start/end edge.
-        let idealSize = contentSize ?? .zero
+        let idealSize = contentSize(for: item) ?? .zero
         let height = min(idealSize.height,
             model.property(.availableHeight)?.doubleValue.map({ CGFloat($0) }) ?? idealSize.height)
         let x = rect.minX + rect.width * fraction + idealSize.width * (0.5 - fraction) + crossOffset
