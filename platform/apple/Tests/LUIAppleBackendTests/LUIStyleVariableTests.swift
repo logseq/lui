@@ -1,7 +1,24 @@
 import Testing
+import SwiftUI
 @testable import LUIAppleBackend
 
 struct LUIStyleVariableTests {
+    @Test("Semantic color variables preserve override and nested fallback precedence")
+    func semanticColorVariables() {
+        let cases: [(String, [String: Color], Color?)] = [
+            ("var(--caret, var(--ink))", ["--ink": .blue], .blue),
+            ("var(--caret, var(--ink))", ["var(--ink)": .blue], .blue),
+            ("var(--caret, var(--ink))", ["--caret": .green, "--ink": .blue], .green),
+            ("var(--caret, var(--ink))", ["var(--caret, var(--ink))": .red, "--ink": .blue], .red),
+            ("var(--caret, #1234)", [:], luiHexColor("#1234")),
+            ("var(--missing)", [:], nil),
+            ("var(--missing", [:], nil)
+        ]
+        for (raw, colors, expected) in cases {
+            #expect(LUIThemeColorResolver.color(raw, semanticColors: colors) == expected)
+        }
+    }
+
     @Test("Typography variable chains, fallbacks and cycles preserve inherited values")
     func typographyVariables() {
         let cases: [(String, [String: String], Double?)] = [

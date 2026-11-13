@@ -21,10 +21,18 @@ public extension View {
     }
 }
 
-/// Substitution only; the existing typography parser owns supported units and
-/// font families. Invalid or cyclic values fall back at the referring var().
+/// Substitution only; callers own supported literal values. Invalid or cyclic
+/// values fall back at the referring var().
 struct LUIStyleVariableResolver {
-    let variables: [String: String]
+    private let lookup: (String) -> String?
+
+    init(variables: [String: String]) {
+        lookup = { variables[$0] }
+    }
+
+    init(lookup: @escaping (String) -> String?) {
+        self.lookup = lookup
+    }
 
     private enum Failure: Error {
         case invalid
@@ -74,7 +82,7 @@ struct LUIStyleVariableResolver {
                 throw Failure.cycle(Set(path[index...]))
             }
             var replacement: String?
-            if let value = variables[name] {
+            if let value = lookup(name) {
                 do {
                     replacement = try substitute(value, path: path + [name])
                 } catch Failure.cycle(let members) {
