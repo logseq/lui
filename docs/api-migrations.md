@@ -7,6 +7,10 @@ host and frame reporting as standalone nodes. For example, a Popover with
 `anchor-target: "group-action"` can target that button's accessibility identifier
 inside a `button-group`; group keyboard navigation keeps its existing behavior.
 
+An anchored submenu child is presentation content, not menu label content. A
+menu-item with its own text and only a positioned Popover child now keeps its
+text label. Hidden children likewise do not replace the fallback label.
+
 ## Unreleased: Apple sibling paint order and transparent inline wrappers
 
 Row, Column and Box now place flow and absolute children in one sibling paint
