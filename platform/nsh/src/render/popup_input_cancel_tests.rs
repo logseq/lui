@@ -152,7 +152,7 @@ fn gone(app: &mut Headless, selector: &str) {
 fn overlay_escape_delegates_live_opt_in_clears_query_and_restores_typing() {
     let (mut app, seen) = start();
     app.press_key("f2").unwrap();
-    app.wait_for("status:2").unwrap();
+    app.wait_for("text:status:2").unwrap();
     app.press_key("escape").unwrap();
     app.wait_for("id:lui-22").unwrap();
     assert_eq!(app.screen().input_text("id:lui-22").unwrap(), Some(""));
