@@ -817,7 +817,11 @@ private struct LUINodeView: View {
                     alignment: .leading,
                     spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
             ) {
-                children
+                ForEach(model.children.filter {
+                    model.childData.layout[$0]?.derived.absoluteInsets == nil
+                }, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                }
             }
             .modifier(LUIContainerPressModifier(model: model, backend: backend))
             )
@@ -6531,7 +6535,7 @@ private struct LUIAbsoluteFlowChildrenModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if model.kind == .row || model.kind == .column {
+        if model.kind == .row || model.kind == .column || model.kind == .box {
             content.overlay {
                 let children = model.children.filter {
                     model.childData.layout[$0]?.derived.absoluteInsets != nil
