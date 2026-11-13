@@ -618,6 +618,16 @@ struct LUIAnyNodeView: View, Equatable {
     @ViewBuilder
     var body: some View {
         let _ = perfProbe()
+        if backend.model(id: nodeID)?.property(.display)?.stringValue != "none",
+           backend.extensionModel(id: nodeID)?.properties["display"]?.stringValue != "none" {
+            nodeContent
+                .modifier(LUIFrameReportModifier(nodeID: nodeID, backend: backend))
+                .modifier(LUIAnchoredPopoverModifier(nodeID: nodeID, backend: backend))
+        }
+    }
+
+    @ViewBuilder
+    private var nodeContent: some View {
         Group {
             if let model = backend.model(id: nodeID) {
                 if model.kind != .popover || !model.hasNativePopoverAnchor
@@ -628,8 +638,6 @@ struct LUIAnyNodeView: View, Equatable {
                 LUIExtensionNodeView(model: model, backend: backend)
             }
         }
-        .modifier(LUIFrameReportModifier(nodeID: nodeID, backend: backend))
-        .modifier(LUIAnchoredPopoverModifier(nodeID: nodeID, backend: backend))
     }
 }
 
