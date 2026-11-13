@@ -1628,6 +1628,8 @@ public final class LUIAppleBackend {
         for id in dropped {
             if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }
             if hostQueries.imageQueries.contains(id) { hostQueries.imageQueries.remove(id) }
+            hostQueries.scrollQueries.remove(id)
+            hostQueries.scrollViews[id] = nil
             hostQueries.textViews[id] = nil
             hostQueries.images[id] = nil
             if models[id] != nil || extensionModels[id] != nil {

@@ -41,7 +41,7 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
     private var incarnation: UInt64 = 0
     private var attributedText = NSAttributedString(string: "")
     private var lineLimit: Int?
-    private var layout: LUITextLayout?
+    private var textLayout: LUITextLayout?
     private var drawnLayout: LUITextLayout?
     private var layoutIdentity = UUID()
     private var drawnSize = CGSize.zero
@@ -75,7 +75,7 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
         if !attributedText.isEqual(to: text) || self.lineLimit != lineLimit {
             attributedText = text
             self.lineLimit = lineLimit
-            layout = nil
+            textLayout = nil
         }
         drawnLayout = nil
         #if os(macOS)
@@ -102,24 +102,39 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
         return LUITextLayout(text: attributedText, width: proposed, lineLimit: lineLimit).size
     }
 
-    private func render() {
-        guard bounds.width > 0 else { return }
-        if layout?.container.size.width != bounds.width {
-            layout = LUITextLayout(text: attributedText, width: bounds.width, lineLimit: lineLimit)
+    private func layoutForBounds() -> LUITextLayout? {
+        guard bounds.width >= 0, bounds.width.isFinite else { return nil }
+        if textLayout == nil || textLayout?.container.size.width != bounds.width {
+            textLayout = LUITextLayout(text: attributedText, width: bounds.width, lineLimit: lineLimit)
             layoutIdentity = UUID()
         }
-        guard let layout else { return }
-        let glyphs = layout.manager.glyphRange(for: layout.container)
-        layout.manager.drawBackground(forGlyphRange: glyphs, at: .zero)
-        layout.manager.drawGlyphs(forGlyphRange: glyphs, at: .zero)
+        return textLayout
+    }
+
+    private func commit(_ layout: LUITextLayout) {
         drawnLayout = layout
         drawnSize = bounds.size
         backend?.scheduleFramesReport()
     }
 
+    private func commitZeroWidthLayout() {
+        // Native drawing is culled for zero-area views, but TextKit still owns
+        // real line/caret metrics for an empty-block U+200B landing pad.
+        guard bounds.width == 0, let layout = layoutForBounds() else { return }
+        commit(layout)
+    }
+
+    private func render() {
+        guard let layout = layoutForBounds() else { return }
+        let glyphs = layout.manager.glyphRange(for: layout.container)
+        layout.manager.drawBackground(forGlyphRange: glyphs, at: .zero)
+        layout.manager.drawGlyphs(forGlyphRange: glyphs, at: .zero)
+        commit(layout)
+    }
+
     func committedGeometry() -> LUICommittedTextGeometry? {
         guard let backend, let model, let layout = drawnLayout,
-              layout === self.layout, drawnSize == bounds.size,
+              layout === textLayout, drawnSize == bounds.size,
               backend.model(id: model.id) === model,
               renderGeneration == backend.generation, sourceText == model.text,
               let frame = windowFrame() else { return nil }
@@ -147,9 +162,11 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
 
     #if os(macOS)
     override var isFlipped: Bool { true }
+    override func layout() { super.layout(); commitZeroWidthLayout() }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func draw(_ dirtyRect: NSRect) { render() }
     #else
+    override func layoutSubviews() { super.layoutSubviews(); commitZeroWidthLayout() }
     override func draw(_ rect: CGRect) { render() }
     #endif
 }

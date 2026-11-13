@@ -128,6 +128,9 @@ final class LUIHostQueries {
     var iconRevision: UInt64 = 0
     var textQueries: Set<Int> = []
     var imageQueries: Set<Int> = []
+    var scrollQueries: Set<Int> = []
+    @ObservationIgnored var scrollViews: [Int: WeakScrollView] = [:]
+    struct WeakScrollView { weak var value: LUIHostScrollMarker? }
     @ObservationIgnored var textViews: [Int: WeakTextView] = [:]
     @ObservationIgnored var nextIncarnation: UInt64 = 0
     @ObservationIgnored var images: [Int: LoadedImage] = [:]

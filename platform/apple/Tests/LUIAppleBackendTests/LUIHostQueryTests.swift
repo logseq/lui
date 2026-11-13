@@ -3,6 +3,8 @@ import Testing
 @testable import LUIAppleBackend
 #if os(macOS)
 import AppKit
+#else
+import UIKit
 #endif
 
 @MainActor
@@ -46,6 +48,135 @@ struct LUIHostQueryTests {
         backend.unregisterImage(id: 7)
         #expect(backend.naturalImageSize(nodeID: 1) == nil)
         #expect(backend.naturalImageSize(nodeID: 999) == nil)
+    }
+
+    @Test("Host scroll commands bind to mounted native viewports and expire with node identity")
+    func mountedScrolling() async throws {
+        #if os(macOS)
+        _ = NSApplication.shared
+        #endif
+        let backend = LUIAppleBackend()
+        backend.frameReportingEnabled = true
+        var reports = 0
+        backend.onFramesReport = { _ in reports += 1 }
+        let batch = """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"scroll"},
+          {"op":"create-node","id":2,"kind":"scroll"},
+          {"op":"set-prop","id":2,"property":"height","value":180},
+          {"op":"set-prop","id":2,"property":"width","value":220},
+          {"op":"create-node","id":3,"kind":"column"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"set-prop","id":4,"property":"text","value":"Head"},
+          {"op":"set-prop","id":4,"property":"height","value":900},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"set-prop","id":5,"property":"text","value":"Target"},
+          {"op":"set-prop","id":5,"property":"height","value":60},
+          {"op":"insert-child","parent":3,"child":4,"index":0},
+          {"op":"insert-child","parent":3,"child":5,"index":1},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """
+        try backend.apply(json: batch)
+        #expect(backend.scrollMetrics(nodeID: 2) == nil)
+        #expect(!backend.setScrollTop(nodeID: 2, top: 120))
+        #expect(!backend.scrollIntoView(nodeID: 5))
+        let root = LUISwiftUIRoot(backend: backend, rootID: 1)
+        #if os(macOS)
+        let hosting = NSHostingView(rootView: root)
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: 0, width: 220, height: 180),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hosting
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        func layout() { hosting.layoutSubtreeIfNeeded(); window.display() }
+        #else
+        let hosting = UIHostingController(rootView: root)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 220, height: 180))
+        window.rootViewController = hosting
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        func layout() { window.layoutIfNeeded(); hosting.view.layoutIfNeeded() }
+        #endif
+        for _ in 0..<100 where backend.scrollMetrics(nodeID: 2) == nil {
+            layout()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let metrics = try #require(backend.scrollMetrics(nodeID: 2))
+        #expect(metrics.contentSize.height >= 960)
+        #expect(metrics.viewportSize.height > 0 && metrics.viewportSize.height <= 180)
+        #expect(backend.setScrollTop(nodeID: 2, top: 120))
+        #expect(abs(try #require(backend.scrollMetrics(nodeID: 2)).offset - 120) < 1)
+        #expect(backend.setScrollTop(nodeID: 2, top: 0))
+        var revealed = backend.scrollIntoView(nodeID: 5)
+        for _ in 0..<100 where !revealed {
+            layout()
+            try await Task.sleep(for: .milliseconds(10))
+            revealed = backend.scrollIntoView(nodeID: 5)
+        }
+        #expect(revealed)
+        #expect(try #require(backend.scrollMetrics(nodeID: 2)).offset > 0)
+        #expect(!backend.setScrollTop(nodeID: 2, top: .nan))
+        #expect(!backend.setScrollTop(nodeID: 4, top: 10))
+        #expect(backend.scrollMetrics(nodeID: 4) == nil)
+        #expect(!backend.scrollIntoView(nodeID: 999))
+        #expect(reports > 0)
+        try backend.applySnapshot(json: batch.replacingOccurrences(of: "\"generation\":1", with: "\"generation\":2"))
+        #if os(macOS)
+        window.contentView = nil
+        #else
+        window.isHidden = true
+        window.rootViewController = nil
+        #endif
+        #expect(backend.scrollMetrics(nodeID: 2) == nil)
+        #expect(!backend.setScrollTop(nodeID: 2, top: 20))
+        #expect(!backend.scrollIntoView(nodeID: 5))
+    }
+
+    @Test("A zero-width empty-block pad commits a native caret without a draw pass")
+    func zeroWidthCaret() async throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"\u{200B}"}
+        ]}
+        """)
+        let model = try #require(backend.model(id: 2))
+        let view = LUICommittedTextNativeView()
+        view.frame = CGRect(x: 10, y: 10, width: 0, height: 40)
+        #if os(macOS)
+        _ = NSApplication.shared
+        let font = NSFont.systemFont(ofSize: 15)
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: 0, width: 200, height: 100),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = NSView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        window.contentView?.addSubview(view)
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        func layout() { view.layoutSubtreeIfNeeded(); window.display() }
+        #else
+        let font = UIFont.systemFont(ofSize: 15)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        let controller = UIViewController()
+        window.rootViewController = controller
+        controller.view.addSubview(view)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        func layout() { window.layoutIfNeeded(); view.layoutIfNeeded() }
+        #endif
+        view.configure(model: model, backend: backend,
+            text: NSAttributedString(string: model.text, attributes: [.font: font]), lineLimit: nil)
+        for _ in 0..<50 where backend.textGeometry(nodeID: 2) == nil {
+            layout()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let geometry = try #require(backend.textGeometry(nodeID: 2))
+        let caret = try #require(geometry.caretRect(atUTF16Offset: 0))
+        #expect(geometry.frame.width == 0)
+        #expect(caret.minX.isFinite && caret.minY.isFinite && caret.height > 0)
+        #expect(backend.isCurrent(geometry))
     }
 
     #if os(macOS)
