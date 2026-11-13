@@ -1297,8 +1297,9 @@ struct LUIRetainedTree {
             }
             if node.kind == .menuItem {
                 let text = node.properties[.text]?.stringValue ?? ""
-                guard !text.isEmpty || hasNamedChild(node) else {
-                    throw invalid("menu-item requires text")
+                let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
+                guard !text.isEmpty || !label.isEmpty || hasNamedChild(node) else {
+                    throw invalid("menu-item requires text or accessibility-label")
                 }
             }
             if node.kind == .menuTrigger {

@@ -64,6 +64,10 @@ struct LUIHostQueryTests {
           {"op":"create-node","id":1,"kind":"column"},
           {"op":"set-prop","id":1,"property":"font-size","value":"var(--editor-size, 14px)"},
           {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"display","value":"block"},
+          {"op":"set-prop","id":2,"property":"position","value":"relative"},
+          {"op":"set-prop","id":2,"property":"z-index","value":1},
+          {"op":"set-prop","id":2,"property":"user-select","value":"text"},
           {"op":"create-node","id":3,"kind":"text"},
           {"op":"set-prop","id":3,"property":"text","value":"Apple smoke hello 世界 and a long line that wraps onto another line"},
           {"op":"create-node","id":4,"kind":"text"},
@@ -77,11 +81,13 @@ struct LUIHostQueryTests {
         _ = backend.textGeometry(nodeID: 4)
         let root = LUISwiftUIRoot(backend: backend, rootID: 1)
             .luiStyleVariables(["--editor-size": "20px"])
+            .environment(\.colorScheme, .light)
         #if os(macOS)
         let hosting = NSHostingView(rootView: root)
         hosting.sizingOptions = []
         let window = NSWindow(contentRect: CGRect(x: -10_000, y: 0, width: 220, height: 240),
             styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = hosting
         window.orderFrontRegardless()
         defer { window.orderOut(nil); window.contentView = nil }
@@ -102,6 +108,19 @@ struct LUIHostQueryTests {
         let pad = try #require(backend.textGeometry(nodeID: 4))
         #expect(run.text == backend.model(id: 3)?.text)
         #expect(run.lineRanges.count > 1)
+        #if os(macOS)
+        let nativeText = try #require(backend.hostQueries.textViews[3]?.value)
+        let bitmap = try #require(nativeText.bitmapImageRepForCachingDisplay(in: nativeText.bounds))
+        nativeText.cacheDisplay(in: nativeText.bounds, to: bitmap)
+        let painted = (0..<bitmap.pixelsHigh).contains { y in
+            (0..<bitmap.pixelsWide).contains { x in
+                guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return false }
+                return pixel.alphaComponent > 0.1
+                    && (pixel.redComponent + pixel.greenComponent + pixel.blueComponent) / 3 < 0.8
+            }
+        }
+        #expect(painted)
+        #endif
         let caret = try #require(run.caretRect(atUTF16Offset: run.text.utf16.count))
         let padCaret = try #require(pad.caretRect(atUTF16Offset: 0))
         #expect(caret.height >= 20)

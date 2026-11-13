@@ -1,5 +1,51 @@
 # LUI API migration guide
 
+## Unreleased: Apple input focus, native sidebar synchronization and safe resync
+
+Apple hosts can call `backend.requestFocus(nodeID:) -> Bool` for standard
+`text-field`, `secure-field`, `input`, `search-field` and `textarea` controls.
+True means the request was accepted, including before the control mounts;
+false means the node is unknown, disabled or not one of those controls.
+The latest request wins and is consumed once through the existing SwiftUI
+focus binding. Requests belong to the retained node identity: dropping and
+recreating the same numeric ID never transfers an old request. For example:
+
+```swift
+guard backend.requestFocus(nodeID: inputID) else {
+    throw HostError.invalidFocusTarget(inputID)
+}
+// When routing a later key event, identify the focused standard text input.
+let targetID = backend.focusedNodeID
+```
+
+`focusedNodeID` is read-only and reports the focused standard text input, or
+nil when none is focused. Extension controls keep their host-owned focus
+registries. Existing autofocus, draft composition and wire events are
+unchanged; hosts do not need to rewrite retained properties to repeat a focus
+request. Replacing a retained input identity remounts its control, so a reused
+numeric ID cannot carry the previous node's native draft or focus binding.
+
+On macOS, a native sidebar nested directly in a manual split now reconciles
+retained fraction changes with the parent's target pane proposal, including
+during animation. Closing an outer right pane no longer caches a sidebar
+width calculated from the previous, narrower parent. Ordinary window-only
+resizing still preserves the native sidebar's width in points.
+
+`applySnapshot(json:)` validates the replacement against a fresh retained tree
+before clearing or publishing anything. A rejected snapshot throws and leaves
+the existing tree, pending commits, generation and mounted identities intact;
+the same generation can be retried with a valid authoritative snapshot.
+Accepted snapshots keep their existing replacement semantics. Incremental
+`apply` failure generation handling is unchanged.
+
+Apple menu items now accept a nonempty `accessibility-label` without an own
+`text` property, matching canonical admission. Native menu titles fall back
+to their accessible content label when own text is absent. Existing text and
+named-child forms remain supported; unnamed menu items still fail validation.
+Committed TextKit foreground colors are resolved in the actual SwiftUI
+environment before conversion to native colors, preserving semantic colors
+across light and dark appearance.
+
 ## Unreleased: Apple typography variables, inline text and absolute stack children
 
 Apple hosts can supply their current theme snapshot with the additive
