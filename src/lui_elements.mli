@@ -3897,7 +3897,6 @@ val menu_item :
   ?transition:string -> t list -> t
 val list_item :
   ?key:string ->
-  ?gap:int ->
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->

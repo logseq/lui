@@ -5954,3 +5954,17 @@ authored cancellation capability retain their existing allocation/listener
 policy. Web, Apple and Android lowering are unchanged. Headless Overlay-keymap
 regressions cover delegation and outside/nested fallback; actual AppKit keyboard
 delivery remains a separate application qualification.
+
+### ListItem rejects the globally invalid gap constructor label
+
+`list_item` no longer exposes `?gap`. Canonical ListItem has never admitted Gap on any backend, so the former call type-checked but raised when mounted. Invalid direct, qualified, aliased, optional-forwarded and reactive gap calls now fail OCaml type checking. Valid calls, including `~main`, `~cross`, padding, content and action handlers, are unchanged on NSH, Web, Apple/iOS, Android and Generic profiles. Dynamic low-level wire/property attempts still fail the existing kind/property boundary.
+
+```ocaml
+(* Previously type-checked, but was rejected on every host when mounted. *)
+list_item ~text:"Open" ~gap:4 []
+
+(* Use the provider's existing row spacing. Main/cross remain valid. *)
+list_item ~text:"Open" ~main:`start ~cross:`center []
+```
+
+If application content needs its own spacing, keep Gap on an authored passive Row inside the ListItem, as maintained mobile query rows and journal status rows already do. Do not move the action into a nested button merely to add spacing. No backend, wire domain, native component or default is added or removed by this correction. Current App, mobile and journal source callers were audited as gap-free before changing the constructor; their valid ListItem labels remain.

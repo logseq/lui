@@ -1785,6 +1785,40 @@ let test_drop_large_subtree_is_one_detach () =
     Alcotest.failf "dropping 4x nodes took %gs after %gs" elapsed_large
       elapsed_small
 
+let test_list_item_layout_constructor_contract () =
+  let open Lui_protocol in
+  List.iter (fun backend_profile ->
+    let set_gap=ref (fun () -> ()) and item_id=ref (-1) and presses=ref 0 in
+    let backend={ (recording_backend ()) with backend_profile } in
+    let app=Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ context parent ->
+        let node=Lui_elements.list_item ~text:"Item" ~main:`start ~cross:`center
+          ~min_height:32 ~padding_horizontal:8 ~padding_vertical:6
+          ~on_press:(fun _ -> incr presses) [] context parent in
+        item_id:=node;
+        set_gap:=(fun () -> Lui_ui.int_property context node Gap 4);
+        node) in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      flush_app app;
+      let authored property value=List.exists (function
+        | SetProp (id,p,v) -> id= !item_id && p=property && v=value
+        | _ -> false) (all_ops ()) in
+      Alcotest.(check bool) "valid ListItem alignment is preserved on every host" true
+        (authored MainAlignment (StringValue "start")
+         && authored CrossAlignment (StringValue "center")
+         && authored PaddingHorizontal (IntValue 8));
+      ignore (Lui_app.dispatch_event app (Press !item_id));
+      Alcotest.(check int) "valid ListItem keeps its action callback" 1 !presses;
+      let rejected=try !set_gap ();false with Invalid_argument reason ->
+        String.starts_with
+          ~prefix:"property is unsupported by node kind: kind=list-item prop=gap " reason in
+      Alcotest.(check bool) "dynamic ListItem gap is rejected by its real property boundary" true rejected;
+      flush_app app;
+      Alcotest.(check bool) "invalid gap never reaches a maintained host" false
+        (List.exists (function SetProp (_,Gap,_) -> true | _ -> false) (all_ops ()))))
+    [profile WebOS WebHost;profile MacOS NshHost;profile IOS SwiftUIHost;
+     profile AndroidOS KotlinHost;generic_profile ()]
+
 let test_shrink_contract () =
   let open Lui_protocol in
   let shrink = Lui_wire.property_of_name "shrink" in
@@ -6329,6 +6363,7 @@ let () =
             test_data_attrs_protocol;
           Alcotest.test_case "finite float encoding" `Quick
             test_float_encoding_rejects_non_finite;
+          Alcotest.test_case "ListItem layout constructor contract" `Quick test_list_item_layout_constructor_contract;
           Alcotest.test_case "shrink contract" `Quick test_shrink_contract;
           Alcotest.test_case "as protocol" `Quick test_as_protocol;
           Alcotest.test_case "data-attrs + as emit" `Quick
