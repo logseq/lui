@@ -29,9 +29,16 @@ public extension LUIAppleBackend {
     /// request wins and is consumed once by the original retained node.
     @discardableResult
     func requestFocus(nodeID: Int) -> Bool {
-        guard let model = model(id: nodeID), isFocusableTextInput(model) else { return false }
-        hostFocus.request = .init(model: model)
-        return true
+        var accepted = false
+        withDeferredEventDelivery {
+            // Classify the accepted retained tree, including a newly created
+            // input whose observable commit is still waiting to coalesce.
+            flushPendingCommit()
+            guard let model = model(id: nodeID), isFocusableTextInput(model) else { return }
+            hostFocus.request = .init(model: model)
+            accepted = true
+        }
+        return accepted
     }
 
     /// The focused standard text input, or nil for another native control.

@@ -24,6 +24,8 @@ registries. Existing autofocus, draft composition and wire events are
 unchanged; hosts do not need to rewrite retained properties to repeat a focus
 request. Replacing a retained input identity remounts its control, so a reused
 numeric ID cannot carry the previous node's native draft or focus binding.
+Focus requests materialize pending coalesced model commits before classifying
+the target; a newly accepted retained input is focusable before its view mounts.
 
 On macOS, a native sidebar nested directly in a manual split now reconciles
 retained fraction changes with the parent's target pane proposal, including
