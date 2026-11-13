@@ -71,7 +71,7 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
     @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
     @State private var anchorFrame = CGRect.zero
-    @State private var contentSize = CGSize.zero
+    @State private var contentSize: CGSize?
 
     func body(content: Content) -> some View {
         let item = backend.anchoredPopovers.presentation(at: nodeID)
@@ -114,12 +114,12 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
                 ? (item.anchorRect?.width ?? anchorFrame.width) : nil)
             .fixedSize()
             .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
-        if let height = item.model.property(.availableHeight)?.doubleValue {
+        if let height = item.model.property(.availableHeight)?.doubleValue.map({ CGFloat($0) }) {
             // One mounted content tree preserves native controls and drafts
             // as its ideal height crosses the viewport limit.
             ScrollView(.vertical) { content }
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(height: min(contentSize.height > 0 ? contentSize.height : CGFloat(height), CGFloat(height)))
+                .frame(height: min(contentSize?.height ?? height, height))
         } else {
             content
         }
@@ -143,9 +143,10 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
         let fraction: CGFloat = alignment == "end" ? 1 : (alignment == "center" ? 0.5 : 0)
         // Native popovers center their cross axis on the attachment point.
         // Include the rendered content extent to align its start/end edge.
-        let height = min(contentSize.height,
-            model.property(.availableHeight)?.doubleValue.map(CGFloat.init) ?? contentSize.height)
-        let x = rect.minX + rect.width * fraction + contentSize.width * (0.5 - fraction) + crossOffset
+        let idealSize = contentSize ?? .zero
+        let height = min(idealSize.height,
+            model.property(.availableHeight)?.doubleValue.map({ CGFloat($0) }) ?? idealSize.height)
+        let x = rect.minX + rect.width * fraction + idealSize.width * (0.5 - fraction) + crossOffset
         let y = rect.minY + rect.height * fraction + height * (0.5 - fraction) + crossOffset
         #endif
         let point: CGPoint
