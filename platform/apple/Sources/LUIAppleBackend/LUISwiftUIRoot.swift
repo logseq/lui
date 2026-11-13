@@ -7991,6 +7991,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
     let model: LUINodeModel?
     let backend: LUIAppleBackend
     @State private var draft: LUITextDraftState
+    @State private var representedModel: LUINodeModel?
     @State private var presented = false
     @State private var focusMount = UUID()
     @FocusState private var searchFocused: Bool
@@ -7999,6 +8000,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
         self.model = model
         self.backend = backend
         _draft = State(initialValue: LUITextDraftState(source: model?.text ?? ""))
+        _representedModel = State(initialValue: model)
     }
 
     @ViewBuilder
@@ -8030,7 +8032,10 @@ private struct LUISearchableNodeModifier: ViewModifier {
                           backend.consumeFocusRequest(token, for: model) else { return }
                     presentSearch()
                 }
-                .onAppear { if model.requestsAutofocus { presentSearch() } }
+                .onAppear {
+                    reconcileModelIdentity()
+                    if model.requestsAutofocus { presentSearch() }
+                }
                 .onChange(of: model.requestsAutofocus) { _, _ in presentSearch() }
                 .onDisappear {
                     backend.controlFocusChanged(model: model, mount: focusMount, focused: false)
@@ -8046,8 +8051,9 @@ private struct LUISearchableNodeModifier: ViewModifier {
                 .onChange(of: model.text) { _, next in
                     draft.reconcile(source: next, focused: presented)
                 }
-                .onChange(of: model.id) { _, _ in
-                    draft.reconcile(source: model.text, focused: presented)
+                .onChange(of: ObjectIdentifier(model)) { _, _ in
+                    reconcileModelIdentity()
+                    if model.requestsAutofocus { presentSearch() }
                 }
             if #available(iOS 18.0, *) {
                 searchable
@@ -8061,6 +8067,15 @@ private struct LUISearchableNodeModifier: ViewModifier {
         } else {
             content
         }
+    }
+
+    private func reconcileModelIdentity() {
+        guard representedModel !== model else { return }
+        representedModel = model
+        draft = LUITextDraftState(source: model?.text ?? "")
+        focusMount = UUID()
+        presented = false
+        searchFocused = false
     }
 
     private func presentSearch() {
