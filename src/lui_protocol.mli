@@ -324,6 +324,11 @@ type wire_value =
   | IntValue of int
   | FloatValue of float
 
+type click_count = private int
+val unavailable_click_count : click_count
+val click_count_of_int : int -> click_count option
+val click_count_to_int : click_count -> int
+
 (* Pointer-level event payload shared by PressDetail, PointerDown,
    PointerUp and ContextMenuPress. [modifiers] uses the same bitmask as
    PressModifiers (1=ctrl, 2=shift, 4=meta, 8=secondary button, 16=alt).
@@ -337,7 +342,7 @@ type pointer_detail = {
   modifiers : int;
   button : int;
   target_class : string;
-  clicks : int;
+  clicks : click_count;
 }
 
 type event =

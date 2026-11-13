@@ -1543,7 +1543,7 @@ let test_input_blur_callback () =
 let test_pointer_events () =
   let open Lui_protocol in
   let detail =
-    { x = 12.5; y = 34.5; modifiers = 11; button = 1; target_class = "a b"; clicks = 0 }
+    { x = 12.5; y = 34.5; modifiers = 11; button = 1; target_class = "a b"; clicks = Lui_protocol.unavailable_click_count }
   in
   (* node extraction *)
   Alcotest.(check int) "press-detail node" 7
@@ -1669,7 +1669,7 @@ let test_pointer_dispatch () =
   let button = (drive_node s (Drive.Model.Kind "button")).Drive.Model.id in
   let detail =
     { Lui_protocol.x = 1.0; y = 2.0; modifiers = 0; button = 0;
-      target_class = ""; clicks = 0 }
+      target_class = ""; clicks = Lui_protocol.unavailable_click_count }
   in
   drive_send s (Lui_protocol.PressDetail (button, detail));
   drive_send s (Lui_protocol.PointerEnter button);
@@ -1686,15 +1686,21 @@ let test_pointer_dispatch () =
             (Lui_protocol.ValueChanged (button, 0.5))));
   let open Lui_protocol in
   Alcotest.(check int) "legacy pointer callbacks retain unknown click count" 0
-    (Lui_native_bridge.pointer_detail 1. 2. 0 0 "").clicks;
+    (click_count_to_int ((Lui_native_bridge.pointer_detail 1. 2. 0 0 "").clicks));
+  List.iter (fun raw ->
+    Alcotest.(check int) "validated private counts retain their integer representation" raw
+      (click_count_to_int (Option.get (click_count_of_int raw)))) [0;1;2;0x3fffffff];
+  Alcotest.(check bool) "the smart constructor rejects a negative count" true
+    (click_count_of_int (-1) = None);
+  Alcotest.(check bool) "the smart constructor rejects an overflowing count" true
+    (click_count_of_int 0x40000000 = None);
   let counted = Lui_native_bridge.pointer_detail_clicks 1. 2. 0 0 "hit" 2 in
   drive_send s (PressDetail (button, counted));
   Alcotest.(check int) "counted press uses the existing owned handler" 2 !details;
   List.iter (fun clicks ->
     Alcotest.check_raises "malformed dynamic count rejected before callback"
       (Invalid_argument "pointer click count must be a portable nonnegative int")
-      (fun () -> ignore (Lui_app.dispatch_event (drive_app s)
-        (PressDetail (button, {counted with clicks}))))) [-1; 0x40000000];
+      (fun () -> ignore (Lui_native_bridge.pointer_detail_clicks 1. 2. 0 0 "hit" clicks))) [-1; 0x40000000];
   Alcotest.check_raises "non-click events cannot forge a click count"
     (Invalid_argument "only press-detail carries a click count")
     (fun () -> ignore (Lui_app.dispatch_event (drive_app s) (PointerDown (button, counted))));

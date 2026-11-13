@@ -234,12 +234,12 @@ let agent bridge request =
     | patches -> reply ^ "\n" ^ patches)
 
 let pointer_detail x y modifiers button target_class =
-  {x; y; modifiers; button; target_class; clicks = 0}
+  {x; y; modifiers; button; target_class; clicks = unavailable_click_count}
 
 let pointer_detail_clicks x y modifiers button target_class clicks =
-  if clicks < 0 || clicks > 0x3fffffff then
-    invalid_arg "pointer click count must be a portable nonnegative int";
-  { (pointer_detail x y modifiers button target_class) with clicks }
+  match click_count_of_int clicks with
+  | Some clicks -> { (pointer_detail x y modifiers button target_class) with clicks }
+  | None -> invalid_arg "pointer click count must be a portable nonnegative int"
 
 let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   let register suffix value = register_named (prefix ^ "_" ^ suffix) value in

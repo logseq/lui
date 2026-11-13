@@ -85,7 +85,7 @@ let rec presence kind assigned =
     let no = presence kind ((property, false) :: assigned) in
     if yes = no then yes else obj ["property", str (Lui_wire_schema.property_name property); "yes", yes; "no", no]
 
-let pointer = {x = 0.; y = 0.; modifiers = 0; button = 0; target_class = ""; clicks = 0}
+let pointer = {x = 0.; y = 0.; modifiers = 0; button = 0; target_class = ""; clicks = Lui_protocol.unavailable_click_count}
 let events = [
   "press", Press 0; "press-modifiers", PressModifiers (0, 0);
   "long-press", LongPress 0; "text-changed", TextChanged (0, "");

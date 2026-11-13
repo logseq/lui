@@ -165,7 +165,7 @@ let id_fields name id = [ ("event", `String name); ("id", `Int id) ]
 
 let detail_fields (d : pointer_detail) =
   [ ("x", `Float d.x); ("y", `Float d.y); ("modifiers", `Int d.modifiers)
-  ; ("button", `Int d.button); ("target_class", `String d.target_class); ("clicks", `Int d.clicks) ]
+  ; ("button", `Int d.button); ("target_class", `String d.target_class); ("clicks", `Int (Lui_protocol.click_count_to_int d.clicks)) ]
 
 let send_event t = function
   | Press id -> send t (`Assoc (id_fields "press" id))

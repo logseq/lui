@@ -807,7 +807,7 @@ let () =
 test("pointer click counts keep a typed record boundary", () => {
   const dir = mkdtempSync(join(tmpdir(), "lui-pointer-count-"))
   try {
-    for (const [value, valid] of [["0", true], ["2", true], ['"2"', false], ["2.0", false]]) {
+    for (const [value, valid] of [["Lui_protocol.unavailable_click_count", true], ["Option.get (Lui_protocol.click_count_of_int 2)", true], ["-1", false], ["0x40000000", false], ['"2"', false], ["2.0", false]]) {
       writeFileSync(join(dir, "probe.ml"), `let detail : Lui_protocol.pointer_detail =
   { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = ""; clicks = ${value} }
 `)
@@ -816,8 +816,8 @@ test("pointer click counts keep a typed record boundary", () => {
       if (valid) assert.equal(result.status, 0, result.stdout + result.stderr)
       else {
         assert.notEqual(result.status, 0)
-        assert.match(result.stderr, /This expression has type (string|float)/)
-        assert.match(result.stderr, /expected of type int/)
+        assert.match(result.stderr, /This expression has type (int|string|float)/)
+        assert.match(result.stderr, /expected of type Lui_protocol.click_count/)
       }
     }
   } finally { rmSync(dir, {recursive: true, force: true}) }

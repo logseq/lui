@@ -385,7 +385,9 @@ let pointer_detail_of ?(clicks = 0) event : Lui_protocol.pointer_detail =
       lor (if W.MouseEvent.altKey mouse then 16 else 0);
     button;
     target_class = event_target_class_name event;
-    clicks }
+    clicks = (match Lui_protocol.click_count_of_int clicks with
+      | Some count -> count
+      | None -> invalid_arg "pointer click count must be a portable nonnegative int") }
 
 (* Element construction. [attributes] is (name, value) pairs applied before
    children are appended, matching the original element/5 helper. *)

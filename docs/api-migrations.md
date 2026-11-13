@@ -6057,12 +6057,17 @@ If application content needs its own spacing, keep Gap on an authored passive Ro
 
 ## Pointer detail preserves the platform click count
 
-`Lui_protocol.pointer_detail` appends `clicks : int`. Existing pointer
+`Lui_protocol.pointer_detail` appends `clicks : click_count`, a private integer
+alias with no wrapper allocation. Existing pointer
 constructors and callback names retain their behavior. `PressDetail` carries
 NSH `PressEvent.clicks` and Web `MouseEvent.detail`; `0` means the platform did
 not supply a count, including keyboard activation. Other pointer event kinds
 carry `0`. Counts are integers in `0..0x3fffffff`, the nonnegative range shared
-with 32-bit OCaml; malformed dynamic counts are rejected before dispatch.
+with 32-bit OCaml. `unavailable_click_count` supplies zero;
+`click_count_of_int : int -> click_count option` validates dynamic counts, and
+`click_count_to_int` reads them. Raw integer/string/float record fields fail
+compilation, so literal negative/overflowing counts cannot bypass validation.
+Malformed C/platform counts are rejected at their dynamic boundary.
 There is no time/position-based double-click inference or new subscription.
 
 Downstream code that creates a pointer record must supply the new field:
@@ -6070,10 +6075,10 @@ Downstream code that creates a pointer record must supply the new field:
 ```ocaml
 let detail : Lui_protocol.pointer_detail =
   { x = 10.; y = 20.; modifiers = 0; button = 0;
-    target_class = ""; clicks = 0 }
+    target_class = ""; clicks = Lui_protocol.unavailable_click_count }
 ```
 
-Consumers may check `detail.clicks = 2` on the existing `PressDetail` callback,
+Consumers may check `Lui_protocol.click_count_to_int detail.clicks = 2` on the existing `PressDetail` callback,
 using that same event's position/owner. A missing count does not authorize
 emulating an OS double click. Existing Apple/Android six-argument callbacks
 remain unchanged and populate `clicks = 0`; their prior pointer routing stays

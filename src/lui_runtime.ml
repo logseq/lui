@@ -2193,10 +2193,10 @@ let dispatch application event =
   (match event with
    | PressDetail (_, detail) | PointerDown (_, detail) | PointerUp (_, detail)
    | PointerMove (_, detail) | PointerCancel (_, detail) | ContextMenuPress (_, detail)
-     when detail.clicks < 0 || detail.clicks > 0x3fffffff ->
+     when click_count_to_int detail.clicks < 0 || click_count_to_int detail.clicks > 0x3fffffff ->
        invalid_arg "pointer click count must be a portable nonnegative int"
    | PointerDown (_, detail) | PointerUp (_, detail) | PointerMove (_, detail)
-   | PointerCancel (_, detail) | ContextMenuPress (_, detail) when detail.clicks <> 0 ->
+   | PointerCancel (_, detail) | ContextMenuPress (_, detail) when click_count_to_int detail.clicks <> 0 ->
        invalid_arg "only press-detail carries a click count"
    | _ -> ());
   let node = canonical_node application (event_node event) in

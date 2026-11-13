@@ -158,7 +158,7 @@ let send_event t = function
     in
     let accepted =
       c_event_detail t.handle name (Int64.of_int n) d.x d.y d.modifiers
-        d.button d.target_class d.clicks
+        d.button d.target_class (click_count_to_int d.clicks)
     in
     settle_patches t;
     check_refusal t accepted

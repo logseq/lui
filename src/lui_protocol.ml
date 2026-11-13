@@ -329,6 +329,14 @@ type wire_value =
   | IntValue of int
   | FloatValue of float
 
+(* An immediate integer with a private public signature: producers validate
+   dynamic platform values, while raw record literals cannot bypass the domain. *)
+type click_count = int
+let unavailable_click_count : click_count = 0
+let click_count_of_int value : click_count option =
+  if value >= 0 && value <= 0x3fffffff then Some value else None
+let click_count_to_int (value : click_count) = value
+
 (* Pointer-level event payload shared by PressDetail, PointerDown,
    PointerUp and ContextMenuPress. [modifiers] uses the same bitmask as
    PressModifiers (1=ctrl, 2=shift, 4=meta, 8=secondary button, 16=alt).
@@ -342,7 +350,7 @@ type pointer_detail = {
   modifiers : int;
   button : int;
   target_class : string;
-  clicks : int;
+  clicks : click_count;
 }
 
 (* New variants must be appended at the end (before ExtensionEvent):
