@@ -280,6 +280,7 @@ pub(crate) fn anchored_popup(
     children: AnyElement,
     anchor: Option<ElementRef>,
     emit: Emit,
+    cancel: Rc<dyn Fn()>,
     presentation: Presentation,
 ) -> AnyElement {
     let id = node.get_untracked().id;
@@ -379,7 +380,7 @@ pub(crate) fn anchored_popup(
                 outside_restore.set(false);
                 outside(Event::Dismiss(id));
             })
-            .on_cancel(move || emit(Event::Dismiss(id)))
+            .on_cancel(move || cancel())
             .child(children),
     )
 }

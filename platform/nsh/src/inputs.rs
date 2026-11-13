@@ -66,6 +66,42 @@ pub(crate) fn attach(
     reference: ElementRef,
     emit: Rc<dyn Fn(Event)>,
 ) -> Input {
+    attach_with_cancel(input, node, reference, emit).0
+}
+
+/// The retained input's existing cancellation policy, shared with its popup.
+/// Native focus watches belong to this input's owner, not the popup's lifetime.
+#[derive(Clone)]
+pub(crate) struct Cancellation {
+    node: Signal<Arc<Node>>,
+    focused: Rc<Cell<bool>>,
+    state: Rc<Cell<BlurState>>,
+    emit: Rc<dyn Fn(Event)>,
+}
+impl Cancellation {
+    pub(crate) fn cancel(&self) -> bool {
+        let Some(node) = self.node.try_get() else {
+            return false;
+        };
+        if !self.focused.get()
+            || !node.boolean("enabled", true)
+            || !node.boolean("dismiss-enabled", false)
+        {
+            return false;
+        }
+        // A composing/already-canceled draft still owns this key. It must not
+        // fall through to dismissing the surrounding popup instead.
+        request_dismiss(&node, &self.state, &*self.emit);
+        true
+    }
+}
+
+pub(crate) fn attach_with_cancel(
+    input: Input,
+    node: Signal<Arc<Node>>,
+    reference: ElementRef,
+    emit: Rc<dyn Fn(Event)>,
+) -> (Input, Option<Cancellation>) {
     let input = if node.get_untracked().kind == "textarea" {
         input.submit_behavior(move || {
             if node.get().boolean("submit-on-enter", false) {
@@ -102,12 +138,15 @@ pub(crate) fn attach(
     });
     if !authored_blur && !authored_navigation && !authored_dismiss {
         // Ordinary Inputs allocate no additional policy state or observers.
-        return input.on_submit(move |_: &str| {
-            let node = node.get_untracked();
-            if node.boolean("enabled", true) {
-                emit(Event::Submit(node.id));
-            }
-        });
+        return (
+            input.on_submit(move |_: &str| {
+                let node = node.get_untracked();
+                if node.boolean("enabled", true) {
+                    emit(Event::Submit(node.id));
+                }
+            }),
+            None,
+        );
     }
     let composing = authored_navigation.then(|| signal(false));
     if let Some(composing) = composing {
@@ -124,6 +163,21 @@ pub(crate) fn attach(
             composing.set(event.composing);
         }
     });
+    let cancellation = if authored_dismiss {
+        let focused = Rc::new(Cell::new(false));
+        let entered = focused.clone();
+        reference.on_focus_in(move || entered.set(true));
+        let left = focused.clone();
+        reference.on_focus_out(move || left.set(false));
+        Some(Cancellation {
+            node,
+            focused,
+            state: blur.clone().expect("authored cancellation owns blur state"),
+            emit: emit.clone(),
+        })
+    } else {
+        None
+    };
     if authored_dismiss {
         let dismiss_state = blur.clone().expect("authored cancellation owns blur state");
         let dismiss_emit = emit.clone();
@@ -155,28 +209,31 @@ pub(crate) fn attach(
                 }
             });
     }
-    input.on_submit(move |_: &str| {
-        if composing.is_some_and(|composing| composing.try_get().unwrap_or(true))
-            || blur.as_ref().is_some_and(|blur| {
-                let state = blur.get();
-                state.composing || state.dismissed
-            })
-        {
-            return;
-        }
-        let Some(node) = node.try_get() else { return };
-        if let Some(blur) = &blur {
-            let mut current = blur.get();
-            // An unchanged single-line draft must not submit twice when a
-            // later explicit Blur follows Enter. A real edit rearms it.
-            // A textarea's later Blur remains a separate request.
-            current.suppress_native_blur = node.kind != "textarea";
-            blur.set(current);
-        }
-        if node.boolean("enabled", true) {
-            emit(Event::Submit(node.id));
-        }
-    })
+    (
+        input.on_submit(move |_: &str| {
+            if composing.is_some_and(|composing| composing.try_get().unwrap_or(true))
+                || blur.as_ref().is_some_and(|blur| {
+                    let state = blur.get();
+                    state.composing || state.dismissed
+                })
+            {
+                return;
+            }
+            let Some(node) = node.try_get() else { return };
+            if let Some(blur) = &blur {
+                let mut current = blur.get();
+                // An unchanged single-line draft must not submit twice when a
+                // later explicit Blur follows Enter. A real edit rearms it.
+                // A textarea's later Blur remains a separate request.
+                current.suppress_native_blur = node.kind != "textarea";
+                blur.set(current);
+            }
+            if node.boolean("enabled", true) {
+                emit(Event::Submit(node.id));
+            }
+        }),
+        cancellation,
+    )
 }
 
 /// Bind only the focused editor's own unmodified arrows. This is the public

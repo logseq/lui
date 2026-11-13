@@ -5928,3 +5928,29 @@ For example, a generic remount-required error now ends with
 No constructor, listener behavior or capability rule changes in this diagnostic
 update. Downstream error displays need no migration; diagnostic consumers should
 avoid depending on an exact full message string.
+
+## NSH popover Escape delegates to the focused dismissible input (2026-11-13)
+
+On NSH, the top anchored popover's native Cancel callback now first invokes the
+existing cancellation policy of its actually focused descendant Input when
+`dismiss-enabled=true`. The Input's `on_dismiss` runs instead of the popover's
+`on_dismiss`; it arms the existing canceled-draft/blur-submit suppression before
+application dispatch. This corrects the SDK overlay Escape binding taking the
+key before a focused native Input could receive its own KeyPress callback.
+
+For example, a search input may clear a nonempty query and remount its input to
+restore autofocus; its next blank-query `on_dismiss` may close the model-owned
+popover. No new constructor argument or wire property is required. A retained
+input initially authored with `dismiss-enabled=false` can still enable its
+already-installed handler without remounting. Removing/disabling that handler
+or disabling the input restores ordinary popover cancellation. A composing or
+already-canceled opted-in draft keeps ownership without a duplicate callback.
+
+Outside presses continue to request popover dismissal directly, even with a
+nonempty focused query. A nested top popover retains its own cancellation
+precedence; a focused input outside that popover cannot intercept its Escape.
+Retired input/overlay incarnations cannot receive callbacks. Inputs without an
+authored cancellation capability retain their existing allocation/listener
+policy. Web, Apple and Android lowering are unchanged. Headless Overlay-keymap
+regressions cover delegation and outside/nested fallback; actual AppKit keyboard
+delivery remains a separate application qualification.

@@ -90,6 +90,7 @@ struct Entry {
     popup: Signal<Option<(u64, u64)>>,
     capabilities: Rc<Cell<Option<Capabilities>>>,
     context_mode: Option<bool>,
+    input_cancel: Option<crate::inputs::Cancellation>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Failure {
@@ -403,6 +404,7 @@ impl Renderer {
                             popup,
                             capabilities: Rc::new(Cell::new(None)),
                             context_mode: None,
+                            input_cancel: None,
                         },
                     ) {
                         removed.push(entry);
@@ -758,6 +760,37 @@ impl Renderer {
             state.dispatch.clone()
         };
         dispatch(event, self.clone());
+    }
+    fn cancel_popup(&self, id: u64, incarnation: u64) {
+        let policies = {
+            let state = self.0.borrow();
+            let Some(popup) = state.store.nodes.get(&id) else {
+                return;
+            };
+            if popup.incarnation != incarnation {
+                return;
+            }
+            let mut policies = Vec::new();
+            let mut pending = popup.children.to_vec();
+            while let Some(child) = pending.pop() {
+                let Some(node) = state.store.nodes.get(&child) else {
+                    continue;
+                };
+                if let Some(entry) = state.nodes.get(&child)
+                    && entry.node.get_untracked().incarnation == node.incarnation
+                    && let Some(policy) = &entry.input_cancel
+                {
+                    policies.push(policy.clone());
+                }
+                pending.extend(node.children.iter().copied());
+            }
+            policies
+        };
+        // Application callbacks can synchronously patch or retire this tree.
+        // Never hold the renderer borrow across the existing input policy.
+        if !policies.iter().any(crate::inputs::Cancellation::cancel) {
+            self.emit(id, incarnation, Event::Dismiss(id));
+        }
     }
     fn popup_anchor(&self, node: &Node) -> Option<ElementRef> {
         let state = self.0.borrow();
@@ -1125,11 +1158,13 @@ impl Renderer {
         if matches!(node.kind.as_str(), "popover" | "tooltip") {
             let anchor = self.popup_anchor(&node);
             let events = self.clone();
+            let cancelling = self.clone();
             return crate::controls::anchored_popup(
                 state,
                 body.into_element(),
                 anchor,
                 Rc::new(move |event| events.emit(id, incarnation, event)),
+                Rc::new(move || cancelling.cancel_popup(id, incarnation)),
                 crate::controls::Presentation {
                     key: key.into(),
                     test_id: identifier.into(),
@@ -1289,14 +1324,27 @@ impl Renderer {
                     .into_element()
             }
             "text-field" | "secure-field" | "input" | "search-field" | "textarea" => {
-                let submit = self.clone();
+                // Entry retains the policy, so its emitter must not create a
+                // Renderer -> Entry -> cancellation -> Renderer ownership cycle.
+                let submit = Rc::downgrade(&self.0);
+                let (input, cancellation) = crate::inputs::attach_with_cancel(
+                    ui::input(theme),
+                    state,
+                    reference,
+                    Rc::new(move |event| {
+                        if let Some(renderer) = submit.upgrade() {
+                            Renderer(renderer).emit(id, incarnation, event);
+                        }
+                    }),
+                );
+                self.0
+                    .borrow_mut()
+                    .nodes
+                    .get_mut(&id)
+                    .expect("retained input")
+                    .input_cancel = cancellation;
                 native_events
-                    .attach(crate::inputs::attach(
-                        ui::input(theme),
-                        state,
-                        reference,
-                        Rc::new(move |event| submit.emit(id, incarnation, event)),
-                    ))
+                    .attach(input)
                     .value(move || state.get().string("text").to_owned())
                     .placeholder(move || state.get().string("placeholder").to_owned())
                     .masked(node.kind == "secure-field")
@@ -3063,6 +3111,8 @@ mod heading_tests;
 
 #[cfg(test)]
 mod input_tests;
+#[cfg(test)]
+mod popup_input_cancel_tests;
 
 #[cfg(test)]
 mod file_picker_tests;
