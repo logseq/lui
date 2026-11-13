@@ -2831,6 +2831,161 @@ mod theme_tests {
         assert_ne!(before, after);
         assert!(text.contains("kept"));
     }
+    struct PassiveShrinkKind(&'static str);
+
+    #[component]
+    fn PassiveShrinkScenario() -> impl IntoElement {
+        let kind = engine_context::<PassiveShrinkKind>().unwrap().0;
+        let renderer = Renderer::new(|_, _| {});
+        let mut ops = vec![
+            json!({"op":"create-node","id":1,"kind":"column"}),
+            json!({"op":"set-prop","id":1,"property":"width","value":240}),
+            json!({"op":"set-prop","id":1,"property":"height","value":100}),
+            json!({"op":"create-node","id":2,"kind":kind}),
+            json!({"op":"set-prop","id":2,"property":"width","value":120}),
+            json!({"op":"set-prop","id":2,"property":"height","value":200}),
+            json!({"op":"set-prop","id":2,"property":"min-height","value":0}),
+            json!({"op":"set-prop","id":2,"property":"accessibility-identifier","value":"passive-target"}),
+            json!({"op":"insert-child","parent":1,"child":2,"index":0}),
+        ];
+        if matches!(kind, "text" | "button") {
+            ops.push(json!({"op":"set-prop","id":2,"property":"text","value":"Retained content"}));
+        }
+        if kind == "scroll" {
+            ops.extend([
+                json!({"op":"create-node","id":3,"kind":"column"}),
+                json!({"op":"set-prop","id":3,"property":"height","value":400}),
+                json!({"op":"insert-child","parent":2,"child":3,"index":0}),
+            ]);
+        }
+        renderer.apply(patch(1, json!(ops))).unwrap();
+        renderer.set_root(1).unwrap();
+        let phase = signal(0_u64);
+        if matches!(kind, "row" | "column" | "box") {
+            for (key, next, value) in [
+                ("f8", 1_u64, Some(0.0)),
+                ("f9", 2_u64, Some(1.0)),
+                ("f10", 3_u64, None),
+            ] {
+                let updating = renderer.clone();
+                on_key_with(
+                    key,
+                    KeyOptions {
+                        when: nsh_core::keymap::When::Always,
+                        ..Default::default()
+                    },
+                    move |_| {
+                        let operation = match value {
+                            Some(value) => {
+                                json!({"op":"set-prop","id":2,"property":"shrink","value":value})
+                            }
+                            None => json!({"op":"remove-prop","id":2,"property":"shrink"}),
+                        };
+                        updating.apply(patch(next + 1, json!([operation]))).unwrap();
+                        phase.set(next);
+                    },
+                );
+            }
+        }
+        view()
+            .w(px(300.0))
+            .h(px(300.0))
+            .child(renderer.element())
+            .child(text(move || {
+                format!("Passive shrink phase {}", phase.get())
+            }))
+    }
+
+    fn passive_shrink_app(kind: &'static str) -> Headless {
+        let mut app = Headless::start(EngineConfig {
+            context: EngineContext::default().with(PassiveShrinkKind(kind)),
+            ..EngineConfig::new(Root::of::<PassiveShrinkScenario>())
+        })
+        .unwrap();
+        app.first_render().unwrap();
+        app
+    }
+
+    fn wait_passive_height(app: &mut Headless, phase: u64, expected: f32) {
+        app.wait_until(
+            "canonical passive node reaches the fixed parent height and published phase",
+            std::time::Duration::from_secs(2),
+            |screen| {
+                screen.count(&format!("text:Passive shrink phase {phase}")) == Ok(1)
+                    && screen.layout_nodes().iter().any(|node| {
+                        node.test_id.as_deref() == Some("passive-target")
+                            && node.bounds.size.height == px(expected)
+                    })
+            },
+        )
+        .unwrap();
+    }
+
+    fn assert_passive_default(kind: &'static str) {
+        let mut app = passive_shrink_app(kind);
+        wait_passive_height(&mut app, 0, 100.0);
+    }
+
+    #[test]
+    fn canonical_row_omitted_shrink_fits_its_parent() {
+        assert_passive_default("row");
+    }
+    #[test]
+    fn canonical_column_omitted_shrink_fits_its_parent() {
+        assert_passive_default("column");
+    }
+    #[test]
+    fn canonical_box_omitted_shrink_fits_its_parent() {
+        assert_passive_default("box");
+    }
+    #[test]
+    fn canonical_overlay_omitted_shrink_fits_its_parent() {
+        assert_passive_default("overlay");
+    }
+    #[test]
+    fn canonical_text_omitted_shrink_fits_its_parent() {
+        assert_passive_default("text");
+    }
+    #[test]
+    fn canonical_scroll_omitted_shrink_bounds_its_native_viewport() {
+        assert_passive_default("scroll");
+    }
+
+    #[test]
+    fn passive_shrink_overrides_and_removal_preserve_the_actual_native_owner() {
+        for kind in ["row", "column", "box"] {
+            let mut app = passive_shrink_app(kind);
+            wait_passive_height(&mut app, 0, 100.0);
+            let identity = app
+                .screen()
+                .layout_nodes()
+                .into_iter()
+                .find(|node| node.test_id.as_deref() == Some("passive-target"))
+                .unwrap()
+                .id;
+            for (key, phase, height) in [("f8", 1, 200.0), ("f9", 2, 100.0), ("f10", 3, 100.0)] {
+                app.press_key(key).unwrap();
+                wait_passive_height(&mut app, phase, height);
+                assert_eq!(
+                    app.screen()
+                        .layout_nodes()
+                        .into_iter()
+                        .find(|node| node.test_id.as_deref() == Some("passive-target"))
+                        .unwrap()
+                        .id,
+                    identity,
+                    "{kind} must retain its actual native layout owner"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_control_omitted_shrink_keeps_its_provider_default() {
+        let mut app = passive_shrink_app("button");
+        wait_passive_height(&mut app, 0, 200.0);
+    }
+
     #[component]
     fn TooltipScenario() -> impl IntoElement {
         let renderer = Renderer::new(|_, _| {});
