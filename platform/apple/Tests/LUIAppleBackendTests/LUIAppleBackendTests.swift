@@ -31,6 +31,39 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("Atomic subtree recreation publishes fresh models and child links")
+    func atomicSubtreeRecreation() throws {
+        let backend = LUIAppleBackend()
+        backend.coalescesCommits = true
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"create-node","id":4,"kind":"input"},
+          {"op":"insert-child","parent":2,"child":4,"index":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+        #expect(backend.requestFocus(nodeID: 4))
+        let oldParent = try #require(backend.model(id: 2))
+        let oldInput = try #require(backend.model(id: 4))
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"detach-subtree","id":2},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"create-node","id":4,"kind":"input"},
+          {"op":"insert-child","parent":2,"child":4,"index":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+        #expect(backend.requestFocus(nodeID: 4))
+        let parent = try #require(backend.model(id: 2))
+        let input = try #require(backend.model(id: 4))
+        #expect(parent !== oldParent)
+        #expect(input !== oldInput)
+        #expect(parent.children == [4])
+    }
+
     @Test("floating wire properties admit integral JSON numbers without weakening validation")
     func floatingWireNumbers() throws {
         let properties: [LUIProperty] = [

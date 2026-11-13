@@ -1,5 +1,15 @@
 # LUI API migration guide
 
+## Unreleased: Apple atomic subtree recreation
+
+An accepted batch that destructively detaches a subtree and recreates its IDs
+now publishes fresh retained models and child links from the final tree.
+Previously, the accepted nodes could remain absent from the native view model.
+For example, `detach-subtree(2)`, `create-node(2, search-field)` and reinserting
+2 in one batch produces a new usable search node; old focus requests and drafts
+do not belong to the replacement. This also applies across coalesced batches.
+No wire-format change or client-side split into extra generations is needed.
+
 ## Unreleased: Apple minimum row height preserves tall content
 
 A non-growing Row with default/stretch cross alignment and no explicit height
