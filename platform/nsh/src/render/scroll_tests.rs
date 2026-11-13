@@ -188,7 +188,18 @@ fn CanonicalScrollContent() -> impl IntoElement {
     }
     renderer.apply(patch(1, json!(ops))).unwrap();
     renderer.set_root(1).unwrap();
-    renderer.element()
+    if kind == "bottom-tab" {
+        // BottomTabs fills its offered flex space, so the native parent must
+        // bound that space instead of relying on the tab's intrinsic height.
+        view()
+            .w(px(240.0))
+            .h(px(180.0))
+            .min_h_0()
+            .child(renderer.element())
+            .into_element()
+    } else {
+        renderer.element().into_element()
+    }
 }
 
 fn start_content(fixture: ContentProbe) -> Headless {
@@ -293,6 +304,19 @@ fn list_and_bottom_tab_content_remain_sequential_not_same_cell() {
             second.bounds.origin.y - first.bounds.origin.y,
             px(400.0),
             "{kind} keeps normal sequential flow"
+        );
+        let viewport = layout(&app, "lui-2");
+        let scroll = viewport
+            .scroll
+            .as_ref()
+            .expect("actual native scroll metadata");
+        assert!(
+            scroll
+                .content_size
+                .expect("published native content extent")
+                .height
+                > viewport.bounds.size.height + px(100.0),
+            "{kind} has a real document larger than its bounded viewport: {viewport:?}"
         );
         if let Err(error) = app.scroll("id:lui-2", px(100.0)) {
             panic!(
