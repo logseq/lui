@@ -7992,6 +7992,8 @@ private struct LUISearchableNodeModifier: ViewModifier {
     let backend: LUIAppleBackend
     @State private var draft: LUITextDraftState
     @State private var presented = false
+    @State private var focusMount = UUID()
+    @FocusState private var searchFocused: Bool
 
     init(model: LUINodeModel?, backend: LUIAppleBackend) {
         self.model = model
@@ -8002,7 +8004,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if let model, model.isEnabled {
-            content
+            let searchable = content
                 .searchable(
                     text: Binding(
                         get: { draft.text },
@@ -8022,15 +8024,49 @@ private struct LUISearchableNodeModifier: ViewModifier {
                 .onSubmit(of: .search) {
                     try? backend.performSubmit(node: model.id)
                 }
+                .task(id: backend.focusRequestToken(for: model) ?? focusMount) {
+                    await Task.yield()
+                    guard !Task.isCancelled, let token = backend.focusRequestToken(for: model),
+                          backend.consumeFocusRequest(token, for: model) else { return }
+                    presentSearch()
+                }
+                .onAppear { if model.requestsAutofocus { presentSearch() } }
+                .onChange(of: model.requestsAutofocus) { _, _ in presentSearch() }
+                .onDisappear {
+                    backend.controlFocusChanged(model: model, mount: focusMount, focused: false)
+                }
+                .onChange(of: presented) { _, next in
+                    if !next {
+                        backend.controlFocusChanged(model: model, mount: focusMount, focused: false)
+                        if model.property(.text) != nil {
+                            draft.reconcile(source: model.text, focused: false)
+                        }
+                    }
+                }
                 .onChange(of: model.text) { _, next in
                     draft.reconcile(source: next, focused: presented)
                 }
                 .onChange(of: model.id) { _, _ in
                     draft.reconcile(source: model.text, focused: presented)
                 }
+            if #available(iOS 18.0, *) {
+                searchable
+                    .searchFocused($searchFocused)
+                    .onChange(of: searchFocused) { _, next in
+                        backend.controlFocusChanged(model: model, mount: focusMount, focused: next)
+                    }
+            } else {
+                searchable
+            }
         } else {
             content
         }
+    }
+
+    private func presentSearch() {
+        guard let model, model.isEnabled, backend.model(id: model.id) === model else { return }
+        presented = true
+        if #available(iOS 18.0, *) { searchFocused = true }
     }
 }
 #endif

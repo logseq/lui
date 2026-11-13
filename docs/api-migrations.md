@@ -1,5 +1,18 @@
 # LUI API migration guide
 
+## Unreleased: Apple native search focus capability
+
+Hoisted iOS search fields now consume host focus requests once and report
+keyboard ownership through SwiftUI's public search-focus binding on iOS 18+.
+A request also refocuses an already active search interface after another input
+takes focus. Hoisted search fields now honor the existing autofocus property.
+
+iOS 17 search UI remains supported. Host `requestFocus` returns `false` for
+`search-field` on iOS 17, and search-field ownership is not reported there:
+search-interface activation alone does not identify keyboard focus. Downstream
+hosts must check the returned Bool rather than treating acceptance as completed
+native focus. Other text-input focus capabilities are unchanged.
+
 ## Unreleased: Apple inline newline boundary geometry
 
 An inline text run ending with a newline keeps the downstream insertion line
