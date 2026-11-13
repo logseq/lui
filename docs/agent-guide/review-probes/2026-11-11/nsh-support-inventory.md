@@ -295,8 +295,8 @@ uses the concrete route bodies, not literal presence alone.
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
 | `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
 | `ui/checkbox.rs` | `bc9f2e79e01ed5452a05372c8269978d8d72a35dbf1eee7f6ead0824e5b4b536` |
-| `render.rs` | `cc9044856be90f442d6e8ed85e499619b15fe171c5240e346a654210a713e71c` |
-| `controls.rs` | `f63f1cbd749bfa55bec2707a5a9b7c9566ce98e4ba45c32a6091c04061988c6b` |
+| `render.rs` | `8bd8ebd1c2b3519771845a2be81e4bf57cfb7d5cb7469854df1c829974ed83f6` |
+| `controls.rs` | `342c5c71c2753c56ddb133d26b6bb06d6e7a157eb95123f09602c9a50f0ffed8` |
 | `style.rs` | `b7adca81f90139d6973279104991b3ef985e35416149724e8be091462d6e0f2d` |
 | `virtual_rows.rs` | `7d8d95ee762864e81628cacccee8bdabf93609fb1305da5a362c30b8f4a43fc3` |
 | `app.rs` | `b01c45598f2e74dc8e058ec26eb3aed84f31839d5542785939d301bd88f29487` |
@@ -310,7 +310,7 @@ uses the concrete route bodies, not literal presence alone.
 | `controls/navigation.rs` | `28e0e4ac35312ba9673f7b97168b6d6890d84bf2e676a59ba6d1764c4ef6a28d` |
 | `images.rs` | `0cd8caf3a1736e24381a595eae088031394615ebab4f9e6c0d35ee1d2ba1d6c7` |
 | `headings.rs` | `fe8fcddd03e900d52fd3e253af1cedd3db21a62c0a2c6eabcccc8e450098ff30` |
-| `inputs.rs` | `26cf05a1a2199af320b63e1a038a08f4578948b4c001198c970bb10fe548b30a` |
+| `inputs.rs` | `cbe02ca0b8cd97993f3553c2b1549260c3831dfc26252474575ba515e17e3d85` |
 | `file_picker.rs` | `958a8e75027262fcb5adbdbc2b27307cd78064170eee376f1e59b6dcc5b742d0` |
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |

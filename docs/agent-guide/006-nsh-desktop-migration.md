@@ -816,3 +816,23 @@ when invoking `ocamlopt`, resolving missing-CMX warnings without changing warnin
 settings or Dune files. Regeneration and the subsequent freshness check produced
 no diagnostics, and all 45 native tooling tests passed. Only the generator's
 input digest changes in the exported contract; validator behavior is unchanged.
+
+### Focused input cancellation inside popovers (2026-11-13)
+
+At `0ae5806b`, all 312 locked release library tests, 17 real OCaml/public-list/
+store integration tests and 45 native tooling tests passed. Strict all-target
+release Clippy, formatting and canonical contract freshness also passed.
+Evidence: `/tmp/lui-popup-input-escape-final-release.log`,
+`/tmp/lui-popup-input-escape-final-clippy.log`,
+`/tmp/lui-popup-input-escape-integrations.log` and
+`/tmp/lui-popup-input-escape-tooling.log`.
+
+The top popover's existing native Overlay Cancel route now delegates to its
+actually focused, enabled descendant Input's existing opted-in cancellation
+policy before dismissing the popover. Outside presses still dismiss normally;
+nested top popovers retain precedence. The five added regressions exercise real
+Headless Escape/keymap routing, live opt-in, retirement/disabled fallback and
+outside dismissal. Headless does not implement Input autofocus, so its replaced
+field is focused through the public test controller. Actual AppKit clearing,
+autofocus and immediate continued typing remain a separate required gate. No
+NSH SDK, public constructor or wire changes are introduced.
