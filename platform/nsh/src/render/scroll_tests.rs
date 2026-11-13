@@ -127,6 +127,9 @@ struct ContentProbe {
     horizontal: bool,
     natural: bool,
     padding: i64,
+    aligned: bool,
+    short: bool,
+    contents: bool,
 }
 
 #[component]
@@ -143,12 +146,12 @@ fn CanonicalScrollContent() -> impl IntoElement {
         json!({"op":"set-prop","id":2,"property":"height","value":100}),
         json!({"op":"set-prop","id":2,"property":"padding","value":fixture.padding}),
         json!({"op":"insert-child","parent":1,"child":2,"index":0}),
-        json!({"op":"create-node","id":3,"kind":"column"}),
-        json!({"op":"set-prop","id":3,"property":"width","value":400}),
+        json!({"op":"create-node","id":3,"kind":if fixture.contents {"box"} else {"column"}}),
+        json!({"op":"set-prop","id":3,"property":"width","value":if fixture.short {40} else {400}}),
         json!({"op":"insert-child","parent":2,"child":3,"index":0}),
         json!({"op":"create-node","id":4,"kind":"column"}),
-        json!({"op":"set-prop","id":4,"property":"width","value":250}),
-        json!({"op":"set-prop","id":4,"property":"height","value":250}),
+        json!({"op":"set-prop","id":4,"property":"width","value":if fixture.short {25} else {250}}),
+        json!({"op":"set-prop","id":4,"property":"height","value":if fixture.short {25} else {250}}),
         json!({"op":"insert-child","parent":2,"child":4,"index":1}),
     ];
     if kind == "bottom-tab" {
@@ -157,6 +160,15 @@ fn CanonicalScrollContent() -> impl IntoElement {
             json!({"op":"set-prop","id":1,"property":"accessibility-label","value":"Private scroll pages"}),
             json!({"op":"set-prop","id":2,"property":"title","value":"Scroll page"}),
             json!({"op":"set-prop","id":2,"property":"press-enabled","value":true}),
+        ]);
+    }
+    if fixture.contents {
+        ops.push(json!({"op":"set-prop","id":3,"property":"display","value":"contents"}));
+    }
+    if fixture.aligned {
+        ops.extend([
+            json!({"op":"set-prop","id":2,"property":"main","value":"end"}),
+            json!({"op":"set-prop","id":2,"property":"cross","value":"center"}),
         ]);
     }
     if fixture.horizontal {
@@ -172,25 +184,33 @@ fn CanonicalScrollContent() -> impl IntoElement {
             ]);
         }
     } else {
-        ops.push(json!({"op":"set-prop","id":3,"property":"height","value":400}));
+        ops.push(json!({"op":"set-prop","id":3,"property":"height","value":if fixture.short {40} else {400}}));
     }
     renderer.apply(patch(1, json!(ops))).unwrap();
     renderer.set_root(1).unwrap();
     renderer.element()
 }
 
-fn content_app(kind: &'static str, horizontal: bool, natural: bool, padding: i64) -> Headless {
+fn start_content(fixture: ContentProbe) -> Headless {
     let mut app = Headless::start(EngineConfig {
-        context: EngineContext::default().with(ContentProbe {
-            kind,
-            horizontal,
-            natural,
-            padding,
-        }),
+        context: EngineContext::default().with(fixture),
         ..EngineConfig::new(Root::of::<CanonicalScrollContent>())
     })
     .unwrap();
     app.first_render().unwrap();
+    app
+}
+
+fn content_app(kind: &'static str, horizontal: bool, natural: bool, padding: i64) -> Headless {
+    let mut app = start_content(ContentProbe {
+        kind,
+        horizontal,
+        natural,
+        padding,
+        aligned: false,
+        short: false,
+        contents: false,
+    });
     let ready = app.wait_until(
         &format!("{kind} canonical content retains its full document"),
         std::time::Duration::from_secs(2),
@@ -280,4 +300,107 @@ fn list_and_bottom_tab_content_remain_sequential_not_same_cell() {
             first.bounds.origin.y - px(100.0)
         );
     }
+}
+
+#[test]
+fn authored_scroll_alignment_has_one_document_owner_without_inaccessible_leading_extent() {
+    for kind in ["scroll", "list"] {
+        for horizontal in [false, true] {
+            for short in [false, true] {
+                let mut app = start_content(ContentProbe {
+                    kind,
+                    horizontal,
+                    natural: false,
+                    padding: 10,
+                    aligned: true,
+                    short,
+                    contents: false,
+                });
+                app.wait_for("id:lui-3").unwrap();
+                let viewport = layout(&app, "lui-2");
+                let first = layout(&app, "lui-3");
+                assert_eq!(
+                    first.bounds.size.height,
+                    px(if short { 40.0 } else { 400.0 })
+                );
+                assert!(
+                    first.bounds.origin.x >= viewport.bounds.origin.x + px(10.0),
+                    "{kind}/{horizontal}/{short} aligned document must not start at an inaccessible negative x: {:?} {:?}",
+                    first.bounds,
+                    viewport.bounds
+                );
+                assert!(
+                    first.bounds.origin.y >= viewport.bounds.origin.y + px(10.0),
+                    "{kind}/{horizontal}/{short} aligned document must not start at an inaccessible negative y: {:?} {:?}",
+                    first.bounds,
+                    viewport.bounds
+                );
+                if short {
+                    assert!(
+                        first.bounds.origin.x + first.bounds.size.width
+                            <= viewport.bounds.origin.x + viewport.bounds.size.width - px(10.0)
+                    );
+                    assert!(
+                        first.bounds.origin.y + first.bounds.size.height
+                            <= viewport.bounds.origin.y + viewport.bounds.size.height - px(10.0)
+                    );
+                    assert!(
+                        first.bounds.origin.x > viewport.bounds.origin.x + px(10.0)
+                            || first.bounds.origin.y > viewport.bounds.origin.y + px(10.0),
+                        "short content still applies authored end/center alignment in its own layout"
+                    );
+                } else {
+                    app.scroll("id:lui-2", px(100.0)).unwrap();
+                    let after = layout(&app, "lui-3");
+                    assert_eq!(after.id, first.id);
+                    assert_eq!(
+                        if horizontal {
+                            after.bounds.origin.x - first.bounds.origin.x
+                        } else {
+                            after.bounds.origin.y - first.bounds.origin.y
+                        },
+                        px(-100.0)
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn scroll_contents_anchor_flattens_before_grid_auto_placement() {
+    let mut app = start_content(ContentProbe {
+        kind: "scroll",
+        horizontal: false,
+        natural: true,
+        padding: 0,
+        aligned: false,
+        short: false,
+        contents: true,
+    });
+    app.wait_for("id:lui-30").unwrap();
+    assert!(
+        !app.screen()
+            .layout_nodes()
+            .iter()
+            .any(|node| node.test_id.as_deref() == Some("lui-3")),
+        "the canonical contents anchor must not gain a native box"
+    );
+    let ordinary = layout(&app, "lui-4");
+    let first = layout(&app, "lui-30");
+    let second = layout(&app, "lui-31");
+    assert_eq!(ordinary.bounds.size.height, px(250.0));
+    assert_eq!(first.bounds.size.height, px(220.0));
+    assert_eq!(second.bounds.size.height, px(220.0));
+    // The explicit ordinary child occupies1/1; flattened grandchildren have
+    // no direct-child grid-area style, so occupy subsequent implicit rows.
+    assert_eq!(first.bounds.origin.y, ordinary.bounds.origin.y + px(250.0));
+    assert_eq!(second.bounds.origin.y, first.bounds.origin.y + px(220.0));
+    app.scroll("id:lui-2", px(100.0)).unwrap();
+    assert_eq!(layout(&app, "lui-30").id, first.id);
+    assert_eq!(layout(&app, "lui-31").id, second.id);
+    assert_eq!(
+        layout(&app, "lui-30").bounds.origin.y,
+        first.bounds.origin.y - px(100.0)
+    );
 }
