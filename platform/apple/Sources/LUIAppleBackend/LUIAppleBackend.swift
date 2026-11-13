@@ -1897,12 +1897,14 @@ public final class LUIAppleBackend {
         while let id = pending.popLast() {
             guard visited.insert(id).inserted else { continue }
             if let model = models[id] {
+                guard model.property(.display)?.stringValue != "none" else { continue }
                 if let name = model.property(.accessibilityIdentifier)?.stringValue,
                    anchors[name] == nil {
                     anchors[name] = (id, ObjectIdentifier(model))
                 }
                 pending.append(contentsOf: model.children.reversed())
             } else if let model = extensionModels[id] {
+                guard model.properties["display"]?.stringValue != "none" else { continue }
                 if let name = model.properties["accessibility-identifier"]?.stringValue,
                    anchors[name] == nil {
                     anchors[name] = (id, ObjectIdentifier(model))
@@ -1912,12 +1914,15 @@ public final class LUIAppleBackend {
         }
         var items: [Int: LUIAnchoredPopoverPresentation] = [:]
         for id in popoverNodeIDs.sorted() {
-            guard let model = models[id],
+            guard visited.contains(id), let model = models[id],
                   model.property(.display)?.stringValue != "none",
                   model.hasNativePopoverAnchor else { continue }
             let anchor: (Int, ObjectIdentifier)?
             if let target = model.property(.anchorTarget)?.stringValue {
                 anchor = anchors[target]
+            } else if model.popoverAnchorRect == nil, let parent = model.parent {
+                anchor = models[parent].map { (parent, ObjectIdentifier($0)) }
+                    ?? extensionModels[parent].map { (parent, ObjectIdentifier($0)) }
             } else {
                 var root = id
                 while let parent = models[root]?.parent ?? extensionModels[root]?.parent { root = parent }

@@ -21,7 +21,7 @@ struct LUIAnchoredPopoverPresentation: Identifiable, Equatable {
 
 extension LUINodeModel {
     var hasNativePopoverAnchor: Bool {
-        property(.anchorTarget) != nil || property(.anchorRect) != nil
+        property(.anchor) != nil || property(.anchorTarget) != nil || property(.anchorRect) != nil
             || (property(.popupX) != nil && property(.popupY) != nil)
     }
 

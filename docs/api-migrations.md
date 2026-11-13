@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: Apple parent-anchored submenus and hidden subtrees
+
+A Popover with `anchor` but no `anchor-target` or explicit rectangle now attaches
+to its retained parent. For example, a menu item's Popover child with
+`anchor: "right"` opens beside that item in a native presentation; its child
+buttons receive their own press events instead of becoming inactive label
+content inside the parent button. Existing explicit targets and rectangles keep
+their behavior. Popovers without positioning props retain inline rendering.
+
+`display: "none"` now omits a node's native subtree from rendering, layout and
+frame reporting while keeping its retained identity and properties. Restoring
+the display property mounts the subtree from those properties. Hidden ancestors
+also suppress descendant popovers. For example, a hidden drag-instruction Box
+remains available in the retained tree without painting its text over a table.
+
 ## Unreleased: Apple semantic color variable fallbacks
 
 Color props now resolve nested `var(--name, fallback)` references against the
