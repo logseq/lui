@@ -354,11 +354,20 @@ fn keyboard_context_menu_uses_root_coordinates_without_a_fake_secondary_button()
     );
 }
 
-struct PointerPicker(Arc<Mutex<Vec<Event>>>);
+struct PointerPicker {
+    events: Arc<Mutex<Vec<Event>>>,
+    semantic: bool,
+}
 #[component]
 fn PointerOnlyPicker() -> impl IntoElement {
     let probe = engine_context::<PointerPicker>().unwrap();
-    let renderer = Renderer::new(move |event, _| probe.0.lock().unwrap().push(event));
+    let published = signal(0_u32);
+    let renderer = Renderer::new(move |event, _| {
+        if let Event::Pointer { kind: PointerKind::PressDetail, detail, .. } = &event {
+            published.set(detail.clicks);
+        }
+        probe.events.lock().unwrap().push(event);
+    });
     renderer
         .apply(patch(
             1,
@@ -367,17 +376,19 @@ fn PointerOnlyPicker() -> impl IntoElement {
                 {"op":"create-node","id":10,"kind":"select"},
                 {"op":"set-prop","id":10,"property":"text","value":"Pointer picker"},
                 {"op":"set-prop","id":10,"property":"pointer-enabled","value":true},
+                {"op":"set-prop","id":10,"property":"press-enabled","value":probe.semantic},
                 {"op":"insert-child","parent":1,"child":10,"index":0}
             ]),
         ))
         .unwrap();
     renderer.set_root(1).unwrap();
-    renderer.element()
+    view().flex_col().child(renderer.element())
+        .child(text(move || format!("Picker click count {}", published.get())))
 }
-fn pointer_picker(os: nsh_core::platform::Os) -> (Headless, Arc<Mutex<Vec<Event>>>) {
+fn pointer_picker_with_semantics(os: nsh_core::platform::Os, semantic: bool) -> (Headless, Arc<Mutex<Vec<Event>>>) {
     let events = Arc::new(Mutex::new(Vec::new()));
     let mut config = EngineConfig {
-        context: EngineContext::default().with(PointerPicker(events.clone())),
+        context: EngineContext::default().with(PointerPicker { events: events.clone(), semantic }),
         ..EngineConfig::new(Root::of::<PointerOnlyPicker>())
     };
     config.environment.os = os;
@@ -386,6 +397,24 @@ fn pointer_picker(os: nsh_core::platform::Os) -> (Headless, Arc<Mutex<Vec<Event>
     app.wait_for("Pointer picker").unwrap();
     (app, events)
 }
+fn pointer_picker(os: nsh_core::platform::Os) -> (Headless, Arc<Mutex<Vec<Event>>>) {
+    pointer_picker_with_semantics(os, false)
+}
+
+#[test]
+fn semantic_picker_press_retains_the_same_native_snapshot_click_count() {
+    let (mut app, events) = pointer_picker_with_semantics(nsh_core::platform::Os::MacOs, true);
+    let before = node_id(&app, "lui-10");
+    app.press("Pointer picker").unwrap();
+    app.wait_for("Picker click count 1").unwrap();
+    let observed = events.lock().unwrap();
+    assert_eq!(observed.iter().filter(|event| matches!(event, Event::Press(10))).count(), 1);
+    assert_eq!(observed.iter().filter(|event| matches!(event,
+        Event::Pointer { node: 10, kind: PointerKind::PressDetail, detail } if detail.clicks == 1)).count(), 1);
+    drop(observed);
+    assert_eq!(node_id(&app, "lui-10"), before);
+}
+
 #[test]
 fn pointer_only_controlled_picker_delivers_detail_once_without_semantic_activation() {
     let (mut app, events) = pointer_picker(nsh_core::platform::Os::MacOs);

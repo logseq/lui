@@ -239,7 +239,7 @@ impl NativeEvents {
             if let Some(press) = press {
                 self.pointer(
                     PointerKind::PressDetail,
-                    detail(press.page_position, press.modifiers, None),
+                    PointerDetail { clicks: press.clicks, ..detail(press.page_position, press.modifiers, None) },
                 );
             }
         } else {
