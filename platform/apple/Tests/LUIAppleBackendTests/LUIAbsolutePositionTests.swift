@@ -10,21 +10,22 @@ import UIKit
 @MainActor
 @Suite("Retained absolute positioning", .serialized)
 struct LUIAbsolutePositionTests {
-    @Test("Absolute children do not enlarge Row or Column flow")
+    @Test("Absolute children do not enlarge Box, Row or Column flow")
     func absoluteChildrenStayOutOfFlow() async throws {
         #if os(macOS)
         _ = NSApplication.shared
         #endif
-        for kind in ["row", "column"] {
+        for kind in ["row", "column", "box"] {
             let backend = LUIAppleBackend()
             backend.frameReportingEnabled = true
             var frames: [Int: CGRect] = [:]
             backend.onFramesReport = { frames = $0 }
+            let cross = kind == "box" ? "" : #"{"op":"set-prop","id":1,"property":"cross","value":"start"},"#
             try backend.apply(json: """
             {"generation":1,"ops":[
               {"op":"create-node","id":1,"kind":"\(kind)"},
               {"op":"set-prop","id":1,"property":"width","value":200},
-              {"op":"set-prop","id":1,"property":"cross","value":"start"},
+              \(cross)
               {"op":"create-node","id":2,"kind":"box"},
               {"op":"set-prop","id":2,"property":"width","value":60},
               {"op":"set-prop","id":2,"property":"height","value":20},

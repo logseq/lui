@@ -71,6 +71,7 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
     @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
     @State private var anchorFrame = CGRect.zero
+    @State private var contentSize = CGSize.zero
 
     func body(content: Content) -> some View {
         let item = backend.anchoredPopovers.presentation(at: nodeID)
@@ -105,6 +106,7 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
                         ? (item.anchorRect?.width ?? anchorFrame.width) : nil)
                     .fixedSize()
                     .frame(maxHeight: item.model.property(.availableHeight)?.doubleValue.map { CGFloat($0) })
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
                     .presentationCompactAdaptation(.popover)
             }
             .modifier(LUIVirtualPopupOwnership(presented: item != nil))
@@ -119,12 +121,16 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
         let fraction: CGFloat = alignment == "end" ? 1 : (alignment == "center" ? 0.5 : 0)
         let crossOffset = CGFloat(model.property(.anchorAlignmentOffset)?.doubleValue ?? 0)
         let offset = CGFloat(model.property(.anchorOffset)?.doubleValue ?? 0)
+        // Native popovers center their cross axis on the attachment point.
+        // Include the rendered content extent to align its start/end edge.
+        let x = rect.minX + rect.width * fraction + contentSize.width * (0.5 - fraction) + crossOffset
+        let y = rect.minY + rect.height * fraction + contentSize.height * (0.5 - fraction) + crossOffset
         let point: CGPoint
         switch model.property(.anchor)?.stringValue ?? "below" {
-        case "above": point = CGPoint(x: rect.minX + rect.width * fraction + crossOffset, y: rect.minY - offset)
-        case "left": point = CGPoint(x: rect.minX - offset, y: rect.minY + rect.height * fraction + crossOffset)
-        case "right": point = CGPoint(x: rect.maxX + offset, y: rect.minY + rect.height * fraction + crossOffset)
-        default: point = CGPoint(x: rect.minX + rect.width * fraction + crossOffset, y: rect.maxY + offset)
+        case "above": point = CGPoint(x: x, y: rect.minY - offset)
+        case "left": point = CGPoint(x: rect.minX - offset, y: y)
+        case "right": point = CGPoint(x: rect.maxX + offset, y: y)
+        default: point = CGPoint(x: x, y: rect.maxY + offset)
         }
         return .rect(.rect(CGRect(
             x: point.x, y: point.y,
@@ -133,10 +139,10 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
 
     private func arrowEdge(_ model: LUINodeModel?) -> Edge {
         switch model?.property(.anchor)?.stringValue ?? "below" {
-        case "above": .bottom
-        case "left": .trailing
-        case "right": .leading
-        default: .top
+        case "above": .top
+        case "left": .leading
+        case "right": .trailing
+        default: .bottom
         }
     }
 

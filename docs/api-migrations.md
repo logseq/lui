@@ -7,7 +7,14 @@ to its retained parent. For example, a menu item's Popover child with
 `anchor: "right"` opens beside that item in a native presentation; its child
 buttons receive their own press events instead of becoming inactive label
 content inside the parent button. Existing explicit targets and rectangles keep
-their behavior. Popovers without positioning props retain inline rendering.
+their behavior. Presentation sides select SwiftUI's attachment edge: `right`
+uses its trailing edge, and `below` uses its bottom edge. Popovers without
+positioning props retain inline rendering.
+
+Cross-axis `start`, `center`, and `end` align the rendered popup content to the
+anchor, including when the popup is taller or wider than its trigger. For
+example, `anchor: "right", anchor-alignment: "start"` aligns their top edges;
+`anchor-alignment-offset` shifts that alignment by the requested points.
 
 `display: "none"` now omits a node's native subtree from rendering, layout and
 frame reporting while keeping its retained identity and properties. Restoring
@@ -28,7 +35,7 @@ a usable fallback remains unresolved, preserving the property's existing default
 
 ## Unreleased: Apple absolute children in flow containers
 
-Row and Column children with `position: absolute` are now excluded from normal
+Box, Row and Column children with `position: absolute` are now excluded from normal
 flow sizing, grow detection and gap distribution. Their typed edge insets use
 the sized parent surface as the containing block, including opposing-inset
 stretching. Adding or removing an overlay preserves the normal children's
@@ -36,6 +43,10 @@ control identities. For example, ``column [text "Draft"; column ~position:`absol
 ~inset:0. [caret]]`` keeps the text's intrinsic height instead of stacking the
 caret overlay below it. Backgrounds, rounded clipping and committed text
 rendering remain unchanged.
+
+A Box's positioned resize handle also stays outside normal flow. For example,
+a 32-point header button and a 32-point absolute handle share the header surface
+instead of creating a 64-point stack that can clip the header text.
 
 An omitted Row/Column `gap` now means zero, matching the canonical flow default.
 Applications relying on SwiftUI's previous implicit spacing should set an
