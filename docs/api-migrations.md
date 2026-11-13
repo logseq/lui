@@ -1,5 +1,41 @@
 # LUI API migration guide
 
+## Unreleased: Apple growing layout, collapsed splits and custom dialogs
+
+Growing children in Apple rows now receive remaining width before flexible
+containers with `grow: 0` (including the default when grow is absent). Empty
+rows, slot boxes and closed columns no longer divide the main content width.
+For example, `row [scroll ~grow:1. content; column [spacer ()]]` gives the scroll
+the available width rather than half of it. Nested growing title content also
+fills the space beside empty action/tag rows. Intrinsic single-line content
+keeps its higher priority, growing siblings keep equal priority, and existing
+explicit sizes and maximum widths still constrain layout. Hosts can keep their
+typed grow and max-width properties; no extra host widths are needed.
+Scroll content now takes its cross-axis minimum from the current viewport
+proposal, so shrinking a window also shrinks a vertical scroll's content width
+(or a horizontal scroll's content height) instead of retaining the old minimum.
+
+Apple now admits `dialog` nodes without a `text` property, matching the canonical
+OCaml protocol. A dialog may supply its heading and body through its retained
+children. Previously, Apple rejected these batches with
+`invalidBatch("modal surface requires text")` before the custom content could
+mount. Existing native alert/action-sheet dialogs and titled sheets keep their
+presentation and dismissal behavior; `sheet` still requires a nonempty `text`
+property under the canonical contract.
+
+For example, `dialog [column [heading "Create graph"; input (); button "Create"]]`
+may omit the dialog's own title. Apple presents the existing custom SwiftUI
+surface for this subtree, preserving its retained root and modal ownership.
+Hosts do not need to inject a title into the wire batch or replace the modal
+renderer.
+
+Apple manual splits now omit the divider, focus target and resize interactions
+when either pane has zero rendered width or `resize-handle-width` is zero.
+For example, a right dock using `value: 1.0` and `gap: 0` no longer leaves a
+focusable vertical line after the trailing pane closes. Expanded panes keep the
+existing resize and accessibility behavior; reopening a dock uses the model's
+existing split width/value update.
+
 ## Unreleased: desktop backend removal (breaking)
 
 The native Go desktop backend, its Go module, host commands, capabilities,

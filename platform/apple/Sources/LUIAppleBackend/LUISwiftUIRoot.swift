@@ -6242,10 +6242,11 @@ enum LUIRowLayoutPolicy {
         grow: Double?,
         styleClass: String?
     ) -> Double {
-        // layoutPriority can only order, not split space proportionally —
-        // equal priority keeps grow children from starving one another.
-        _ = grow
-        return LUITextLinePolicy.layoutPriority(styleClass: styleClass)
+        // Grow children take remaining width before non-growing flexible
+        // containers (including empty rows/columns). Explicit single-line
+        // content keeps its higher intrinsic priority; all growers stay equal.
+        max((grow ?? 0) > 0 ? 0.5 : 0,
+            LUITextLinePolicy.layoutPriority(styleClass: styleClass))
     }
 
     static func showsTrailingSpacer(
@@ -8801,54 +8802,56 @@ private struct LUISplitView: View {
                     }
                 }
 
-                Color.clear
-                    .frame(width: handleWidth, height: geometry.size.height)
-                    .contentShape(Rectangle())
-                    .offset(x: firstWidth + gap / 2 - handleWidth / 2 + handleOffset)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                let start = dragStartFraction ?? fraction
-                                dragStartFraction = start
-                                updateFraction(
-                                    start + Double(value.translation.width / max(available, 1)),
-                                    available: available,
-                                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
-                                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
-                                )
-                            }
-                            .onEnded { _ in dragStartFraction = nil }
-                    )
-                    .focusable()
-                    .onKeyPress(.leftArrow) {
-                        adjust(
-                            by: -0.05,
-                            available: available,
-                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
-                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                if firstWidth > 0, secondWidth > 0, handleWidth > 0 {
+                    Color.clear
+                        .frame(width: handleWidth, height: geometry.size.height)
+                        .contentShape(Rectangle())
+                        .offset(x: firstWidth + gap / 2 - handleWidth / 2 + handleOffset)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    let start = dragStartFraction ?? fraction
+                                    dragStartFraction = start
+                                    updateFraction(
+                                        start + Double(value.translation.width / max(available, 1)),
+                                        available: available,
+                                        firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                                        secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                                    )
+                                }
+                                .onEnded { _ in dragStartFraction = nil }
                         )
-                    }
-                    .onKeyPress(.rightArrow) {
-                        adjust(
-                            by: 0.05,
-                            available: available,
-                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
-                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                        .focusable()
+                        .onKeyPress(.leftArrow) {
+                            adjust(
+                                by: -0.05,
+                                available: available,
+                                firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                                secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                            )
+                        }
+                        .onKeyPress(.rightArrow) {
+                            adjust(
+                                by: 0.05,
+                                available: available,
+                                firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                                secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                            )
+                        }
+                        .accessibilityElement()
+                        .accessibilityLabel(
+                            Text("\(model.property(.accessibilityLabel)?.stringValue ?? "Split") divider")
                         )
-                    }
-                    .accessibilityElement()
-                    .accessibilityLabel(
-                        Text("\(model.property(.accessibilityLabel)?.stringValue ?? "Split") divider")
-                    )
-                    .accessibilityValue(Text("\(Int((fraction * 100).rounded()))%"))
-                    .accessibilityAdjustableAction { direction in
-                        _ = adjust(
-                            by: direction == .increment ? 0.05 : -0.05,
-                            available: available,
-                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
-                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
-                        )
-                    }
+                        .accessibilityValue(Text("\(Int((fraction * 100).rounded()))%"))
+                        .accessibilityAdjustableAction { direction in
+                            _ = adjust(
+                                by: direction == .increment ? 0.05 : -0.05,
+                                available: available,
+                                firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                                secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                            )
+                        }
+                }
             }
         }
     }
