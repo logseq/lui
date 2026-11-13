@@ -121,3 +121,153 @@ fn native_scroll_uses_the_authored_axis_and_keeps_editor_identity_and_draft() {
         assert_eq!(layout(&app, "lui-3").bounds.origin, after.bounds.origin);
     }
 }
+
+struct ContentProbe {
+    kind: &'static str,
+    horizontal: bool,
+    natural: bool,
+    padding: i64,
+}
+
+#[component]
+fn CanonicalScrollContent() -> impl IntoElement {
+    let fixture = engine_context::<ContentProbe>().unwrap();
+    let kind = fixture.kind;
+    let renderer = Renderer::new(|_, _| {});
+    let mut ops = vec![
+        json!({"op":"create-node","id":1,"kind":if kind == "bottom-tab" {"bottom-tabs"} else {"column"}}),
+        json!({"op":"set-prop","id":1,"property":"width","value":240}),
+        json!({"op":"set-prop","id":1,"property":"height","value":180}),
+        json!({"op":"create-node","id":2,"kind":kind}),
+        json!({"op":"set-prop","id":2,"property":"width","value":200}),
+        json!({"op":"set-prop","id":2,"property":"height","value":100}),
+        json!({"op":"set-prop","id":2,"property":"padding","value":fixture.padding}),
+        json!({"op":"insert-child","parent":1,"child":2,"index":0}),
+        json!({"op":"create-node","id":3,"kind":"column"}),
+        json!({"op":"set-prop","id":3,"property":"width","value":400}),
+        json!({"op":"insert-child","parent":2,"child":3,"index":0}),
+        json!({"op":"create-node","id":4,"kind":"column"}),
+        json!({"op":"set-prop","id":4,"property":"width","value":250}),
+        json!({"op":"set-prop","id":4,"property":"height","value":250}),
+        json!({"op":"insert-child","parent":2,"child":4,"index":1}),
+    ];
+    if kind == "bottom-tab" {
+        ops.push(json!({"op":"set-prop","id":2,"property":"title","value":"Scroll page"}));
+    }
+    if fixture.horizontal {
+        ops.push(json!({"op":"set-prop","id":2,"property":"orientation","value":"horizontal"}));
+    }
+    if fixture.natural {
+        for (index, id) in [30, 31].into_iter().enumerate() {
+            ops.extend([
+                json!({"op":"create-node","id":id,"kind":"text"}),
+                json!({"op":"set-prop","id":id,"property":"height","value":220}),
+                json!({"op":"set-prop","id":id,"property":"text","value":format!("Natural row {index}")}),
+                json!({"op":"insert-child","parent":3,"child":id,"index":index}),
+            ]);
+        }
+    } else {
+        ops.push(json!({"op":"set-prop","id":3,"property":"height","value":400}));
+    }
+    renderer.apply(patch(1, json!(ops))).unwrap();
+    renderer.set_root(1).unwrap();
+    renderer.element()
+}
+
+fn content_app(kind: &'static str, horizontal: bool, natural: bool, padding: i64) -> Headless {
+    let mut app = Headless::start(EngineConfig {
+        context: EngineContext::default().with(ContentProbe {
+            kind,
+            horizontal,
+            natural,
+            padding,
+        }),
+        ..EngineConfig::new(Root::of::<CanonicalScrollContent>())
+    })
+    .unwrap();
+    app.first_render().unwrap();
+    app.wait_until(
+        "canonical scroll content retains its full document",
+        std::time::Duration::from_secs(2),
+        |screen| {
+            screen.layout_nodes().iter().any(|node| {
+                node.test_id.as_deref() == Some("lui-3")
+                    && node.bounds.size.height == px(if natural { 440.0 } else { 400.0 })
+            })
+        },
+    )
+    .unwrap();
+    app
+}
+
+#[test]
+fn canonical_scroll_children_share_one_intrinsic_grid_cell_on_both_axes() {
+    for horizontal in [false, true] {
+        let mut app = content_app("scroll", horizontal, false, 10);
+        let viewport = layout(&app, "lui-2");
+        let first = layout(&app, "lui-3");
+        let second = layout(&app, "lui-4");
+        assert_eq!(
+            first.bounds.origin, second.bounds.origin,
+            "direct Scroll children occupy the same cell"
+        );
+        assert_eq!(
+            first.bounds.origin.x - viewport.bounds.origin.x,
+            px(10.0),
+            "leading padding is applied once"
+        );
+        assert_eq!(
+            first.bounds.origin.y - viewport.bounds.origin.y,
+            px(10.0),
+            "top padding is applied once"
+        );
+        app.scroll("id:lui-2", px(100.0)).unwrap();
+        let moved = layout(&app, "lui-3");
+        assert_eq!(moved.id, first.id);
+        assert_eq!(layout(&app, "lui-4").id, second.id);
+        let delta = moved.bounds.origin - first.bounds.origin;
+        if horizontal {
+            assert_eq!(delta.x, px(-100.0));
+            assert_eq!(delta.y, px(0.0));
+        } else {
+            assert_eq!(delta.y, px(-100.0));
+            assert_eq!(delta.x, px(0.0));
+        }
+    }
+}
+
+#[test]
+fn canonical_scroll_natural_column_keeps_full_fixed_rows() {
+    let mut app = content_app("scroll", false, true, 0);
+    for id in [30, 31] {
+        assert_eq!(
+            layout(&app, &format!("lui-{id}")).bounds.size.height,
+            px(220.0)
+        );
+    }
+    let before = layout(&app, "lui-3");
+    app.scroll("id:lui-2", px(100.0)).unwrap();
+    assert_eq!(
+        layout(&app, "lui-3").bounds.origin.y,
+        before.bounds.origin.y - px(100.0)
+    );
+}
+
+#[test]
+fn list_and_bottom_tab_content_remain_sequential_not_same_cell() {
+    for kind in ["list", "bottom-tab"] {
+        let mut app = content_app(kind, false, false, 0);
+        let first = layout(&app, "lui-3");
+        let second = layout(&app, "lui-4");
+        assert_eq!(
+            second.bounds.origin.y - first.bounds.origin.y,
+            px(400.0),
+            "{kind} keeps normal sequential flow"
+        );
+        app.scroll("id:lui-2", px(100.0)).unwrap();
+        assert_eq!(
+            layout(&app, "lui-3").bounds.origin.y,
+            first.bounds.origin.y - px(100.0)
+        );
+    }
+}
