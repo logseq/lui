@@ -1808,6 +1808,7 @@ let test_list_item_layout_constructor_contract () =
          && authored CrossAlignment (StringValue "center")
          && authored PaddingHorizontal (IntValue 8));
       ignore (Lui_app.dispatch_event app (Press !item_id));
+      flush_app app;
       Alcotest.(check int) "valid ListItem keeps its action callback" 1 !presses;
       let rejected=try !set_gap ();false with Invalid_argument reason ->
         String.starts_with

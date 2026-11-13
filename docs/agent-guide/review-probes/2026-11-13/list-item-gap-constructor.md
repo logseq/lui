@@ -24,6 +24,7 @@ Root qualification commands, serially:
 
 ```sh
 node tooling/generate_component_schema.mjs --check
+python3 tools/gen_json_view.py
 python3 tooling/generate_nsh_contract.py
 node --test tooling/test/ppx-hygiene.test.mjs tooling/test/component_schema_test.mjs
 opam exec -- dune exec test/test_lui.exe -- test protocol
@@ -31,3 +32,19 @@ python3 tooling/generate_nsh_contract.py --check
 ```
 
 The generated native contract outputs, if changed, are `platform/nsh/contract.json`, `platform/nsh/src/contract_generated.rs`, and `platform/nsh/tests/fixtures/contract_oracle.json`. Full maintained-target gates remain required before publishing the LUI revision and changing App pins. These source tests do not establish physical native geometry or keyboard delivery.
+
+## Executed candidate qualification
+
+The integration run first caught a stale generated JSON-view constructor
+forwarding `?gap`. Regenerating with `tools/gen_json_view.py` removed only that
+invalid forwarding label; no handwritten generated source or hash patch was
+used. Native contract generation then succeeded and changed only the three
+canonical source hashes in `platform/nsh/contract.json`.
+
+The two existing Node compiler/schema suites passed all 12 tests, including
+invalid direct, qualified, aliased, forwarded and reactive gap calls. The first
+protocol run exposed a test-fixture error: it asserted a queued Press callback
+before flushing the app. Adding the same real event flush used by the existing
+Gallery tests preserved the callback assertion; all 23 protocol tests then
+passed, including all five maintained host profiles. Full LUI target and app
+pin qualification remain required before publishing this candidate.
