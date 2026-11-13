@@ -12,14 +12,21 @@ Canonical Scroll children share one auto-sized grid cell, matching Web's
 `.lui-scroll > * { grid-area: 1 / 1 }`. Two direct children of heights 400 and
 250 overlap and contribute their maximum extent rather than stacking to 650.
 A natural-height Column containing two fixed 220pt rows retains all 440pt.
-The internal grid uses auto tracks, not fractional Stack tracks. Its own
+The internal grid uses auto tracks, not fractional Stack tracks. A direct
+`display=contents` child does not gain a cell wrapper: its flattened descendants
+auto-place after ordinary children that reserve the explicit 1/1 cell, matching
+the existing Web contents contract. Its own
 nonshrinking document owner and retained child cell owners supply this layout;
 they do not replace the original Scroll controller or canonical child owners.
 
 List and BottomTab content retain sequential flow through the same separation
 of viewport and intrinsic document. They do not gain Scroll's same-cell layout.
-Authored gap/alignment is applied to the document layout; padding and border
-stay on the original viewport exactly once. Horizontal scrolling still uses
+Authored gap/alignment is validated as before and applied only to the document
+layout. The viewport uses its neutral layout for that one intrinsic owner;
+applying end/center alignment twice could put oversized content at a negative,
+unreachable origin. The document keeps intrinsic cross-axis sizing with a
+viewport-sized minimum, so short content still aligns within the viewport.
+Padding and border stay on the original viewport exactly once. Horizontal scrolling still uses
 the existing public native horizontal Scroll. SDK-internal Editor scrolling is
 unchanged. No constructor, wire, backend policy or application migration is
 required; Scroll/List/BottomTab position and existing input drafts remain owned

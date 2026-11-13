@@ -1145,7 +1145,13 @@ fn compile_parts(
             declaration(&mut decls, key, value, name, theme)?;
         }
     }
-    decls.extend(content_layout(node, theme)?);
+    // A scroll viewport lays out one intrinsic document owner. These props
+    // belong inside that document; applying them here can move oversized
+    // content into inaccessible negative coordinates. Still validate them.
+    let content = content_layout(node, theme)?;
+    if !matches!(node.kind.as_str(), "scroll" | "list" | "bottom-tab") {
+        decls.extend(content);
+    }
     for (name, key) in [
         ("grow", StyleKey::FlexGrow),
         ("shrink", StyleKey::FlexShrink),

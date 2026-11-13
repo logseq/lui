@@ -94,6 +94,7 @@ pub(crate) fn scroll_content(
     view()
         .grid()
         .flex_none()
+        .self_start()
         .min_w(relative(1.0))
         .min_h(relative(1.0))
         .state_inline_style(move || {
@@ -108,6 +109,11 @@ pub(crate) fn scroll_content(
             move |identity, _| {
                 let identity = identity.get_untracked();
                 let child = lookup(identity);
+                if child.is_some_and(|child| crate::style::is_contents(&child.get_untracked())) {
+                    // A contents anchor contributes its children directly to
+                    // the grid's auto-placement, without a group box/cell.
+                    return render(identity);
+                }
                 view()
                     .grid()
                     .inline_style(grid_cell())
@@ -120,6 +126,7 @@ pub(crate) fn scroll_content(
                         })
                     })
                     .child(render(identity))
+                    .into_element()
             },
         ))
 }
@@ -133,6 +140,7 @@ pub(crate) fn scroll_flow_content(
 ) -> View {
     view()
         .flex_none()
+        .self_start()
         .min_w(relative(1.0))
         .min_h(relative(1.0))
         .style_with(move |style| {
