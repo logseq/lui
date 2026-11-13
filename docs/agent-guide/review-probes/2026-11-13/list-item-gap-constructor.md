@@ -48,3 +48,10 @@ before flushing the app. Adding the same real event flush used by the existing
 Gallery tests preserved the callback assertion; all 23 protocol tests then
 passed, including all five maintained host profiles. Full LUI target and app
 pin qualification remain required before publishing this candidate.
+
+The complete candidate `make test-schema` subsequently passed all 44 tests.
+`OPAMSWITCH=5.5.1 make test-ocaml` passed the complete OCaml runtest alias with
+successful-action stderr required to be empty and no competing build jobs.
+The standalone main library run passed all 260 tests. These local candidate
+results still do not replace actual maintained-platform CI or an App rebuild
+against the eventually published immutable LUI revision.
