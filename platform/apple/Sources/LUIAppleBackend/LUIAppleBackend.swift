@@ -629,6 +629,7 @@ final class LUIFrameReporting {
 @MainActor
 public final class LUIAppleBackend {
     let hostQueries = LUIHostQueries()
+    let hostFocus = LUIHostFocusState()
     public private(set) var generation = 0
     /// Number of observable model commits, for diagnostics.
     public private(set) var commitSequence = 0
@@ -1063,6 +1064,12 @@ public final class LUIAppleBackend {
     /// no model for it; recreated nodes get fresh view models.
     public func applySnapshot(json: String) throws {
         let snapshot = try Self.decode(json).batch
+        // Validate the authoritative replacement before publishing or clearing
+        // anything, including pending commits and the consumed generation.
+        do {
+            var replacement = LUIRetainedTree()
+            _ = try replacement.applying(snapshot.ops, extensionRegistry: extensionRegistry)
+        }
         let coalesces = coalescesCommits
         coalescesCommits = false
         defer { coalescesCommits = coalesces }
@@ -1631,6 +1638,7 @@ public final class LUIAppleBackend {
         var descendantsRefresh = Set<Int>()
         for id in dropped { collectAncestors(of: id, into: &descendantsRefresh) }
         for id in dropped {
+            hostFocus.drop(nodeID: id)
             if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }
             if hostQueries.imageQueries.contains(id) { hostQueries.imageQueries.remove(id) }
             hostQueries.scrollQueries.remove(id)

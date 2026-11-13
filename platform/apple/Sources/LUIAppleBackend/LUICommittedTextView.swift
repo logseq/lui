@@ -230,6 +230,7 @@ struct LUICommittedTextContent: View {
     @Environment(\.layoutDirection) private var direction
     @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.self) private var environmentValues
 
     var body: some View {
         let _ = model.revision
@@ -277,8 +278,17 @@ struct LUICommittedTextContent: View {
         default: direction == .rightToLeft ? .right : .left
         }
         paragraph.lineSpacing = typography.lineSpacing(baseSize: font.pointSize)
+        // Resolve SwiftUI's dynamic semantic color in this view's environment
+        // before crossing into native TextKit's independent drawing context.
+        let resolved = foreground.resolve(in: environmentValues)
+        #if os(macOS)
+        let textColor = LUITextColor(srgbRed: CGFloat(resolved.red), green: CGFloat(resolved.green),
+                                     blue: CGFloat(resolved.blue), alpha: CGFloat(resolved.opacity))
+        #else
+        let textColor = LUITextColor(cgColor: resolved.cgColor)
+        #endif
         var attributes: [NSAttributedString.Key: Any] = [
-            .font: font, .foregroundColor: LUITextColor(foreground), .paragraphStyle: paragraph,
+            .font: font, .foregroundColor: textColor, .paragraphStyle: paragraph,
             .kern: typography.letterSpacing ?? 0,
         ]
         if typography.underline == true { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }

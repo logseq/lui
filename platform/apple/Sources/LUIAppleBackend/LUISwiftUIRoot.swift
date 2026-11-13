@@ -846,7 +846,8 @@ private struct LUINodeView: View {
             if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }
             return AnyView(LUIButtonView(model: model, backend: backend, isToggle: true))
         case .textField, .secureField, .input, .searchField, .textarea:
-            return AnyView(LUITextControlView(model: model, backend: backend))
+            return AnyView(LUITextControlView(model: model, backend: backend)
+                .id(ObjectIdentifier(model)))
         case .select:
             return AnyView(LUISelectView(model: model, backend: backend))
         case .combobox:
@@ -1445,7 +1446,7 @@ final class LUIContextMenuNSView: NSView {
             case .menuItem:
                 let item = NSMenuItem(
                     title: child.text.isEmpty
-                        ? (child.property(.accessibilityLabel)?.stringValue ?? "")
+                        ? (child.accessibilityLabel(in: backend) ?? "")
                         : child.text,
                     action: #selector(LUIContextMenuAction.fire(_:)),
                     keyEquivalent: ""
@@ -1536,12 +1537,12 @@ private struct LUINativeMenuActions: View {
     private func triggerLabel(for item: LUINodeModel) -> String {
         let text = item.text
         if !text.isEmpty { return text }
-        return item.property(.accessibilityLabel)?.stringValue ?? ""
+        return item.accessibilityLabel(in: backend) ?? ""
     }
 
     private func itemLabel(for item: LUINodeModel) -> some View {
         Label {
-            Text(verbatim: item.text)
+            Text(verbatim: triggerLabel(for: item))
                 .modifier(LUIMenuItemForegroundModifier(
                     model: item,
                     usesExplicitForeground: false
@@ -4175,6 +4176,7 @@ private struct LUIInputGroupView: View {
             if let entryID = model.children.first,
                let entry = backend.model(id: entryID) {
                 LUITextControlView(model: entry, backend: backend, grouped: true)
+                    .id(ObjectIdentifier(entry))
                     .focused($focusedChild, equals: entryID)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.horizontal, 8)
@@ -7674,6 +7676,7 @@ private struct LUITextControlView: View {
     let grouped: Bool
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
     @State private var draftState: LUITextDraftState
+    @State private var focusMount = UUID()
     @FocusState private var focused: Bool
 
     init(model: LUINodeModel, backend: LUIAppleBackend, grouped: Bool = false) {
@@ -7702,6 +7705,17 @@ private struct LUITextControlView: View {
             .focused($focused)
             .onSubmit { try? backend.performSubmit(node: model.id) }
             .onAppear { if model.requestsAutofocus { focused = true } }
+            .task(id: backend.focusRequestToken(for: model) ?? focusMount) {
+                // A replacement can mount synchronously during apply, just
+                // before the host queues its focus request for the new node.
+                await Task.yield()
+                guard !Task.isCancelled, let token = backend.focusRequestToken(for: model),
+                      backend.consumeFocusRequest(token, for: model) else { return }
+                focused = true
+            }
+            .onDisappear {
+                backend.textInputFocusChanged(model: model, mount: focusMount, focused: false)
+            }
             // autofocus is an edge-triggered focus request: any transition
             // is a request, so repeated requests refocus even when the flag
             // was already true while the field was unfocused.
@@ -7712,6 +7726,7 @@ private struct LUITextControlView: View {
                 draftState.reconcile(source: next, focused: focused)
             }
             .onChange(of: focused) { _, next in
+                backend.textInputFocusChanged(model: model, mount: focusMount, focused: next)
                 // Same unbound-field guard as the non-grouped field: don't
                 // reset a draft to a wire `text` the app never emitted.
                 if !next, model.property(.text) != nil {
@@ -8501,6 +8516,29 @@ struct LUISplitFractionState: Equatable {
     }
 }
 
+private struct LUISplitPaneProposal: Equatable {
+    let nodeID: Int
+    let width: CGFloat
+}
+
+private struct LUISplitPaneProposalKey: EnvironmentKey {
+    static let defaultValue: LUISplitPaneProposal? = nil
+}
+
+private extension EnvironmentValues {
+    var luiSplitPaneProposal: LUISplitPaneProposal? {
+        get { self[LUISplitPaneProposalKey.self] }
+        set { self[LUISplitPaneProposalKey.self] = newValue }
+    }
+}
+
+#if os(macOS)
+private struct LUISidebarProposal: Equatable {
+    let available: CGFloat
+    let sourceFraction: Double
+}
+#endif
+
 private struct LUISplitView: View {
     // Fractions at or below this share render the first pane as collapsed
     // (the model can't express literal zero — values <= 0 normalize to the
@@ -8523,6 +8561,7 @@ private struct LUISplitView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility
     @State private var navSplitEligible: Bool
     #if os(macOS)
+    @Environment(\.luiSplitPaneProposal) private var paneProposal
     // On macOS the column uses the fixed `width:` overload (the `ideal:`
     // overload only takes effect when the column appears, so model pushes
     // while visible would never apply). `appliedWidth` is the rendered width
@@ -8532,6 +8571,7 @@ private struct LUISplitView: View {
     // every layout) is what keeps the sidebar at an absolute width while the
     // window resizes, matching the docked-sidebar idiom of `prominentDetail`.
     @State private var appliedWidth: CGFloat?
+    @State private var appliedFraction: Double?
     @State private var lastAvailable: CGFloat = 0
     #endif
 
@@ -8614,6 +8654,10 @@ private struct LUISplitView: View {
         let secondID = model.children.dropFirst().first
         let firstModel = firstID.flatMap(backend.model(id:))
         let secondModel = secondID.flatMap(backend.model(id:))
+        #if os(macOS)
+        let proposedWidth = paneProposal.flatMap { $0.nodeID == model.id ? $0.width : nil }
+        let sourceFraction = model.splitFraction
+        #endif
         return GeometryReader { geometry in
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 Group {
@@ -8694,17 +8738,30 @@ private struct LUISplitView: View {
                 }
             }
             #if os(macOS)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.width
-            } action: { width in
-                guard width > 0 else { return }
-                lastAvailable = width
-                if appliedWidth == nil {
-                    appliedWidth = sidebarWidth(
-                        available: width,
-                        firstModel: firstModel,
-                        secondModel: secondModel
-                    )
+            .onGeometryChange(for: LUISidebarProposal.self) { proxy in
+                // A manual parent already knows its target pane proposal,
+                // even while SwiftUI still measures the previous frame (or
+                // an intermediate animation frame). Scope it to this direct
+                // child so it cannot leak into a more deeply nested split.
+                let available = proposedWidth ?? proxy.size.width
+                return LUISidebarProposal(available: available, sourceFraction: sourceFraction)
+            } action: { proposal in
+                guard proposal.available > 0 else { return }
+                lastAvailable = proposal.available
+                // Layout supplies the width and retained fraction together.
+                // A model onChange can run before an outer split's new
+                // proposal arrives; multiplying it by lastAvailable would
+                // permanently cache a width from two different layouts.
+                if appliedFraction != proposal.sourceFraction {
+                    appliedFraction = proposal.sourceFraction
+                    if proposal.sourceFraction > Self.collapsedFraction {
+                        withAnimation(splitAnimation) {
+                            appliedWidth = proposal.available * CGFloat(LUISplitGeometry.effectiveFraction(
+                                value: proposal.sourceFraction, available: Double(proposal.available),
+                                firstMinimum: Double(firstModel?.surfaceMinWidth ?? 0),
+                                secondMinimum: Double(secondModel?.surfaceMinWidth ?? 0)))
+                        }
+                    }
                 }
             }
             // On macOS the detail stays prominent so a docked sidebar keeps
@@ -8818,15 +8875,27 @@ private struct LUISplitView: View {
             ))
             let fraction = Double(firstWidth / max(available, 1))
             let secondWidth = available - firstWidth
+            // A retained push is already authoritative before this split's
+            // onChange reconciles its local animation/drag state. Descendant
+            // native columns need that target, not an intermediate frame.
+            let targetFraction = fractionState.sourceFraction == model.splitFraction
+                ? fractionState.fraction : model.splitFraction
+            let targetFirstWidth = CGFloat(LUISplitGeometry.firstPaneWidth(
+                value: model.splitFirstPaneWidth ?? targetFraction,
+                absolute: model.splitFirstPaneWidth != nil, available: Double(available),
+                firstMinimum: Double(firstModel?.surfaceMinWidth ?? 0),
+                secondMinimum: Double(secondModel?.surfaceMinWidth ?? 0)))
 
             ZStack(alignment: .leading) {
                 HStack(spacing: gap) {
                     if let firstID {
                         LUIAnyNodeView(nodeID: firstID, backend: backend).equatable()
+                            .environment(\.luiSplitPaneProposal, LUISplitPaneProposal(nodeID: firstID, width: targetFirstWidth))
                             .frame(width: firstWidth)
                     }
                     if let secondID {
                         LUIAnyNodeView(nodeID: secondID, backend: backend).equatable()
+                            .environment(\.luiSplitPaneProposal, LUISplitPaneProposal(nodeID: secondID, width: available - targetFirstWidth))
                             .frame(width: secondWidth)
                     }
                 }
@@ -8897,7 +8966,6 @@ private struct LUISplitView: View {
     }
 
     private func reconcile(sourceFraction: Double) {
-        let previousFraction = fractionState.fraction
         withAnimation(splitAnimation) {
             fractionState.reconcile(sourceFraction: sourceFraction)
             if fractionState.fraction >= Self.detailCollapseFraction {
@@ -8907,32 +8975,6 @@ private struct LUISplitView: View {
                     fractionState.fraction <= Self.collapsedFraction
                     ? .detailOnly : .doubleColumn
             }
-            #if os(macOS)
-            // A model push that changed the rendered fraction moves the
-            // fixed-width column; a source that only caught up to the
-            // rendered fraction leaves the user's position alone. Collapsing
-            // keeps the open width so a chrome-driven reopen restores it.
-            if fractionState.fraction != previousFraction,
-               fractionState.fraction > Self.collapsedFraction,
-               lastAvailable > 0
-            {
-                appliedWidth = lastAvailable
-                    * CGFloat(
-                        LUISplitGeometry.effectiveFraction(
-                            value: fractionState.fraction,
-                            available: Double(lastAvailable),
-                            firstMinimum: Double(
-                                model.children.first.flatMap(backend.model(id:))?
-                                    .surfaceMinWidth ?? 0
-                            ),
-                            secondMinimum: Double(
-                                model.children.dropFirst().first.flatMap(backend.model(id:))?
-                                    .surfaceMinWidth ?? 0
-                            )
-                        )
-                    )
-            }
-            #endif
         }
     }
 
@@ -8969,6 +9011,7 @@ private struct LUISplitView: View {
         if model.splitFirstPaneWidth != nil { absoluteWidth = width }
         #if os(macOS)
         appliedWidth = available * CGFloat(effective)
+        appliedFraction = effective
         #endif
         try? backend.performValueChange(node: model.id, value: model.splitFirstPaneWidth != nil ? width : effective)
     }

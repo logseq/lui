@@ -114,6 +114,16 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":9,"kind":"text"}
         ]}
         """)
+        let rootsBefore = backend.rootIDs
+        let commitsBefore = backend.commitSequence
+        #expect(throws: LUIBackendError.self) {
+            try backend.applySnapshot(json: """
+            {"generation":3,"ops":[{"op":"create-node","id":99,"kind":"split"}]}
+            """)
+        }
+        #expect(backend.rootIDs == rootsBefore)
+        #expect(backend.commitSequence == commitsBefore)
+        #expect(backend.generation == 3 && backend.coalescesCommits)
         try backend.applySnapshot(json: """
         {"generation":3,"ops":[
           {"op":"create-node","id":1,"kind":"column"},
@@ -1483,6 +1493,8 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":4,"kind":"icon"},
           {"op":"create-node","id":5,"kind":"button"},
           {"op":"create-node","id":6,"kind":"icon"},
+          {"op":"create-node","id":7,"kind":"menu-item"},
+          {"op":"set-prop","id":7,"property":"accessibility-label","value":"Settings"},
           {"op":"set-prop","id":3,"property":"text","value":"Share"},
           {"op":"set-prop","id":4,"property":"name","value":"chevron-right"},
           {"op":"set-prop","id":6,"property":"name","value":"ellipsis"},
@@ -1495,6 +1507,7 @@ struct LUISwiftUIBackendTests {
         """)
         #expect(backend.model(id: 2)?.children == [3, 4])
         #expect(backend.model(id: 5)?.children == [6])
+        #expect(backend.model(id: 7)?.property(.accessibilityLabel)?.stringValue == "Settings")
     }
 
     @Test("maps ListItem text and custom content to one retained native row")
