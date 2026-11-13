@@ -24,9 +24,11 @@ final class LUIHostFocusState {
 }
 
 public extension LUIAppleBackend {
-    /// Request focus for a standard text input, including one awaiting mount.
-    /// True means accepted, not that native focus has completed. The latest
-    /// request wins and is consumed once by the original retained node.
+    /// Request focus for a focusable control, including one awaiting mount.
+    /// Text inputs are focusable on both platforms; on macOS `button` and
+    /// `menuItem` also qualify. True means accepted, not that native focus
+    /// has completed. The latest request wins and is consumed once by the
+    /// original retained node.
     @discardableResult
     func requestFocus(nodeID: Int) -> Bool {
         var accepted = false
@@ -34,14 +36,15 @@ public extension LUIAppleBackend {
             // Classify the accepted retained tree, including a newly created
             // input whose observable commit is still waiting to coalesce.
             flushPendingCommit()
-            guard let model = model(id: nodeID), isFocusableTextInput(model) else { return }
+            guard let model = model(id: nodeID), isFocusTarget(model) else { return }
             hostFocus.request = .init(model: model)
             accepted = true
         }
         return accepted
     }
 
-    /// The focused standard text input, or nil for another native control.
+    /// The currently focused control — a text input, or on macOS a
+    /// `button`/`menuItem` — or nil when another native control holds focus.
     /// Dropped/replaced node identities are never returned.
     var focusedNodeID: Int? {
         guard let focused = hostFocus.owner?.model, model(id: focused.id) === focused else { return nil }
@@ -58,6 +61,24 @@ extension LUIAppleBackend {
         }
     }
 
+    #if os(macOS)
+    private func isFocusableGenericControl(_ model: LUINodeModel) -> Bool {
+        guard model.isEnabled else { return false }
+        switch model.kind {
+        case .button, .menuItem: return true
+        default: return false
+        }
+    }
+    #endif
+
+    func isFocusTarget(_ model: LUINodeModel) -> Bool {
+        if isFocusableTextInput(model) { return true }
+        #if os(macOS)
+        if isFocusableGenericControl(model) { return true }
+        #endif
+        return false
+    }
+
     func focusRequestToken(for model: LUINodeModel) -> UUID? {
         guard hostFocus.request?.model === model, self.model(id: model.id) === model else { return nil }
         return hostFocus.request?.token
@@ -66,12 +87,12 @@ extension LUIAppleBackend {
     func consumeFocusRequest(_ token: UUID, for model: LUINodeModel) -> Bool {
         guard focusRequestToken(for: model) == token else { return false }
         hostFocus.request = nil
-        return isFocusableTextInput(model)
+        return isFocusTarget(model)
     }
 
-    func textInputFocusChanged(model: LUINodeModel, mount: UUID, focused: Bool) {
+    func controlFocusChanged(model: LUINodeModel, mount: UUID, focused: Bool) {
         if focused {
-            guard self.model(id: model.id) === model else { return }
+            guard isFocusTarget(model), self.model(id: model.id) === model else { return }
             hostFocus.owner = .init(model: model, mount: mount)
         } else if hostFocus.owner?.mount == mount {
             hostFocus.owner = nil

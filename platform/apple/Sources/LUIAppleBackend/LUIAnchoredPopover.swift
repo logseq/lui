@@ -117,14 +117,22 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
         let model = item.model
         let rect = item.anchorRect?.offsetBy(dx: -anchorFrame.minX, dy: -anchorFrame.minY)
             ?? CGRect(origin: .zero, size: anchorFrame.size)
-        let alignment = model.property(.anchorAlignment)?.stringValue ?? "start"
-        let fraction: CGFloat = alignment == "end" ? 1 : (alignment == "center" ? 0.5 : 0)
         let crossOffset = CGFloat(model.property(.anchorAlignmentOffset)?.doubleValue ?? 0)
         let offset = CGFloat(model.property(.anchorOffset)?.doubleValue ?? 0)
+        #if os(macOS)
+        // AppKit couples the arrow to this point; shifting it by the content
+        // extent moves the arrow away from the trigger as well as the body.
+        // Keep the real target and let native screen-edge handling place it.
+        let x = rect.midX + crossOffset
+        let y = rect.midY + crossOffset
+        #else
+        let alignment = model.property(.anchorAlignment)?.stringValue ?? "start"
+        let fraction: CGFloat = alignment == "end" ? 1 : (alignment == "center" ? 0.5 : 0)
         // Native popovers center their cross axis on the attachment point.
         // Include the rendered content extent to align its start/end edge.
         let x = rect.minX + rect.width * fraction + contentSize.width * (0.5 - fraction) + crossOffset
         let y = rect.minY + rect.height * fraction + contentSize.height * (0.5 - fraction) + crossOffset
+        #endif
         let point: CGPoint
         switch model.property(.anchor)?.stringValue ?? "below" {
         case "above": point = CGPoint(x: x, y: rect.minY - offset)

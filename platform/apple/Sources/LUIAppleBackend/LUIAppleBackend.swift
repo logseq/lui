@@ -127,6 +127,9 @@ struct LUINodeDerived: Equatable {
     var hasAnchor: Bool
     /// `enabled` prop (absent = true).
     var isEnabled: Bool
+    /// `display: none` — the node drops out of flow layout entirely.
+    var isHidden: Bool
+    var zIndex: Int = 0
     var themeScope: LUIThemeScopeContribution
     var absoluteInsets: LUIAbsoluteInsets? = nil
 
@@ -137,6 +140,7 @@ struct LUINodeDerived: Equatable {
         alignment = nil
         hasAnchor = false
         isEnabled = true
+        isHidden = false
         themeScope = LUIThemeScopeContribution()
     }
 
@@ -149,6 +153,8 @@ struct LUINodeDerived: Equatable {
         alignment = properties[.alignment]?.stringValue
         hasAnchor = properties[.anchor] != nil
         isEnabled = properties[.enabled]?.boolValue ?? true
+        isHidden = properties[.display]?.stringValue == "none"
+        zIndex = properties[.zIndex]?.intValue ?? 0
         absoluteInsets = LUIAbsoluteInsets(properties: properties)
         themeScope = LUIThemeScopeContribution(
             tokens: LUIThemeTokenDecoder.tokens(properties[.theme]?.stringValue),
@@ -170,6 +176,7 @@ struct LUIChildLayout: Equatable {
     var grow: Double { derived.grow }
     var alignment: String? { derived.alignment }
     var isEnabled: Bool { derived.isEnabled }
+    var isHidden: Bool { derived.isHidden }
     var styleClass: String? { derived.styleClass }
     var styleClassTokens: Set<String> { derived.styleClassTokens }
 }
@@ -241,6 +248,28 @@ final class LUINodeModel: Identifiable {
     var visibleChildren: [Int] {
         access(keyPath: \.childData)
         return storedChildData.visible
+    }
+    /// `children` minus `display: none` children, which leave flow
+    /// layout entirely — no slot, spacing or grow participation.
+    /// Children without a cached layout entry (extension, unmounted)
+    /// stay in the flow.
+    var flowChildren: [Int] {
+        children.filter { !isHiddenFlowChild($0) }
+    }
+    /// Whether child `id` carries `display: none`; children without a
+    /// cached layout entry (extension, unmounted) count as visible.
+    func isHiddenFlowChild(_ id: Int) -> Bool {
+        childData.layout[id]?.derived.isHidden == true
+    }
+    /// Dense ranks preserve integer z ordering and original sibling order,
+    /// including when flow and positioned children occupy separate ForEachs.
+    var childPaintOrder: [Int: Double] {
+        let ordered = children.enumerated().sorted { a, b in
+            let az = childData.layout[a.element]?.derived.zIndex ?? 0
+            let bz = childData.layout[b.element]?.derived.zIndex ?? 0
+            return az == bz ? a.offset < b.offset : az < bz
+        }
+        return Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ( $0.element.element, Double($0.offset)) })
     }
     @ObservationIgnored private var storedParent: Int?
     var parent: Int? {

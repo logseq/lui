@@ -1,5 +1,73 @@
 # LUI API migration guide
 
+## Unreleased: Apple sibling paint order and transparent inline wrappers
+
+Row, Column and Box now place flow and absolute children in one sibling paint
+scope. Their integer `z-index` values order complete child surfaces; equal values
+retain wire child order. Absolute children still contribute no intrinsic extent,
+gap or grow weight. For example, a Text with `z-index: 1` paints above an opaque
+absolute selection layer with an omitted (zero) z-index. No client mutation or
+selection transparency change is needed. Stack children also honor `z-index`.
+
+Inside Text, `display: contents` wrappers now contribute their Text descendants
+to the same committed TextKit document, recursively inheriting typography and
+foreground. A label containing `text [box ~display:"contents" [text "Nov"]]`
+therefore renders "Nov" instead of an empty label. The wrapper creates no native
+box or reported frame; leaf Text nodes retain their ranges and geometry.
+This inline behavior does not flatten wrappers in Row/Column flow layouts.
+
+## Unreleased: `display: none` leaves flow layout on Apple
+
+`display: none` children are now removed from the parent's flow
+enumeration entirely — no frame slot, no `gap`/`space-between` spacing,
+no `grow` absorption, and no `main: center|end` spacer suppression on
+`row`, `column`, `box`, `stack` and the horizontal group kinds. Auxiliary
+slots (menus, tooltips) and extension children are unchanged. Hidden
+nodes still report no frames. Clients already treating `display: none`
+as "not rendered" only lose the previously stray spacing; no migration
+required.
+
+## Unreleased: Apple macOS native split divider replaces the overlay handle
+
+On macOS, native `split` columns (`NavigationSplitView`) now use the system
+divider: held-pointer drags resize the sidebar natively and emit the existing
+split value-change event, matching the iOS behavior. The detail-leading
+overlay divider handle is removed, including its arrow-key and
+`accessibilityAdjustableAction` stepping; keyboard and assistive
+adjustments now go through the system control.
+
+Model-driven `fraction` changes still resize the column programmatically:
+the backend applies the requested width once per push through the
+NSSplitView's public position API and tracks the rendered width locally.
+Programmatic applies do not emit a `value-change` event — pushes were
+never echoed back before. The divider keeps its flexible bounds
+throughout, so drags are never locked.
+
+Native resize events use the backing `NSSplitView` arranged pane width,
+observed through its public resize notification. A child with `max-width`
+no longer stops `value-change` events as the divider moves beyond that
+child's width. Model-driven width applications remain silent.
+
+Collapse and reopen through window chrome behave as before, including the
+hairline-fraction value change reported on collapse and the rendered-width
+report on reopen.
+
+## Unreleased: macOS `requestFocus` accepts `button` and `menu-item`
+
+`LUIAppleBackend.requestFocus(nodeID:)` previously accepted only text
+inputs. On macOS it now also accepts `button` and `menu-item` nodes,
+using the same contract: latest request wins, the pending request is
+consumed once by the retained node it was issued for (including nodes
+still awaiting mount), and `focusedNodeID` reports whichever control —
+text input or generic — currently owns focus. Items rendered into real
+`NSMenu`s (e.g. menu-bar menus) cannot take programmatic focus and never
+consume a request. iOS behavior is unchanged: `requestFocus` still accepts
+text inputs only there.
+
+A focused macOS `menu-item` view now activates its existing `press` action on
+Return, including an item focused through `requestFocus(nodeID:)`. Disabled or
+replaced retained nodes do not activate. Real `NSMenu` items keep native handling.
+
 ## Unreleased: Apple parent-anchored submenus and hidden subtrees
 
 A Popover with `anchor` but no `anchor-target` or explicit rectangle now attaches
@@ -11,10 +79,15 @@ their behavior. Presentation sides select SwiftUI's attachment edge: `right`
 uses its trailing edge, and `below` uses its bottom edge. Popovers without
 positioning props retain inline rendering.
 
-Cross-axis `start`, `center`, and `end` align the rendered popup content to the
-anchor, including when the popup is taller or wider than its trigger. For
-example, `anchor: "right", anchor-alignment: "start"` aligns their top edges;
-`anchor-alignment-offset` shifts that alignment by the requested points.
+On macOS, native popup arrows now target the trigger's cross-axis center.
+AppKit controls body placement and screen-edge collision handling; its public
+popover API cannot independently align the body and arrow. `start`/`end` no
+longer pre-shift the attachment by the content size, which displaced the arrow
+from its trigger. For example, `anchor: "below", anchor-alignment: "end"`
+keeps its arrow over the trigger; it does not promise a trailing-aligned body
+for an interior trigger. `stretch` still sets the minimum trigger width and
+`anchor-alignment-offset` still shifts the actual attachment by the requested
+points. iOS retains its content-extent alignment behavior.
 
 `display: "none"` now omits a node's native subtree from rendering, layout and
 frame reporting while keeping its retained identity and properties. Restoring
@@ -65,8 +138,9 @@ popover presentation. For example, ``~anchor_target:"pages-more" ~anchor:`below
 `accessibility-identifier` is `pages-more`; it no longer occupies an inline
 layout slot. Named targets can mount later and can be standard or extension
 nodes. Explicit rectangles and `at` use window coordinates. Native attachment
-edges, alignment points, alignment offsets and spacing follow the existing
-anchor properties; the platform performs screen collision handling.
+edges, alignment offsets and spacing follow the existing anchor properties;
+on macOS the arrow remains at the trigger center and AppKit determines body
+placement as described above. The platform performs screen collision handling.
 Popovers without positioning properties retain their inline behavior.
 
 Native dismissal emits the existing `dismiss` event for the popover, so
@@ -163,6 +237,10 @@ patches, layout changes, scrolling and unmounting; queried leaf text keeps its
 existing API and presentation. For example, hosts can query each child of
 `text [text "Hello"; text "\u{200B}"]` without inventing caret metrics or
 turning inline runs into separate horizontal stacks.
+
+The inline renderer handles Text descendants, including Text inside transparent
+`display: contents` wrappers. Place icons and controls in sibling layout
+containers; other non-Text inline children remain unsupported.
 
 Apple `stack`, `panel` and `card` children with `position: absolute` now honor
 their numeric `inset`, `inset-top`, `inset-right`, `inset-bottom` and `inset-left`
