@@ -4556,6 +4556,14 @@ private struct LUIMenuItemView: View {
         }
     }
 
+    private var labelChildren: [Int] {
+        model.flowChildren.filter { id in
+            guard model.childData.layout[id]?.kind != .contextMenu else { return false }
+            guard let child = backend.model(id: id) else { return true }
+            return child.kind != .popover || !child.hasNativePopoverAnchor
+        }
+    }
+
     private func itemLabel(expands: Bool) -> some View {
         HStack(spacing: LUIDropdownMenuLayoutPolicy.itemSpacing) {
             if !model.buttonIconName.isEmpty {
@@ -4569,12 +4577,10 @@ private struct LUIMenuItemView: View {
                     )
                     .modifier(LUIMenuItemForegroundModifier(model: model))
             }
-            if model.children.contains(where: { model.childData.layout[$0]?.kind != .contextMenu }) {
-                ForEach(model.children, id: \.self) { childID in
-                    if model.childData.layout[childID]?.kind != .contextMenu {
-                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
-                            .allowsHitTesting(false)
-                    }
+            if !labelChildren.isEmpty {
+                ForEach(labelChildren, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        .allowsHitTesting(false)
                 }
             } else {
                 Text(verbatim: model.text.isEmpty
