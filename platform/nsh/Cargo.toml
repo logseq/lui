@@ -12,7 +12,7 @@ nsh-engine = { git = "https://github.com/logseq/nsh", rev = "adc186db7213f3ccd1e
 nsh-updater = { git = "https://github.com/logseq/nsh", rev = "adc186db7213f3ccd1eacaa836cc721e9779fd14" }
 ureq = { version = "3.5.1", features = ["platform-verifier"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 roxmltree = "0.21.2"
 chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 libloading = "0.8"

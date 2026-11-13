@@ -728,6 +728,21 @@ mod tests {
     }
 
     #[test]
+    fn json_point_dimensions_preserve_exact_float64_boundary_values() {
+        for (text, supported) in [
+            ("63.25", true),
+            ("64.125", true),
+            ("3.4028234663852886e38", true),
+            ("3.402823466385289e38", false),
+        ] {
+            let expected = text.parse::<f64>().unwrap();
+            let value: Value = serde_json::from_str(text).unwrap();
+            assert_eq!(value.as_f64().unwrap().to_bits(), expected.to_bits());
+            assert_eq!(validate_value("image", "height", &value).is_ok(), supported);
+        }
+    }
+
+    #[test]
     fn wire_float_normalization_preserves_domain_checks_and_rejects_non_scalars() {
         assert!(validate_value("column", "opacity", &json!(1)).is_ok());
         assert!(validate_value("column", "opacity", &json!(2)).is_err());
