@@ -10,6 +10,25 @@ import UIKit
 @MainActor
 @Suite("Apple host queries", .serialized)
 struct LUIHostQueryTests {
+    @Test("Inline newline end carets retain their downstream line", arguments: ["Ptail\n", "Ptail\nQ"])
+    func trailingLineGeometry(document: String) throws {
+        #if os(macOS)
+        let font = NSFont.systemFont(ofSize: 16)
+        #else
+        let font = UIFont.systemFont(ofSize: 16)
+        #endif
+        let layout = LUITextLayout(text: NSAttributedString(string: document,
+            attributes: [.font: font]), width: 200, lineLimit: nil)
+        let range = NSRange(location: 1, length: 5)
+        let bounds = try #require(layout.bounds(for: range))
+        let geometry = LUICommittedTextGeometry(nodeID: 1, generation: 1, incarnation: 1,
+            text: "tail\n", frame: bounds, identity: UUID(), layout: layout,
+            sourceRange: range, sourceOrigin: bounds.origin)
+        #expect(geometry.lineRanges == [NSRange(location: 0, length: 5), NSRange(location: 5, length: 0)])
+        let endCaret = try #require(geometry.caretRect(atUTF16Offset: 5))
+        #expect(geometry.offset(at: CGPoint(x: endCaret.midX, y: endCaret.midY)) == 5)
+    }
+
     @Test("SVG replacement is atomic and image dimensions precede cropping")
     func resources() throws {
         let backend = LUIAppleBackend()
