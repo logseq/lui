@@ -359,7 +359,7 @@ final class LUISharedVirtualViewport {
         #else
         var current: UIView? = view
         while let candidate = current {
-            if candidate.isHidden || candidate.alpha <= 0 { return false }
+            if candidate.isHidden { return false }
             current = candidate.superview
         }
         return true
@@ -548,11 +548,25 @@ final class LUISharedVirtualViewport {
     }
 
     private func visible(_ view: LUIVirtualNativeView, in owner: Owner) -> Bool {
+        // Attachment can outlive native presentation; only visible proofs need
+        // a presented window and nontransparent view hierarchy.
         guard let scroll = owner.scroll else { return false }
         #if os(macOS)
+        guard let window = view.window, window.isVisible, window.alphaValue > 0 else { return false }
+        var current: NSView? = view
+        while let candidate = current {
+            guard !candidate.isHidden, candidate.alphaValue > 0 else { return false }
+            current = candidate.superview
+        }
         let frame = view.convert(view.visibleRect, to: scroll.contentView)
         let clip = scroll.contentView.bounds
         #else
+        guard let window = view.window, !window.isHidden, window.alpha > 0 else { return false }
+        var current: UIView? = view
+        while let candidate = current {
+            guard !candidate.isHidden, candidate.alpha > 0 else { return false }
+            current = candidate.superview
+        }
         var frame = view.convert(view.bounds, to: scroll)
         var ancestor = view.superview
         while let candidate = ancestor, candidate !== scroll {

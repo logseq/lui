@@ -164,6 +164,13 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
             view: field, requirements: [.attached, .visible]), "Unregistered views cannot acknowledge")
         let registration = try backend.registerVirtualNativeView(nodeID: 3, view: field)
         defer { backend.unregisterVirtualNativeView(registration) }
+        XCTAssertFalse(window.isVisible)
+        XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+            view: field, requirements: [.attached, .visible]), "An ordered-out window cannot attest visibility")
+        XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+            view: field, requirements: .attached), "Window ordering does not change native attachment")
+        window.orderFrontRegardless()
+        XCTAssertTrue(window.isVisible)
         var events: [LUIEvent] = []
         backend.onEvent = { events.append($0) }
         XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
@@ -214,6 +221,28 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
             view: field, requirements: .attached), "Rotated sources cannot attest document geometry")
         sourceAnchor.frameRotation = 0
+        let presentations: [(String, () -> Void, () -> Void)] = [
+            ("ordered-out window", { window.orderOut(nil) }, { window.orderFrontRegardless() }),
+            ("transparent window", { window.alphaValue = 0 }, { window.alphaValue = 1 }),
+            ("transparent ancestor", { sourceAnchor.alphaValue = 0 }, { sourceAnchor.alphaValue = 1 }),
+            ("transparent control", { field.alphaValue = 0 }, { field.alphaValue = 1 }),
+        ]
+        for (name, hide, show) in presentations {
+            XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+                view: field, requirements: [.attached, .visible]))
+            let visibleReceipt = try XCTUnwrap(receipts().last?.1)
+            hide()
+            defer { show() }
+            events.removeAll()
+            let invisibleRelease = try JSONSerialization.data(withJSONObject: [["ticket": 9, "receipt": visibleReceipt]])
+            try apply([set(1, "virtual-retention-releases", String(decoding: invisibleRelease, as: UTF8.self))])
+            backend.sharedVirtualViewport.refresh()
+            XCTAssertEqual(receipts().map(\.0), ["stale"], "Invisible release must be refused: \(name)")
+            XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+                view: field, requirements: [.attached, .visible]), name)
+            XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+                view: field, requirements: .attached), "Attachment remains valid: \(name)")
+        }
         XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
             view: field, requirements: .attached))
         let retired = try XCTUnwrap(receipts().last?.1)
