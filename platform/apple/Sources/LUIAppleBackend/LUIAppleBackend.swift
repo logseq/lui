@@ -700,6 +700,7 @@ public final class LUIAppleBackend {
     }
 
     private var nodeFrames: [Int: CGRect] = [:]
+    private var nodeFrameOwners: [Int: LUIFrameOwner] = [:]
     private var framesReportScheduled = false
 
 #if DEBUG && os(iOS)
@@ -803,8 +804,33 @@ public final class LUIAppleBackend {
         }
     }
 
-    func reportNodeFrame(_ nodeID: Int, _ rect: CGRect) {
+    func frameOwner(nodeID: Int, source: UUID) -> LUIFrameOwner? {
+        if let model = model(id: nodeID) {
+            return LUIFrameOwner(nodeID: nodeID, model: .node(model), source: source)
+        }
+        if let model = extensionModel(id: nodeID) {
+            return LUIFrameOwner(nodeID: nodeID, model: .extensionNode(model), source: source)
+        }
+        return nil
+    }
+
+    func isCurrentFrameOwner(_ owner: LUIFrameOwner) -> Bool {
+        switch owner.model {
+        case let .node(model): models[owner.nodeID] === model
+        case let .extensionNode(model): extensionModels[owner.nodeID] === model
+        }
+    }
+
+    func registerNodeFrame(_ owner: LUIFrameOwner) {
+        guard isCurrentFrameOwner(owner), nodeFrameOwners[owner.nodeID] != owner else { return }
+        revokeNodeFrame(owner.nodeID)
+        nodeFrameOwners[owner.nodeID] = owner
+    }
+
+    func reportNodeFrame(_ nodeID: Int, _ rect: CGRect, owner: LUIFrameOwner) {
         if frameCollectionSuspended { return }
+        guard owner.nodeID == nodeID, isCurrentFrameOwner(owner),
+              nodeFrameOwners[nodeID] == owner else { return }
         if nodeFrames[nodeID] == rect { return }
         nodeFrames[nodeID] = rect
         if let view = hostQueries.textViews[nodeID]?.value, view.model?.id == nodeID {
@@ -813,7 +839,13 @@ public final class LUIAppleBackend {
         scheduleFramesReport()
     }
 
-    func removeNodeFrame(_ nodeID: Int) {
+    func removeNodeFrame(_ nodeID: Int, owner: LUIFrameOwner) {
+        guard nodeFrameOwners[nodeID] == owner else { return }
+        revokeNodeFrame(nodeID)
+    }
+
+    private func revokeNodeFrame(_ nodeID: Int) {
+        nodeFrameOwners[nodeID] = nil
         if nodeFrames.removeValue(forKey: nodeID) != nil {
             scheduleFramesReport()
         }
@@ -1671,6 +1703,9 @@ public final class LUIAppleBackend {
         var descendantsRefresh = Set<Int>()
         for id in dropped { collectAncestors(of: id, into: &descendantsRefresh) }
         for id in dropped {
+            // Inline text has no individual SwiftUI disappearance callback.
+            // Revoke its frame before clearing the native-query registration.
+            revokeNodeFrame(id)
             popoverNodeIDs.remove(id)
             if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }
             if hostQueries.imageQueries.contains(id) { hostQueries.imageQueries.remove(id) }

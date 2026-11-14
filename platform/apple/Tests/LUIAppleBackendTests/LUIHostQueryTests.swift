@@ -10,6 +10,88 @@ import UIKit
 @MainActor
 @Suite("Apple host queries", .serialized)
 struct LUIHostQueryTests {
+    @Test("Frame snapshots retire dropped inline text and reject stale owners")
+    func retiredFrameOwners() throws {
+        #if os(macOS)
+        _ = NSApplication.shared
+        #endif
+        let backend = LUIAppleBackend()
+        backend.frameReportingEnabled = true
+        var frames: [Int: CGRect] = [:]
+        backend.onFramesReport = { frames = $0 }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1648,"kind":"column"},
+          {"op":"create-node","id":1650,"kind":"text"},
+          {"op":"create-node","id":1651,"kind":"text"},
+          {"op":"set-prop","id":1651,"property":"text","value":"Same text"},
+          {"op":"insert-child","parent":1650,"child":1651,"index":0},
+          {"op":"insert-child","parent":1648,"child":1650,"index":0}
+        ]}
+        """)
+        let root = try #require(backend.model(id: 1650))
+        let run = try #require(backend.model(id: 1651))
+        let native = LUICommittedTextNativeView()
+        native.configure(model: root, backend: backend, text: NSAttributedString(string: run.text),
+            lineLimit: nil, runs: [LUIInlineTextRun(model: run,
+                range: NSRange(location: 0, length: run.text.utf16.count), sourceText: run.text)])
+        let rect = CGRect(x: 95, y: 224, width: 358, height: 20)
+        let reporter = LUIFrameReporter()
+        let oldOwner = try #require(backend.frameOwner(nodeID: 1651, source: reporter.source))
+        reporter.represent(oldOwner)
+        reporter.observe(LUIFrameSample(owner: oldOwner, rect: rect))
+        reporter.activate(oldOwner, backend: backend)
+        backend.emitFramesSnapshot()
+        #expect(frames[1651] == rect)
+        try backend.apply(json: """
+        {"generation":2,"ops":[{"op":"detach-subtree","id":1648}]}
+        """)
+        backend.emitFramesSnapshot()
+        #expect(frames[1651] == nil)
+        native.unregister()
+        backend.emitFramesSnapshot()
+        #expect(frames[1651] == nil)
+
+        // Reusing the numeric ID and coordinates must publish a fresh incarnation.
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"create-node","id":1651,"kind":"text"},
+          {"op":"set-prop","id":1651,"property":"text","value":"Same text"}
+        ]}
+        """)
+        let nextOwner = try #require(backend.frameOwner(nodeID: 1651, source: reporter.source))
+        reporter.represent(nextOwner)
+        // Geometry may precede appearance, with no later rectangle change.
+        reporter.observe(LUIFrameSample(owner: nextOwner, rect: rect))
+        reporter.activate(nextOwner, backend: backend)
+        backend.emitFramesSnapshot()
+        #expect(frames[1651] == rect)
+        reporter.observe(LUIFrameSample(owner: oldOwner, rect: rect.offsetBy(dx: 100, dy: 100)))
+        reporter.activate(oldOwner, backend: backend)
+        reporter.deactivate(oldOwner)
+        backend.reportNodeFrame(1651, rect.offsetBy(dx: 100, dy: 100), owner: oldOwner)
+        native.unregister()
+        backend.emitFramesSnapshot()
+        #expect(frames[1651] == rect)
+
+        // An obsolete producer of the same retained model also loses ownership.
+        let replacement = LUIFrameReporter()
+        let replacementOwner = try #require(backend.frameOwner(nodeID: 1651, source: replacement.source))
+        replacement.represent(replacementOwner)
+        replacement.activate(replacementOwner, backend: backend)
+        replacement.observe(LUIFrameSample(owner: replacementOwner, rect: rect))
+        reporter.observe(LUIFrameSample(owner: nextOwner, rect: .zero))
+        reporter.deactivate(nextOwner)
+        backend.emitFramesSnapshot()
+        #expect(frames[1651] == rect)
+        try backend.apply(json: """
+        {"generation":4,"ops":[{"op":"drop-node","id":1651}]}
+        """)
+        replacement.observe(LUIFrameSample(owner: replacementOwner, rect: rect))
+        backend.emitFramesSnapshot()
+        #expect(frames[1651] == nil)
+    }
+
     @Test("Inline newline end carets retain their downstream line", arguments: ["Ptail\n", "Ptail\nQ"])
     func trailingLineGeometry(document: String) throws {
         #if os(macOS)

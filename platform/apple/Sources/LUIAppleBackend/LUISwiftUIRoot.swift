@@ -658,21 +658,38 @@ private struct LUIFrameReportModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if backend.frameReporting.isEnabled && !backend.frameReporting.isSuspended {
-            content
-                .onGeometryChange(for: CGRect.self) { proxy in
-                    proxy.frame(in: .global)
-                } action: { rect in
-                    if !inHoistedToolbar {
-                        backend.reportNodeFrame(nodeID, rect)
-                    }
-                }
-                .onDisappear {
-                    backend.removeNodeFrame(nodeID)
-                }
+        if backend.frameReporting.isEnabled && !backend.frameReporting.isSuspended,
+           !inHoistedToolbar {
+            content.modifier(LUIMountedFrameReportModifier(nodeID: nodeID, backend: backend))
         } else {
             content
         }
+    }
+}
+
+/// Allocate producer state only while frame collection is enabled.
+private struct LUIMountedFrameReportModifier: ViewModifier {
+    let nodeID: Int
+    let backend: LUIAppleBackend
+    @State private var reporter = LUIFrameReporter()
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        // The lookup observes membership, including same-ID model replacement.
+        // Keep one content shape even while its retained owner is absent.
+        let owner = backend.frameOwner(nodeID: nodeID, source: reporter.source)
+        let _ = reporter.represent(owner)
+        content
+            .onGeometryChange(for: LUIFrameSample?.self) { proxy in
+                owner.map { LUIFrameSample(owner: $0, rect: proxy.frame(in: .global)) }
+            } action: { sample in
+                reporter.observe(sample)
+            }
+            .onAppear { reporter.activate(owner, backend: backend) }
+            .onChange(of: owner) { _, next in reporter.activate(next, backend: backend) }
+            .onDisappear {
+                reporter.deactivate(owner)
+            }
     }
 }
 
