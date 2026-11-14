@@ -701,6 +701,11 @@ public final class LUIAppleBackend {
 
     private var nodeFrames: [Int: CGRect] = [:]
     private var nodeFrameOwners: [Int: LUIFrameOwner] = [:]
+    private struct FrameRegistration {
+        let owner: LUIFrameOwner
+        weak var reporter: LUIFrameReporter?
+    }
+    private var nodeFrameReporters: [Int: [FrameRegistration]] = [:]
     private var framesReportScheduled = false
 
 #if DEBUG && os(iOS)
@@ -821,8 +826,17 @@ public final class LUIAppleBackend {
         }
     }
 
-    func registerNodeFrame(_ owner: LUIFrameOwner) {
-        guard isCurrentFrameOwner(owner), nodeFrameOwners[owner.nodeID] != owner else { return }
+    func registerNodeFrame(_ owner: LUIFrameOwner, reporter: LUIFrameReporter? = nil) {
+        guard isCurrentFrameOwner(owner) else { return }
+        // Keep overlapping SwiftUI producers weakly, in registration order.
+        // Native inline producers keep their existing single-owner behavior.
+        var registrations = nodeFrameReporters[owner.nodeID] ?? []
+        registrations.removeAll {
+            $0.owner == owner || $0.reporter == nil || !isCurrentFrameOwner($0.owner)
+        }
+        if let reporter { registrations.append(FrameRegistration(owner: owner, reporter: reporter)) }
+        nodeFrameReporters[owner.nodeID] = registrations.isEmpty ? nil : registrations
+        guard nodeFrameOwners[owner.nodeID] != owner else { return }
         revokeNodeFrame(owner.nodeID)
         nodeFrameOwners[owner.nodeID] = owner
     }
@@ -840,8 +854,25 @@ public final class LUIAppleBackend {
     }
 
     func removeNodeFrame(_ nodeID: Int, owner: LUIFrameOwner) {
+        var registrations = nodeFrameReporters[nodeID] ?? []
+        let removedReporter = registrations.contains { $0.owner == owner }
+        registrations.removeAll {
+            $0.owner == owner || $0.reporter == nil || !isCurrentFrameOwner($0.owner)
+        }
+        nodeFrameReporters[nodeID] = registrations.isEmpty ? nil : registrations
         guard nodeFrameOwners[nodeID] == owner else { return }
         revokeNodeFrame(nodeID)
+        guard removedReporter else { return }
+        // Read the surviving object's own state, never historical UUID/rect
+        // entries. Missing geometry waits for that producer's next sample.
+        for registration in registrations.reversed() {
+            guard isCurrentFrameOwner(registration.owner),
+                  let reporter = registration.reporter,
+                  let frame = reporter.activeFrame(for: registration.owner, backend: self) else { continue }
+            nodeFrameOwners[nodeID] = registration.owner
+            if let rect = frame.rect { reportNodeFrame(nodeID, rect, owner: registration.owner) }
+            break
+        }
     }
 
     private func revokeNodeFrame(_ nodeID: Int) {
@@ -1705,6 +1736,7 @@ public final class LUIAppleBackend {
         for id in dropped {
             // Inline text has no individual SwiftUI disappearance callback.
             // Revoke its frame before clearing the native-query registration.
+            nodeFrameReporters[id] = nil
             revokeNodeFrame(id)
             popoverNodeIDs.remove(id)
             if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }

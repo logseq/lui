@@ -27,6 +27,10 @@ struct LUIFrameSample: Equatable, Sendable {
     let rect: CGRect
 }
 
+struct LUIActiveFrame {
+    let rect: CGRect?
+}
+
 /// Non-observable storage avoids a SwiftUI update for each geometry sample.
 /// Geometry and appearance callbacks can arrive in either order; publish only
 /// after the producer mounts, and never reactivate it from a geometry callback.
@@ -53,7 +57,7 @@ final class LUIFrameReporter {
         if let owner { deactivate(owner) }
         self.backend = backend
         owner = next
-        backend.registerNodeFrame(next)
+        backend.registerNodeFrame(next, reporter: self)
         if let sample, sample.owner == next {
             backend.reportNodeFrame(sample.owner.nodeID, sample.rect, owner: next)
         }
@@ -72,5 +76,13 @@ final class LUIFrameReporter {
         owner = nil
         if sample?.owner == previous { sample = nil }
         backend = nil
+    }
+
+    /// Only a live, still-activated producer may resume publication. The
+    /// backend separately checks the retained model's current incarnation.
+    func activeFrame(for candidate: LUIFrameOwner, backend: LUIAppleBackend) -> LUIActiveFrame? {
+        guard self.backend === backend, owner == candidate,
+              representedOwner == candidate else { return nil }
+        return LUIActiveFrame(rect: sample?.owner == candidate ? sample?.rect : nil)
     }
 }
