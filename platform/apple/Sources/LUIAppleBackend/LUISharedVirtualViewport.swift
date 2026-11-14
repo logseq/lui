@@ -505,9 +505,15 @@ final class LUISharedVirtualViewport {
     }
 
     private func anchorKey(_ marker: LUISharedRowMarker, source: Source) -> String? {
-        guard let index = source.model?.children.firstIndex(of: marker.row.id),
-              source.binding.keys.indices.contains(index) else { return nil }
-        return source.binding.keys[index]
+        // Retained children update before the source configures. Resolve the key
+        // from that same current metadata, while preserving the source lease/path.
+        guard let model = source.model,
+              let binding = try? LUISharedSourceBinding(properties: model.properties, children: model.children),
+              binding.owner == source.binding.owner, binding.epoch == source.binding.epoch,
+              binding.path == source.binding.path,
+              let index = model.children.firstIndex(of: marker.row.id),
+              binding.keys.indices.contains(index) else { return nil }
+        return binding.keys[index]
     }
 
     private func anchorModel(_ node: Int) -> AnyObject? {

@@ -145,13 +145,17 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
             scroll.reflectScrolledClipView(scroll.contentView)
             backend.sharedVirtualViewport.refresh()
             if variation == "surviving generation" {
-                try apply([set(2, "virtual-generation", 3)])
-                outer.configure(model: outerModel, backend: backend)
+                try apply([
+                    ["op": "create-node", "id": 8, "kind": "column"],
+                    ["op": "insert-child", "parent": 2, "child": 8, "index": 1],
+                    set(2, "virtual-total-count", 3), set(2, "virtual-indices", "[0,1,2]"),
+                    set(2, "virtual-row-keys", #"["parent","inserted","visible"]"#),
+                    set(2, "virtual-generation", 3),
+                ])
                 backend.sharedVirtualViewport.refresh()
                 XCTAssertEqual(scroll.contentView.bounds.minY, initial, accuracy: 0.1,
-                    "A generation refresh before marker.configure must retain the surviving reading anchor")
-                parent.configure(outer, row: .init(id: 3, index: 0), generation: 3, backend: backend)
-                visible.configure(outer, row: .init(id: 4, index: 1), generation: 3, backend: backend)
+                    "Insertion before source.configure must retain the surviving reading anchor")
+                outer.configure(model: outerModel, backend: backend)
             }
             let growth: CGFloat = nestedGap || variation.hasSuffix("clip") ? 20 : 30
             first.setFrameSize(CGSize(width: 400, height: 80 + growth))
@@ -175,6 +179,10 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
                 || variation == "scrollIntoView" ? initial : initial + growth
             backend.sharedVirtualViewport.refresh()
             XCTAssertEqual(scroll.contentView.bounds.minY, expected, accuracy: 0.1, variation)
+            if variation == "surviving generation" {
+                parent.configure(outer, row: .init(id: 3, index: 0), generation: 3, backend: backend)
+                visible.configure(outer, row: .init(id: 4, index: 2), generation: 3, backend: backend)
+            }
             backend.sharedVirtualViewport.refresh()
             XCTAssertEqual(scroll.contentView.bounds.minY, expected, accuracy: 0.1,
                 "Repeated refresh must not apply another correction: \(variation)")
