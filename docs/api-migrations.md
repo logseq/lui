@@ -11,6 +11,11 @@ unsupported host or binding an owner/source without selecting it raises
 `Invalid_argument`. Standalone `virtual_rows`, its defaults, and existing
 `VirtualWindow` ABI remain unchanged.
 
+Direct consumers of emitted Melange JavaScript must account for the new optional
+argument: `App.create(undefined, undefined, backend, model, reducer, view)` passes
+the defaults for `virtual_rows` and `virtual_capabilities`, respectively. OCaml
+callers keep named optional arguments.
+
 `Lui_virtual` adds opaque `owner`, `source`, `retention`, and `receipt` handles,
 `binding = {node : int; lease : int}`, `create_owner`, `dispose_owner`,
 `root_source`, `child_source`, `binding`, `retain`, `ticket`, `receipt`,
