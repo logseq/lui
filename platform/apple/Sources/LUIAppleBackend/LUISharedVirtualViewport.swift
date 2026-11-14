@@ -508,7 +508,7 @@ final class LUISharedVirtualViewport {
     // The owner's native visible row is the sole measurement anchor. Child
     // extents and later ancestor-height propagation cannot each apply a delta.
     private func preserveVisibleAnchor(_ owner: Owner, sources owned: [Int: Source]) {
-        guard let model = owner.model, let (offset, height, total) = metrics(owner) else {
+        guard let scroll = owner.scroll, let (offset, height, total) = metrics(owner) else {
             owner.visibleAnchor = nil
             owner.observedOffset = nil
             return
@@ -525,7 +525,8 @@ final class LUISharedVirtualViewport {
            let frame = anchorFrame(marker, source: source) {
             let delta = frame.minY - saved.position
             let target = min(max(0, offset + delta), max(0, total - height))
-            if abs(target - offset) > 0.1, backend?.setScrollTop(nodeID: model.id, top: target) == true {
+            if abs(target - offset) > 0.1,
+               backend?.setNativeScrollTop(scroll, top: target, documentHeight: total, viewportHeight: height) == true {
                 currentOffset = metrics(owner)?.0 ?? offset
             }
         }
@@ -790,11 +791,13 @@ final class LUISharedVirtualViewport {
     func setOffset(_ local: CGFloat, state: LUISparseVirtualState, animated: Bool) {
         guard let source = sources.values.first(where: { $0.state === state }),
               let geometry = source.geometry, let owner = owners[source.binding.owner],
+              let scroll = owner.scroll,
               let backend else { return }
         _ = animated // Explicit shared-owner intents use current measured geometry.
         owner.visibleAnchor = nil
         owner.observedOffset = nil
-        _ = backend.setScrollTop(nodeID: source.binding.owner, top: geometry.target(local))
+        _ = backend.setNativeScrollTop(scroll, top: geometry.target(local),
+            documentHeight: geometry.documentHeight, viewportHeight: geometry.height)
         // The owner probe uses the same existing document and owns notifications.
         if owner.scroll != nil { schedule() }
     }

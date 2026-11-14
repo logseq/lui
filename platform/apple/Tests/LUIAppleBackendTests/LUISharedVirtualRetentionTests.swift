@@ -52,9 +52,6 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         let document = LUISharedSourceMarker(frame: CGRect(x: 0, y: 0, width: 400, height: 4000))
         scroll.documentView = document
         window.contentView = scroll
-        let query = LUIHostScrollMarker()
-        document.addSubview(query)
-        query.configure(model: owner, backend: backend, ownsScroll: true)
         let rootAnchor = LUISharedSourceMarker(frame: document.bounds)
         document.addSubview(rootAnchor)
         let parent = LUISharedRowMarker(frame: CGRect(x: 0, y: 0, width: 400, height: 100))
@@ -78,7 +75,8 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         outer.measured(.init(id: 4, index: 10), height: 100)
         child.measured(.init(id: 6, index: 0), height: 50)
         child.measured(.init(id: 7, index: 1), height: 50)
-        XCTAssertTrue(backend.setScrollTop(nodeID: 1, top: 1000))
+        scroll.contentView.scroll(to: CGPoint(x: 0, y: 1000))
+        scroll.reflectScrolledClipView(scroll.contentView)
         backend.sharedVirtualViewport.refresh()
         child.measured(.init(id: 6, index: 0), height: 80)
         backend.sharedVirtualViewport.refresh()
@@ -95,7 +93,8 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         backend.sharedVirtualViewport.refresh()
         XCTAssertEqual(scroll.contentView.bounds.minY, 1030, accuracy: 0.1,
             "Parent propagation of the same growth must not compensate twice")
-        XCTAssertTrue(backend.setScrollTop(nodeID: 1, top: 100))
+        scroll.contentView.scroll(to: CGPoint(x: 0, y: 100))
+        scroll.reflectScrolledClipView(scroll.contentView)
         backend.sharedVirtualViewport.refresh()
         child.measured(.init(id: 6, index: 0), height: 100)
         first.setFrameSize(CGSize(width: 400, height: 100))

@@ -17,7 +17,17 @@ extension LUIAppleBackend {
     public func setScrollTop(nodeID: Int, top: CGFloat) -> Bool {
         guard top.isFinite, let marker = scrollMarker(nodeID: nodeID, container: true),
               let scroll = marker.scroll, let metrics = marker.metrics else { return false }
-        let offset = min(max(top, 0), max(0, metrics.contentSize.height - metrics.viewportSize.height))
+        return setNativeScrollTop(scroll, top: top, documentHeight: metrics.contentSize.height,
+            viewportHeight: metrics.viewportSize.height)
+    }
+
+    // Shared owners already hold their exact native scroller. They use this
+    // same write path without enabling the optional node-query marker.
+    @discardableResult
+    func setNativeScrollTop(_ scroll: LUIHostNativeScroll, top: CGFloat,
+        documentHeight: CGFloat, viewportHeight: CGFloat) -> Bool {
+        guard top.isFinite, documentHeight.isFinite, viewportHeight.isFinite else { return false }
+        let offset = min(max(top, 0), max(0, documentHeight - viewportHeight))
         #if os(macOS)
         guard let document = scroll.documentView else { return false }
         let clip = scroll.contentView
