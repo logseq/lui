@@ -5,11 +5,13 @@ type release_error = Stale_receipt | Owner_retired | Unsupported
 type capability = Shared_viewport_retention_v1
 type receipt_status = Pinned | Focused | Released | Stale | Missing_target | Retired
 type row = { source_node : int; generation : int; row_node : int; incarnation : int }
-type receipt = {
-  envelope : string; status : receipt_status; owner_node : int; epoch : int;
+type native_receipt = {
+  envelope : string; owner_node : int; epoch : int;
   ticket_id : int; proof : int; rows : row list; geometry : int; pins : int;
   requirements : string list;
 }
+(* SDK refusals carry no invented native proof or wire envelope. *)
+type receipt = { status : receipt_status; native : native_receipt option }
 type owner = {
   scheduler : Signal.scheduler;
   mutable retired : bool;
@@ -24,8 +26,10 @@ and source = {
   owner : owner; path : string list;
   binding_state : binding option Signal.state;
   mutable bound : binding option;
+  mutable owner_epoch : int;
   mutable generation : int;
   mutable rows : (string * int) list;
+  mutable contains : (string -> bool) option;
   mutable listeners : (int * (unit -> unit)) list;
   mutable adopt : int list -> unit;
   mutable replacing_source : bool;
@@ -60,19 +64,21 @@ let set_receipt retention value =
 let tickets owner = Hashtbl.fold (fun _ ticket result ->
   if ticket.active then ticket :: result else result) owner.tickets []
   |> List.sort (fun a b -> Int.compare a.id b.id)
-let notify owner =
+let publish owner =
   Option.iter (fun publish ->
     let retained = List.map (fun retention -> Json.Object [
       "ticket", Json.Int retention.id;
       "path", Json.Array (List.map (fun value -> Json.String value) retention.source.path);
       "key", Json.String retention.key]) (tickets owner) in
     let releases = List.filter_map (fun retention -> Option.map (fun receipt ->
-      Json.Object ["ticket", Json.Int retention.id; "receipt", Json.String receipt.envelope])
+      Json.Object ["ticket", Json.Int retention.id; "receipt", Json.String (Option.get receipt.native).envelope])
       retention.releasing) (tickets owner) in
     match owner.owner_binding with
     | None -> ()
     | Some binding -> publish binding.lease (Json.encode (Json.Array retained))
-        (Json.encode (Json.Array releases))) owner.publisher;
+        (Json.encode (Json.Array releases))) owner.publisher
+let notify owner =
+  publish owner;
   let listeners = Hashtbl.fold (fun _ source result ->
     List.rev_append source.listeners result) owner.sources [] in
   List.iter (fun (_, notify) -> notify ()) listeners
@@ -82,7 +88,8 @@ let source owner path =
   | Some source -> source
   | None ->
     let source = { owner; path; binding_state = Signal.state owner.scheduler None;
-      bound = None; generation = 0; rows = []; listeners = []; adopt = (fun _ -> ());
+      bound = None; owner_epoch = 0; generation = 0; rows = []; contains = None;
+      listeners = []; adopt = (fun _ -> ());
       replacing_source = false } in
     Hashtbl.add owner.sources path source; source
 let root_source owner ~key = source owner [Json.nonempty key]
@@ -92,14 +99,6 @@ let binding source = Signal.value source.binding_state
 let ticket retention = retention.id
 let receipt retention = Signal.value retention.receipt_state
 let receipt_status receipt = receipt.status
-let retain source ~key =
-  live source.owner;
-  let retention = { source; key = Json.nonempty key; id = fresh source.owner;
-    receipt_state = Signal.state source.owner.scheduler None; latest = None;
-    releasing = None; active = true } in
-  Hashtbl.add source.owner.tickets retention.id retention;
-  notify source.owner;
-  retention
 let cancel_retention retention =
   if retention.active then begin
     retention.active <- false; retention.releasing <- None;
@@ -119,7 +118,7 @@ let dispose_owner owner =
     notify owner;
     owner.owner_binding <- None; owner.publisher <- None;
     Hashtbl.iter (fun _ source ->
-      source.bound <- None; source.generation <- 0; source.rows <- [];
+      source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
       publish_state owner source.binding_state None;
       Signal.dispose_signal (binding source);
       source.listeners <- []; source.adopt <- (fun _ -> ())) owner.sources
@@ -138,6 +137,7 @@ let current_rows retention =
   List.map (fun (path, key) ->
     let source = Hashtbl.find owner.sources path in
     let bound = Option.get source.bound in
+    if source.owner_epoch <> (Option.get owner.owner_binding).lease then raise Not_found;
     bound.node, source.generation, List.assoc key source.rows)
     (chain retention.source.path retention.key)
 let current retention receipt =
@@ -150,10 +150,42 @@ let current retention receipt =
        = current_rows retention && List.for_all (fun row -> row.incarnation > 0) receipt.rows
      with Not_found | Invalid_argument _ -> false)
   | _ -> false
+let refresh_receipts owner =
+  let changed = ref false in
+  List.iter (fun retention ->
+    let missing = List.exists (fun (path, key) ->
+      match Hashtbl.find_opt owner.sources path, owner.owner_binding with
+      | Some source, Some owner when source.bound <> None && source.generation > 0
+          && source.owner_epoch = owner.lease ->
+        Option.fold ~none:false ~some:(fun contains -> not (contains key)) source.contains
+      | _ -> false) (chain retention.source.path retention.key) in
+    let refused = if missing then Some Missing_target else
+      match retention.latest with
+      | Some { status = (Pinned | Focused); native = Some proof } when not (current retention proof) -> Some Stale
+      | _ -> None in
+    match refused with
+    | None -> ()
+    | Some status ->
+      if Option.is_some retention.releasing then begin
+        retention.releasing <- None; changed := true
+      end;
+      if Option.map (fun receipt -> receipt.status) retention.latest <> Some status then
+        set_receipt retention (Some {status;
+          native = Option.bind retention.latest (fun receipt -> receipt.native)})) (tickets owner);
+  if !changed then publish owner
+let retain source ~key =
+  live source.owner;
+  let retention = { source; key = Json.nonempty key; id = fresh source.owner;
+    receipt_state = Signal.state source.owner.scheduler None; latest = None;
+    releasing = None; active = true } in
+  Hashtbl.add source.owner.tickets retention.id retention;
+  refresh_receipts source.owner;
+  notify source.owner;
+  retention
 let request_release retention receipt =
   if retention.source.owner.retired then Error Owner_retired
   else if retention.source.owner.owner_binding = None then Error Unsupported
-  else if not (current retention receipt)
+  else if not (Option.fold ~none:false ~some:(current retention) receipt.native)
       || not (receipt.status = Pinned || receipt.status = Focused)
       || not (Option.fold ~none:false ~some:(fun latest -> latest == receipt) retention.latest)
   then Error Stale_receipt
@@ -181,47 +213,45 @@ let decode_receipt envelope =
   if List.sort_uniq String.compare requirements <> List.sort String.compare requirements
      || List.exists (fun requirement -> not (List.mem requirement ["attached"; "visible"; "focus"])) requirements
   then invalid_arg "invalid virtual receipt requirements";
-  {envelope; status; owner_node = Json.positive (field "owner"); epoch = Json.positive (field "epoch");
+  {status; native = Some {envelope; owner_node = Json.positive (field "owner"); epoch = Json.positive (field "epoch");
    ticket_id = Json.positive (field "ticket"); proof = Json.positive (field "proof"); rows;
-   geometry = Json.positive (field "geometry"); pins = Json.positive (field "pins"); requirements}
+   geometry = Json.positive (field "geometry"); pins = Json.positive (field "pins"); requirements}}
 
 module Internal = struct
   let bind_owner owner ~node ~publish =
     live owner;
     if owner.owner_binding <> None && not owner.replacing_owner then invalid_arg "shared virtual owner already bound";
     let binding = {node; lease = fresh owner} in
-    Hashtbl.iter (fun _ retention ->
-      retention.releasing <- None; set_receipt retention None) owner.tickets;
     owner.owner_binding <- Some binding; owner.publisher <- Some publish;
+    refresh_receipts owner;
     notify owner; binding
   let unbind_owner owner binding =
     if Option.fold ~none:false ~some:(fun current -> current.lease = binding.lease) owner.owner_binding then begin
       owner.owner_binding <- None; owner.publisher <- None;
-      Hashtbl.iter (fun _ retention ->
-        retention.releasing <- None; set_receipt retention None) owner.tickets;
       Hashtbl.iter (fun _ source ->
-        source.bound <- None; source.generation <- 0; source.rows <- [];
+        source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
         source.adopt <- (fun _ -> ());
         publish_state owner source.binding_state None) owner.sources;
+      refresh_receipts owner;
       true
     end else false
   let bind_source source ~node ~owner_node =
     live source.owner;
     if source.bound <> None && not source.replacing_source then invalid_arg "shared virtual source already bound";
     (match source.owner.owner_binding with
-     | Some owner when owner.node = owner_node -> ()
+     | Some owner when owner.node = owner_node -> source.owner_epoch <- owner.lease
      | _ -> invalid_arg "shared virtual source requires its bound owner");
     let bound = {node; lease = fresh source.owner} in
-    source.bound <- Some bound; source.generation <- 0; source.rows <- [];
+    source.bound <- Some bound; source.generation <- 0; source.rows <- []; source.contains <- None;
+    refresh_receipts source.owner;
     publish_state source.owner source.binding_state (Some bound);
     bound
   let unbind_source source binding =
     if Option.fold ~none:false ~some:(fun current -> current.lease = binding.lease) source.bound then begin
-      source.bound <- None; source.generation <- 0; source.rows <- [];
+      source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
       source.adopt <- (fun _ -> ());
       publish_state source.owner source.binding_state None;
-      Hashtbl.iter (fun _ retention -> retention.releasing <- None; set_receipt retention None)
-        source.owner.tickets;
+      refresh_receipts source.owner;
       true
     end else false
   let owner_binding source = source.owner.owner_binding
@@ -235,8 +265,13 @@ module Internal = struct
     let id = fresh source.owner in
     source.listeners <- (id, notify) :: source.listeners;
     fun () -> source.listeners <- List.filter (fun (other, _) -> other <> id) source.listeners
-  let commit_rows source ~generation rows =
-    source.generation <- generation; source.rows <- rows
+  let commit_rows source ~lease ~generation ~contains rows =
+    match source.bound, source.owner.owner_binding with
+    | Some bound, Some owner when bound.lease = lease && source.owner_epoch = owner.lease
+        && generation >= source.generation ->
+      source.generation <- generation; source.rows <- rows; source.contains <- Some contains;
+      refresh_receipts source.owner
+    | _ -> ()
   let adopt_pins source ~node adopt =
     match source.bound with
     | Some bound when bound.node = node ->
@@ -267,46 +302,54 @@ module Internal = struct
   let checkpoint owner =
     let binding = owner.owner_binding and publisher = owner.publisher in
     let sources = Hashtbl.fold (fun _ source saved ->
-      (source, source.bound, source.generation, source.rows, source.listeners, source.adopt) :: saved)
+      (source, source.bound, source.owner_epoch, source.generation, source.rows,
+        source.contains, source.listeners, source.adopt) :: saved)
       owner.sources [] in
     let receipts = Hashtbl.fold (fun _ retention saved ->
       (retention, retention.latest, retention.releasing) :: saved) owner.tickets [] in
     fun () ->
       owner.owner_binding <- binding; owner.publisher <- publisher;
+      List.iter (fun (source, bound, owner_epoch, generation, rows, contains, listeners, adopt) ->
+        source.bound <- bound; source.owner_epoch <- owner_epoch;
+        source.generation <- generation; source.rows <- rows; source.contains <- contains;
+        source.listeners <- listeners; source.adopt <- adopt) sources;
       List.iter (fun (retention, latest, releasing) ->
         retention.releasing <- releasing; set_receipt retention latest) receipts;
-      List.iter (fun (source, bound, generation, rows, listeners, adopt) ->
-        source.bound <- bound; source.generation <- generation; source.rows <- rows;
-        source.listeners <- listeners; source.adopt <- adopt;
+      List.iter (fun (source, bound, _, _, _, _, _, _) ->
         publish_state owner source.binding_state bound) sources
   let accept_receipt owner ~node ~ticket envelope =
     let receipt = decode_receipt envelope in
-    if receipt.owner_node <> node || receipt.ticket_id <> ticket then
+    let native = Option.get receipt.native in
+    if native.owner_node <> node || native.ticket_id <> ticket then
       invalid_arg "virtual receipt routing mismatch";
     match Hashtbl.find_opt owner.tickets ticket, owner.owner_binding with
-    | Some retention, Some bound when bound.node = node && bound.lease = receipt.epoch
-        && Option.fold ~none:true ~some:(fun latest -> receipt.proof >= latest.proof) retention.latest ->
+    | Some retention, Some bound when bound.node = node && bound.lease = native.epoch
+        && Option.fold ~none:true ~some:(fun latest ->
+          latest.epoch <> native.epoch || latest.owner_node <> native.owner_node
+          || native.proof >= latest.proof)
+          (Option.bind retention.latest (fun receipt -> receipt.native)) ->
       if receipt.status = Released then begin
-        match retention.releasing with
-        | Some proof when current retention receipt && proof.proof = receipt.proof
-            && proof.rows = receipt.rows && proof.geometry = receipt.geometry
-            && proof.requirements = receipt.requirements && receipt.pins >= proof.pins ->
+        match Option.bind retention.releasing (fun receipt -> receipt.native) with
+        | Some proof when current retention native && proof.proof = native.proof
+            && proof.rows = native.rows && proof.geometry = native.geometry
+            && proof.requirements = native.requirements && native.pins >= proof.pins ->
           (* Adopt the complete path before publishing cold-key removal. *)
           List.iter (fun row -> Hashtbl.iter (fun _ source ->
             match source.bound with
             | Some bound when bound.node = row.source_node -> source.adopt [row.row_node]
-            | _ -> ()) owner.sources) receipt.rows;
+            | _ -> ()) owner.sources) native.rows;
           retention.active <- false; retention.releasing <- None;
           Hashtbl.remove owner.tickets ticket;
           set_receipt retention (Some receipt);
           Signal.dispose_signal (Signal.value retention.receipt_state); notify owner
         | _ -> ()
       end else if receipt.status = Pinned || receipt.status = Focused then begin
-        if current retention receipt && List.mem "attached" receipt.requirements
-            && (receipt.status <> Focused || List.mem "focus" receipt.requirements) then
+        if current retention native && List.mem "attached" native.requirements
+            && (receipt.status <> Focused || List.mem "focus" native.requirements) then
           begin
             let superseded = Option.fold ~none:false
-              ~some:(fun pending -> pending.proof <> receipt.proof) retention.releasing in
+              ~some:(fun pending -> pending.proof <> native.proof)
+              (Option.bind retention.releasing (fun receipt -> receipt.native)) in
             if superseded then retention.releasing <- None;
             set_receipt retention (Some receipt);
             if superseded then notify owner

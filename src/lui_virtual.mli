@@ -71,7 +71,7 @@ module Internal : sig
   val source_path : source -> string
   val retained_keys : source -> string list
   val on_change : source -> (unit -> unit) -> (unit -> unit)
-  val commit_rows : source -> generation:int -> (string * int) list -> unit
+  val commit_rows : source -> lease:int -> generation:int -> contains:(string -> bool) -> (string * int) list -> unit
   val accept_receipt : owner -> node:int -> ticket:int -> string -> unit
   val adopt_pins : source -> node:int -> (int list -> unit) -> (unit -> unit)
   val remap : owner -> (int -> int) -> unit
