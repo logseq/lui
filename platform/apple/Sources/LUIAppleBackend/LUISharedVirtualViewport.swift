@@ -40,7 +40,6 @@ public final class LUIVirtualNativeRegistration {
 
 struct LUIVirtualRetentionRecord: Codable, Equatable {
     let ticket: Int
-    let path: [String]
     let key: String
 }
 
@@ -77,29 +76,22 @@ struct LUIVirtualReceipt: Codable, Equatable {
 struct LUISharedSourceBinding: Equatable {
     let owner: Int
     let epoch: Int
-    let path: [String]
     let keys: [String]
 
     init?(properties: [LUIProperty: LUIWireValue], children: [Int]) throws {
-        let fields: [LUIProperty] = [.virtualOwnerNode, .virtualOwnerEpoch,
-            .virtualSourcePath, .virtualRowKeys]
+        let fields: [LUIProperty] = [.virtualOwnerNode, .virtualOwnerEpoch, .virtualRowKeys]
         guard fields.contains(where: { properties[$0] != nil }) else { return nil }
         guard let owner = properties[.virtualOwnerNode]?.intValue, owner > 0,
               let epoch = properties[.virtualOwnerEpoch]?.intValue, epoch > 0,
-              let pathJSON = properties[.virtualSourcePath]?.stringValue,
               let keysJSON = properties[.virtualRowKeys]?.stringValue,
-              let pathData = pathJSON.data(using: .utf8),
               let keysData = keysJSON.data(using: .utf8),
-              let path = try? JSONDecoder().decode([String].self, from: pathData),
               let keys = try? JSONDecoder().decode([String].self, from: keysData),
-              !path.isEmpty, path.count % 2 == 1, path.allSatisfy({ !$0.isEmpty }),
               keys.count == children.count, keys.allSatisfy({ !$0.isEmpty }),
               Set(keys).count == keys.count,
               properties[.virtualTotalCount] != nil
         else { throw LUIBackendError.invalidBatch("invalid shared virtual source binding") }
         self.owner = owner
         self.epoch = epoch
-        self.path = path
         self.keys = keys
     }
 
@@ -112,9 +104,8 @@ struct LUISharedSourceBinding: Equatable {
         do { records = try JSONDecoder().decode([LUIVirtualRetentionRecord].self, from: data) }
         catch { throw LUIBackendError.invalidBatch("invalid virtual retentions") }
         guard Set(records.map(\.ticket)).count == records.count,
-              records.allSatisfy({ $0.ticket > 0 && !$0.key.isEmpty && !$0.path.isEmpty
-                && $0.path.count % 2 == 1 && $0.path.allSatisfy({ !$0.isEmpty }) }) else {
-            throw LUIBackendError.invalidBatch("invalid virtual retention ticket or source path")
+              records.allSatisfy({ $0.ticket > 0 && !$0.key.isEmpty }) else {
+            throw LUIBackendError.invalidBatch("invalid virtual retention ticket or key")
         }
         return records
     }
@@ -189,7 +180,7 @@ final class LUISharedVirtualViewport {
         let epoch: Int
         var geometry = 1
         var pins = 1
-        var signature: [Int: LUISharedViewportGeometry] = [:]
+        var signature: LUISharedViewportGeometry?
         var pinSet = Set<Int>()
         var attempted = Set<String>()
         var visibleAnchor: VisibleAnchor?
@@ -208,7 +199,8 @@ final class LUISharedVirtualViewport {
         weak var source: Source?
         weak var marker: LUISharedRowMarker?
         weak var rowModel: AnyObject?
-        let binding: LUISharedSourceBinding
+        let owner: Int
+        let epoch: Int
         let key: String
         let position: CGFloat
         init(source: Source, marker: LUISharedRowMarker,
@@ -216,7 +208,8 @@ final class LUISharedVirtualViewport {
             self.source = source
             self.marker = marker
             self.rowModel = rowModel
-            binding = source.binding
+            owner = source.binding.owner
+            epoch = source.binding.epoch
             self.key = key
             self.position = position
         }
@@ -398,29 +391,31 @@ final class LUISharedVirtualViewport {
         #endif
     }
 
-    private func rows(nodeID: Int, owner: Int) -> [LUIVirtualReceipt.Row] {
-        guard let backend else { return [] }
+    private func source(for owner: Owner) -> Source? {
+        guard let ownerID = owner.model?.id else { return nil }
+        let owned = sources.values.filter { $0.binding.owner == ownerID && $0.binding.epoch == owner.epoch }
+        return owned.count == 1 ? owned.first : nil
+    }
+
+    private func row(nodeID: Int, source: Source) -> LUIVirtualReceipt.Row? {
+        guard let backend, let model = source.model, let state = source.state,
+              backend.model(id: model.id) === model else { return nil }
         var current: Int? = nodeID
-        var result: [LUIVirtualReceipt.Row] = []
         var visited = Set<Int>()
         while let node = current, visited.insert(node).inserted {
-            if node == owner { return result.reversed() }
             let standard = backend.model(id: node)
             let custom = backend.extensionModel(id: node)
             let parentID = standard?.parent ?? custom?.parent
-            if let parent = parentID, let source = sources[parent],
-               source.binding.owner == owner, let state = source.state,
-               source.model === backend.model(id: parent), state.contains(node),
-               let object = retainedIdentity(nodeID: node) {
+            if parentID == model.id {
+                guard state.contains(node), let object = retainedIdentity(nodeID: node) else { return nil }
                 let incarnation: Int
                 if let existing = rowIncarnations[object] { incarnation = existing }
                 else { incarnation = identity(); rowIncarnations[object] = incarnation }
-                result.append(.init(source: parent, generation: state.generation,
-                    row: node, incarnation: incarnation))
+                return .init(source: model.id, generation: state.generation, row: node, incarnation: incarnation)
             }
             current = parentID
         }
-        return []
+        return nil
     }
 
     private func retainedIdentity(nodeID: Int) -> ObjectIdentifier? {
@@ -506,11 +501,10 @@ final class LUISharedVirtualViewport {
 
     private func anchorKeys(_ source: Source) -> [Int: String]? {
         // Retained children update before the source configures. Resolve the key
-        // from that same current metadata, while preserving the source lease/path.
+        // from that same current metadata, while preserving the owner lease.
         guard let model = source.model,
               let binding = try? LUISharedSourceBinding(properties: model.properties, children: model.children),
-              binding.owner == source.binding.owner, binding.epoch == source.binding.epoch,
-              binding.path == source.binding.path else { return nil }
+              binding.owner == source.binding.owner, binding.epoch == source.binding.epoch else { return nil }
         return Dictionary(uniqueKeysWithValues: zip(model.children, binding.keys))
     }
 
@@ -524,9 +518,9 @@ final class LUISharedVirtualViewport {
     // before compensation, so its identity check only requires horizontal visibility.
     private func anchorVisibility(_ marker: LUISharedRowMarker, owner: Owner,
         verticalClip: Bool) -> CGRect? {
-        guard let scroll = owner.scroll, marker.window != nil, marker.window === scroll.window else { return nil }
+        guard let scroll = owner.scroll, let window = marker.window, window === scroll.window else { return nil }
         #if os(macOS)
-        guard let document = scroll.documentView else { return nil }
+        guard window.isVisible, window.alphaValue > 0, let document = scroll.documentView else { return nil }
         let coordinates = document
         var viewport = document.convert(scroll.contentView.bounds, from: scroll.contentView)
         #else
@@ -569,25 +563,23 @@ final class LUISharedVirtualViewport {
         return CGRect(x: frame.minX, y: top, width: frame.width, height: frame.height)
     }
 
-    // The owner's native visible row is the sole measurement anchor. Child
-    // extents and later ancestor-height propagation cannot each apply a delta.
-    private func preserveVisibleAnchor(_ owner: Owner, sources owned: [Int: Source]) {
-        guard let scroll = owner.scroll, let (offset, height, total) = metrics(owner) else {
+    // One flat source's leading native row is the owner's sole measurement anchor.
+    private func preserveVisibleAnchor(_ owner: Owner, source: Source?) {
+        guard let source, let scroll = owner.scroll, let (offset, height, total) = metrics(owner) else {
             owner.visibleAnchor = nil
             owner.observedOffset = nil
             return
         }
         var currentOffset = offset
-        let keys = owned.compactMapValues { anchorKeys($0) }
+        let keys = anchorKeys(source)
         // Reading anchors survive generation updates only for the same semantic
         // key, native marker and retained model. Receipt attestation stays generation-bound.
         if let previousOffset = owner.observedOffset, abs(previousOffset - offset) <= 0.1,
-           let saved = owner.visibleAnchor, let source = saved.source,
-           let sourceID = source.model?.id, owned[sourceID] === source,
-           saved.binding.owner == source.binding.owner, saved.binding.epoch == source.binding.epoch,
-           saved.binding.path == source.binding.path, let marker = saved.marker,
+           let saved = owner.visibleAnchor, saved.source === source,
+           saved.owner == source.binding.owner, saved.epoch == source.binding.epoch,
+           let marker = saved.marker,
            let rowModel = saved.rowModel, anchorModel(marker.row.id) === rowModel,
-           keys[sourceID]?[marker.row.id] == saved.key,
+           keys?[marker.row.id] == saved.key,
            anchorVisibility(marker, owner: owner, verticalClip: false) != nil,
            let frame = anchorFrame(marker, source: source) {
             let delta = frame.minY - saved.position
@@ -598,39 +590,22 @@ final class LUISharedVirtualViewport {
             }
         }
         owner.observedOffset = currentOffset
-        // Select the leading outer row first, then descend only through its
-        // semantic row path. Each level allows a next visible row after a gap.
-        var candidates: [[String]: [(anchor: VisibleAnchor, visible: CGRect)]] = [:]
-        for (sourceID, source) in owned {
-            for weakMarker in source.rowAnchors.values {
-                guard let marker = weakMarker.value, let frame = anchorFrame(marker, source: source),
-                      let visible = anchorVisibility(marker, owner: owner, verticalClip: true),
-                      let rowModel = anchorModel(marker.row.id), let key = keys[sourceID]?[marker.row.id]
-                else { continue }
-                let candidate = VisibleAnchor(source: source, marker: marker,
-                    rowModel: rowModel, key: key, position: frame.minY)
-                let parentPath = Array(source.binding.path.dropLast())
-                candidates[parentPath, default: []].append((candidate, visible))
-            }
+        var candidates: [(anchor: VisibleAnchor, visible: CGRect)] = []
+        for weakMarker in source.rowAnchors.values {
+            guard let marker = weakMarker.value, let frame = anchorFrame(marker, source: source),
+                  let visible = anchorVisibility(marker, owner: owner, verticalClip: true),
+                  let rowModel = anchorModel(marker.row.id), let key = keys?[marker.row.id]
+            else { continue }
+            candidates.append((VisibleAnchor(source: source, marker: marker,
+                rowModel: rowModel, key: key, position: frame.minY), visible))
         }
-        func leading(_ rows: [(anchor: VisibleAnchor, visible: CGRect)]) -> VisibleAnchor? {
-            rows.min { left, right in
-                let leftCrosses = left.visible.minY <= currentOffset && left.visible.maxY > currentOffset
-                let rightCrosses = right.visible.minY <= currentOffset && right.visible.maxY > currentOffset
-                if leftCrosses != rightCrosses { return leftCrosses }
-                if left.visible.minY != right.visible.minY { return left.visible.minY < right.visible.minY }
-                let leftPath = left.anchor.binding.path + [left.anchor.key]
-                let rightPath = right.anchor.binding.path + [right.anchor.key]
-                return leftPath.lexicographicallyPrecedes(rightPath)
-            }?.anchor
-        }
-        var candidate = leading(candidates[[]] ?? [])
-        while let parent = candidate {
-            let path = parent.binding.path + [parent.key]
-            guard let child = leading(candidates[path] ?? []) else { break }
-            candidate = child
-        }
-        owner.visibleAnchor = candidate
+        owner.visibleAnchor = candidates.min { left, right in
+            let leftCrosses = left.visible.minY <= currentOffset && left.visible.maxY > currentOffset
+            let rightCrosses = right.visible.minY <= currentOffset && right.visible.maxY > currentOffset
+            if leftCrosses != rightCrosses { return leftCrosses }
+            if left.visible.minY != right.visible.minY { return left.visible.minY < right.visible.minY }
+            return left.anchor.key < right.anchor.key
+        }?.anchor
     }
 
     // Public intents resolve their exact native scroll before invalidating it;
@@ -698,17 +673,16 @@ final class LUISharedVirtualViewport {
               model.property(.virtualViewportEpoch)?.intValue == owner.epoch,
               owner.model?.id == proof.receipt.owner, owner.epoch == proof.receipt.epoch,
               owner.geometry == proof.receipt.geometry,
-              rows(nodeID: node, owner: proof.receipt.owner) == proof.receipt.rows,
+              let source = source(for: owner), let row = row(nodeID: node, source: source),
+              proof.receipt.rows == [row],
               satisfies(registration, owner: owner, requirements: proof.requirements) else { return false }
-        return proof.receipt.rows.allSatisfy { row in
-            guard let source = sources[row.source], let model = source.model,
-                  backend?.model(id: row.source) === model,
-                  model.property(.virtualGeneration)?.intValue == row.generation,
-                  source.binding.epoch == owner.epoch, source.geometry != nil,
-                  let current = try? LUISharedSourceBinding(properties: model.properties, children: model.children)
-            else { return false }
-            return current == source.binding && rowGeometry(row, source: source, registration: registration)
-        }
+        guard let sourceModel = source.model,
+              backend?.model(id: row.source) === sourceModel,
+              sourceModel.property(.virtualGeneration)?.intValue == row.generation,
+              source.binding.epoch == owner.epoch, source.geometry != nil,
+              let current = try? LUISharedSourceBinding(properties: sourceModel.properties, children: sourceModel.children)
+        else { return false }
+        return current == source.binding && rowGeometry(row, source: source, registration: registration)
     }
 
     private func rowGeometry(_ row: LUIVirtualReceipt.Row, source: Source,
@@ -736,35 +710,24 @@ final class LUISharedVirtualViewport {
         guard let owner = owners[ownerNode], let retainedTicket = ticket(number, owner: owner),
               let registration = registrations[ObjectIdentifier(view)], let node = registration.nodeID,
               satisfies(registration, owner: owner, requirements: requirements) else { return false }
-        let chain = rows(nodeID: node, owner: ownerNode)
-        guard let leaf = chain.last, let source = sources[leaf.source],
-              sources.values.filter({ $0.binding.owner == ownerNode && $0.binding.epoch == owner.epoch
-                && $0.binding.path == retainedTicket.path }).count == 1,
-              source.binding.path == retainedTicket.path, source.binding.epoch == owner.epoch,
-              let position = source.model?.children.firstIndex(of: leaf.row),
+        guard let source = source(for: owner), let row = row(nodeID: node, source: source),
+              let position = source.model?.children.firstIndex(of: row.row),
               source.binding.keys.indices.contains(position), source.binding.keys[position] == retainedTicket.key,
-              chain.allSatisfy({ row in
-                  guard let source = sources[row.source], source.geometry != nil else { return false }
-                  return rowGeometry(row, source: source, registration: registration)
-              }) else { return false }
+              source.geometry != nil, rowGeometry(row, source: source, registration: registration) else { return false }
         let names = ["attached"] + (requirements.contains(.visible) ? ["visible"] : [])
             + (requirements.contains(.focus) ? ["focus"] : [])
-        let rowsToPin = Set(chain.map(\.row))
-        if !rowsToPin.isSubset(of: owner.pinSet) {
-            owner.pinSet.formUnion(rowsToPin)
+        if owner.pinSet.insert(row.row).inserted {
             owner.pins = identity()
         }
         let receipt = LUIVirtualReceipt(status: requirements.contains(.focus) ? "focused" : "pinned",
-            owner: ownerNode, epoch: owner.epoch, ticket: number, proof: identity(), rows: chain,
+            owner: ownerNode, epoch: owner.epoch, ticket: number, proof: identity(), rows: [row],
             geometry: owner.geometry, pins: owner.pins, requirements: names)
         let envelope = try receipt.encoded()
         proofs = proofs.filter { $0.value.receipt.owner != ownerNode || $0.value.receipt.ticket != number }
         proofs[receipt.proof] = Proof(receipt: receipt, envelope: envelope,
             registration: registration, requirements: requirements)
         refresh()
-        for source in Array(sources.values) where source.binding.owner == ownerNode {
-            source.state?.flushOwnership()
-        }
+        source.state?.flushOwnership()
         guard owners[ownerNode] === owner, let installed = proofs[receipt.proof], ticket(number, owner: owner) != nil,
               proofIsCurrent(installed, owner: owner) else {
             proofs[receipt.proof] = nil
@@ -801,16 +764,11 @@ final class LUISharedVirtualViewport {
         })
         rowIncarnations = rowIncarnations.filter { liveRowObjects.contains($0.key) }
         for (ownerID, owner) in Array(owners) {
-            let owned = sources.filter { $0.value.binding.owner == ownerID && $0.value.binding.epoch == owner.epoch }
-            var signature: [Int: LUISharedViewportGeometry] = [:]
-            for source in owned.values {
-                source.geometry = geometry(source, owner: owner)
-            }
-            preserveVisibleAnchor(owner, sources: owned)
-            for (sourceID, source) in owned {
-                source.geometry = geometry(source, owner: owner)
-                if let geometry = source.geometry { signature[sourceID] = geometry }
-            }
+            let source = source(for: owner)
+            if let source { source.geometry = geometry(source, owner: owner) }
+            preserveVisibleAnchor(owner, source: source)
+            if let source { source.geometry = geometry(source, owner: owner) }
+            let signature = source?.geometry
             if signature != owner.signature { owner.signature = signature; owner.geometry = identity() }
             var pins = Set<Int>()
             for registration in registrations.values where live(registration) {
@@ -820,23 +778,19 @@ final class LUISharedVirtualViewport {
                 if hasFocus && marked(view) { composition = registration }
                 let ownsComposition = composition === registration && marked(view)
                 if hasFocus || ownsComposition || pressed.contains(id) || menus.values.contains(where: { $0.contains(id) }) {
-                    pins.formUnion(rows(nodeID: node, owner: ownerID).map(\.row))
+                    if let source, let row = row(nodeID: node, source: source) { pins.insert(row.row) }
                 }
             }
-            for source in owned.values {
-                for row in source.state?.sharedInteractionRows ?? [] {
-                    pins.formUnion(rows(nodeID: row, owner: ownerID).map(\.row))
-                }
-            }
+            pins.formUnion(source?.state?.sharedInteractionRows ?? [])
             for proof in proofs.values where proof.receipt.owner == ownerID {
                 guard let registration = proof.registration, let view = registration.view,
                       live(registration), ticket(proof.receipt.ticket, owner: owner) != nil || proof.released else { continue }
                 if !proof.released || focused(view) || marked(view) || visible(view, in: owner) {
-                    pins.formUnion(proof.receipt.rows.map(\.row))
+                    if let row = proof.receipt.rows.first { pins.insert(row.row) }
                 }
             }
             if pins != owner.pinSet { owner.pinSet = pins; owner.pins = identity() }
-            for source in owned.values {
+            if let source {
                 let direct = Set(source.model?.children ?? []).intersection(pins)
                 source.state?.sharedViewport(source.geometry, pins: direct)
             }
@@ -862,7 +816,7 @@ final class LUISharedVirtualViewport {
                    proofIsCurrent(proof, owner: owner) {
                     // Feedback adopts the full physical pin set before shared
                     // OCaml may remove its cold-key retention.
-                    for source in Array(owned.values) { source.state?.flushOwnership() }
+                    source?.state?.flushOwnership()
                     if owners[ownerID] === owner, proofs[receipt.proof] === proof,
                        proofIsCurrent(proof, owner: owner) {
                         proof.released = true

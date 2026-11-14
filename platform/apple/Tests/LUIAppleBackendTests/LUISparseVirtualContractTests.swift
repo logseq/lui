@@ -119,6 +119,74 @@ struct LUISparseVirtualContractTests {
         generation: 3)
       #expect(row.property(.text)?.stringValue == "next valid")
     }
+
+    func set(_ id: Int, _ property: String, _ value: Any) -> [String: Any] {
+      ["op": "set-prop", "id": id, "property": property, "value": value]
+    }
+    func source(_ id: Int, owner: Int) -> [[String: Any]] {
+      [
+        ["op": "create-node", "id": id, "kind": "virtual-list"],
+        set(id, "virtual-total-count", 0), set(id, "virtual-generation", 1),
+        set(id, "virtual-indices", "[]"), set(id, "virtual-row-keys", "[]"),
+        set(id, "virtual-owner-node", owner), set(id, "virtual-owner-epoch", 1),
+      ]
+    }
+    let nestedRow = [set(12, "virtual-total-count", 1), set(12, "virtual-indices", "[0]"),
+      set(12, "virtual-row-keys", #"["nested"]"#)]
+    let topologies: [[[String: Any]]] = [
+      // A second source can be outside the first source's validation scope.
+      source(40, owner: 10) + [["op": "insert-child", "parent": 11, "child": 40, "index": 1]],
+      nestedRow + [
+        ["op": "create-node", "id": 40, "kind": "column"],
+        ["op": "create-node", "id": 41, "kind": "virtual-list"],
+        ["op": "insert-child", "parent": 40, "child": 41, "index": 0],
+        ["op": "insert-child", "parent": 12, "child": 40, "index": 0],
+      ],
+      nestedRow + [["op": "create-node", "id": 40, "kind": "scroll"],
+        set(40, "virtual-viewport-epoch", 1)] + source(41, owner: 40) + [
+        ["op": "insert-child", "parent": 40, "child": 41, "index": 0],
+        ["op": "insert-child", "parent": 12, "child": 40, "index": 0],
+      ],
+      [
+        ["op": "create-node", "id": 40, "kind": "virtual-list"],
+        ["op": "remove-child", "parent": 11, "child": 12],
+        ["op": "insert-child", "parent": 11, "child": 40, "index": 0],
+        ["op": "insert-child", "parent": 40, "child": 12, "index": 0],
+      ],
+      [["op": "insert-child", "parent": 31, "child": 10, "index": 0]],
+      [["op": "insert-child", "parent": 11, "child": 20, "index": 1]],
+    ]
+    for operations in topologies {
+      let b = LUIAppleBackend()
+      try apply([
+        ["op": "create-node", "id": 10, "kind": "scroll"], set(10, "virtual-viewport-epoch", 1),
+        ["op": "create-node", "id": 11, "kind": "column"],
+        ["op": "insert-child", "parent": 10, "child": 11, "index": 0],
+        ["op": "create-node", "id": 20, "kind": "scroll"], set(20, "virtual-viewport-epoch", 1),
+        ["op": "create-node", "id": 30, "kind": "virtual-list"],
+        ["op": "create-node", "id": 31, "kind": "virtual-list"],
+        ["op": "insert-child", "parent": 30, "child": 31, "index": 0],
+      ] + source(12, owner: 10) + source(22, owner: 20) + [
+        ["op": "insert-child", "parent": 11, "child": 12, "index": 0],
+        ["op": "insert-child", "parent": 20, "child": 22, "index": 0],
+      ], to: b, generation: 1)
+      let owner = try #require(b.model(id: 10))
+      #expect(b.model(id: 22)?.parent == 20, "Independent owners remain supported")
+      #expect(b.model(id: 31)?.parent == 30, "Opt-out standalone nesting remains unchanged")
+      #expect(throws: (any Error).self) {
+        try apply([set(10, "width", 999), ["op": "create-node", "id": 50, "kind": "column"]]
+          + operations, to: b)
+      }
+      #expect(b.model(id: 10) === owner)
+      #expect(owner.property(.width) == nil)
+      #expect(b.model(id: 50) == nil)
+      #expect(b.model(id: 40) == nil)
+      #expect(b.model(id: 11)?.children == [12])
+      #expect(b.model(id: 12)?.children == [])
+      #expect(b.model(id: 20)?.parent == nil)
+      try apply([set(10, "width", 400)], to: b, generation: 3)
+      #expect(owner.property(.width)?.intValue == 400)
+    }
   }
 
   @Test("sparse indices retain exact integers beyond double precision")

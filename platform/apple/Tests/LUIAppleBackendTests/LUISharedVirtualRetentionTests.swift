@@ -5,45 +5,38 @@ import AppKit
 
 final class LUISharedVirtualRetentionTests: XCTestCase {
     @MainActor
-    func testNestedMeasurementsPreserveOneOuterVisibleAnchor() throws {
+    func testFlatMeasurementsPreserveOneVisibleAnchor() throws {
         _ = NSApplication.shared
         let backend = LUIAppleBackend()
+        var batch = 0
         func set(_ id: Int, _ property: String, _ value: Any) -> [String: Any] {
             ["op": "set-prop", "id": id, "property": property, "value": value]
         }
-        let ops: [[String: Any]] = [
+        func apply(_ ops: [[String: Any]]) throws {
+            batch += 1
+            let data = try JSONSerialization.data(withJSONObject: ["generation": batch, "ops": ops])
+            try backend.apply(json: String(decoding: data, as: UTF8.self))
+        }
+        try apply([
             ["op": "create-node", "id": 1, "kind": "scroll"],
             set(1, "virtual-viewport-epoch", 7),
-            set(1, "virtual-retentions", #"[{"ticket":9,"path":["root","parent","child"],"key":"first"}]"#),
             ["op": "create-node", "id": 2, "kind": "virtual-list"],
-            set(2, "virtual-total-count", 30), set(2, "virtual-generation", 1),
-            set(2, "virtual-indices", "[0,10]"), set(2, "item-extent", 100),
+            set(2, "virtual-total-count", 3), set(2, "virtual-generation", 1),
+            set(2, "virtual-indices", "[0,1,2]"), set(2, "item-extent", 100),
             set(2, "virtual-owner-node", 1), set(2, "virtual-owner-epoch", 7),
-            set(2, "virtual-source-path", #"["root"]"#),
-            set(2, "virtual-row-keys", #"["parent","visible"]"#),
+            set(2, "virtual-row-keys", #"["first","visible","tail"]"#),
             ["op": "create-node", "id": 3, "kind": "column"],
             ["op": "create-node", "id": 4, "kind": "column"],
-            ["op": "create-node", "id": 5, "kind": "virtual-list"],
-            set(5, "virtual-total-count", 2), set(5, "virtual-generation", 1),
-            set(5, "virtual-indices", "[0,1]"), set(5, "item-extent", 50),
-            set(5, "virtual-owner-node", 1), set(5, "virtual-owner-epoch", 7),
-            set(5, "virtual-source-path", #"["root","parent","child"]"#),
-            set(5, "virtual-row-keys", #"["first","second"]"#),
-            ["op": "create-node", "id": 6, "kind": "column"],
-            ["op": "create-node", "id": 7, "kind": "column"],
-            ["op": "insert-child", "parent": 5, "child": 6, "index": 0],
-            ["op": "insert-child", "parent": 5, "child": 7, "index": 1],
-            ["op": "insert-child", "parent": 3, "child": 5, "index": 0],
+            ["op": "create-node", "id": 5, "kind": "column"],
             ["op": "insert-child", "parent": 2, "child": 3, "index": 0],
             ["op": "insert-child", "parent": 2, "child": 4, "index": 1],
+            ["op": "insert-child", "parent": 2, "child": 5, "index": 2],
             ["op": "insert-child", "parent": 1, "child": 2, "index": 0],
-        ]
-        let data = try JSONSerialization.data(withJSONObject: ["generation": 1, "ops": ops])
-        try backend.apply(json: String(decoding: data, as: UTF8.self))
+        ])
         let owner = try XCTUnwrap(backend.model(id: 1))
-        let outer = LUISparseVirtualState(), child = LUISparseVirtualState()
-        outer.configure(model: try XCTUnwrap(backend.model(id: 2)), backend: backend)
-        child.configure(model: try XCTUnwrap(backend.model(id: 5)), backend: backend)
+        let model = try XCTUnwrap(backend.model(id: 2))
+        let state = LUISparseVirtualState()
+        state.configure(model: model, backend: backend)
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 400, height: 400),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -52,140 +45,81 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         let document = LUISharedSourceMarker(frame: CGRect(x: 0, y: 0, width: 400, height: 4000))
         scroll.documentView = document
         window.contentView = scroll
-        let rootAnchor = LUISharedSourceMarker(frame: document.bounds)
-        document.addSubview(rootAnchor)
-        let parent = LUISharedRowMarker(frame: CGRect(x: 0, y: 0, width: 400, height: 100))
-        let visible = LUISharedRowMarker(frame: CGRect(x: 0, y: 1000, width: 400, height: 100))
-        rootAnchor.addSubview(parent)
-        rootAnchor.addSubview(visible)
-        parent.configure(outer, row: .init(id: 3, index: 0), generation: 1, backend: backend)
-        visible.configure(outer, row: .init(id: 4, index: 10), generation: 1, backend: backend)
-        let childAnchor = LUISharedSourceMarker(frame: parent.bounds)
-        parent.addSubview(childAnchor)
-        let first = LUISharedRowMarker(frame: CGRect(x: 0, y: 0, width: 400, height: 50))
-        let second = LUISharedRowMarker(frame: CGRect(x: 0, y: 50, width: 400, height: 50))
-        childAnchor.addSubview(first)
-        childAnchor.addSubview(second)
-        first.configure(child, row: .init(id: 6, index: 0), generation: 1, backend: backend)
-        second.configure(child, row: .init(id: 7, index: 1), generation: 1, backend: backend)
+        let anchor = LUISharedSourceMarker(frame: document.bounds)
+        document.addSubview(anchor)
+        let first = LUISharedRowMarker(frame: CGRect(x: 0, y: 0, width: 400, height: 90))
+        let wrapper = LUISharedSourceMarker(frame: CGRect(x: 0, y: 100, width: 400, height: 100))
+        let visible = LUISharedRowMarker(frame: wrapper.bounds)
+        let tail = LUISharedRowMarker(frame: CGRect(x: 0, y: 200, width: 400, height: 100))
+        anchor.addSubview(first)
+        anchor.addSubview(wrapper)
+        wrapper.addSubview(visible)
+        anchor.addSubview(tail)
+        first.configure(state, row: .init(id: 3, index: 0), generation: 1, backend: backend)
+        visible.configure(state, row: .init(id: 4, index: 1), generation: 1, backend: backend)
+        tail.configure(state, row: .init(id: 5, index: 2), generation: 1, backend: backend)
         backend.sharedVirtualViewport.owner(model: owner, scroll: scroll)
-        backend.sharedVirtualViewport.sourceAnchor(state: outer, view: rootAnchor)
-        backend.sharedVirtualViewport.sourceAnchor(state: child, view: childAnchor)
-        outer.measured(.init(id: 3, index: 0), height: 100)
-        outer.measured(.init(id: 4, index: 10), height: 100)
-        child.measured(.init(id: 6, index: 0), height: 50)
-        child.measured(.init(id: 7, index: 1), height: 50)
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: 1000))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        backend.sharedVirtualViewport.refresh()
-        child.measured(.init(id: 6, index: 0), height: 80)
-        backend.sharedVirtualViewport.refresh()
-        XCTAssertEqual(scroll.contentView.bounds.minY, 1000, accuracy: 0.1,
-            "Offscreen child measurements must not independently move the outer owner")
-        parent.setFrameSize(CGSize(width: 400, height: 130))
-        childAnchor.setFrameSize(parent.frame.size)
-        first.setFrameSize(CGSize(width: 400, height: 80))
-        second.setFrameOrigin(CGPoint(x: 0, y: 80))
-        visible.setFrameOrigin(CGPoint(x: 0, y: 1030))
-        outer.measured(.init(id: 3, index: 0), height: 130)
-        backend.sharedVirtualViewport.refresh()
-        XCTAssertEqual(scroll.contentView.bounds.minY, 1030, accuracy: 0.1)
-        backend.sharedVirtualViewport.refresh()
-        XCTAssertEqual(scroll.contentView.bounds.minY, 1030, accuracy: 0.1,
-            "Parent propagation of the same growth must not compensate twice")
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: 100))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        backend.sharedVirtualViewport.refresh()
-        child.measured(.init(id: 6, index: 0), height: 100)
-        first.setFrameSize(CGSize(width: 400, height: 100))
-        second.setFrameOrigin(CGPoint(x: 0, y: 100))
-        parent.setFrameSize(CGSize(width: 400, height: 150))
-        childAnchor.setFrameSize(parent.frame.size)
-        visible.setFrameOrigin(CGPoint(x: 0, y: 1050))
-        outer.measured(.init(id: 3, index: 0), height: 150)
-        backend.sharedVirtualViewport.refresh()
-        XCTAssertEqual(scroll.contentView.bounds.minY, 120, accuracy: 0.1,
-            "A visible descendant's leading row remains anchored within its ancestor row")
-
-        var batch = 1
-        func apply(_ ops: [[String: Any]]) throws {
-            batch += 1
-            let data = try JSONSerialization.data(withJSONObject: ["generation": batch, "ops": ops])
-            try backend.apply(json: String(decoding: data, as: UTF8.self))
-        }
-        let outerModel = try XCTUnwrap(backend.model(id: 2))
-        let childModel = try XCTUnwrap(backend.model(id: 5))
-        try apply([set(2, "virtual-total-count", 2), set(2, "virtual-indices", "[0,1]"),
-            set(2, "virtual-generation", 2), set(2, "gap", 10)])
-        outer.configure(model: outerModel, backend: backend)
-        parent.configure(outer, row: .init(id: 3, index: 0), generation: 2, backend: backend)
-        visible.configure(outer, row: .init(id: 4, index: 1), generation: 2, backend: backend)
-        for variation in ["outer gap", "nested gap", "horizontal clip", "ancestor clip",
+        backend.sharedVirtualViewport.sourceAnchor(state: state, view: anchor)
+        window.orderFrontRegardless()
+        for variation in ["crossing", "gap", "horizontal clip", "ancestor clip", "transparent row",
             "setScrollTop", "scrollIntoView", "surviving generation"] {
-            let nestedGap = variation == "nested gap"
-            let ancestorClip = variation == "ancestor clip"
-            try apply([set(5, "gap", nestedGap ? 10 : 0)])
-            child.configure(model: childModel, backend: backend)
-            let originalHeight: CGFloat = nestedGap ? 140 : 130
-            parent.frame = CGRect(x: 0, y: 0, width: ancestorClip ? 100 : 400, height: originalHeight)
-            parent.clipsToBounds = ancestorClip
-            childAnchor.frame = CGRect(x: variation == "horizontal clip" ? 500 : ancestorClip ? 200 : 0,
-                y: 0, width: 400, height: originalHeight)
-            first.frame = CGRect(x: 0, y: 0, width: 400, height: 80)
-            second.frame = CGRect(x: 0, y: nestedGap ? 90 : 80, width: 400, height: 50)
-            visible.setFrameOrigin(CGPoint(x: 0, y: originalHeight + 10))
-            child.measured(.init(id: 6, index: 0), height: 80)
-            outer.measured(.init(id: 3, index: 0), height: originalHeight)
+            wrapper.frame = CGRect(x: 0, y: 100, width: variation == "ancestor clip" ? 100 : 400, height: 100)
+            wrapper.clipsToBounds = variation == "ancestor clip"
+            visible.frame = CGRect(x: variation == "horizontal clip" ? 500 : variation == "ancestor clip" ? 200 : 0,
+                y: 0, width: 400, height: 100)
+            visible.alphaValue = variation == "transparent row" ? 0 : 1
+            first.setFrameSize(CGSize(width: 400, height: 90))
+            tail.setFrameOrigin(CGPoint(x: 0, y: 200))
+            state.measured(.init(id: 3, index: 0), height: 90)
             scroll.contentView.scroll(to: .zero)
             scroll.reflectScrolledClipView(scroll.contentView)
             backend.sharedVirtualViewport.refresh()
-            let initial: CGFloat = variation == "outer gap" ? 135 : nestedGap ? 85
-                : variation.hasSuffix("clip") ? 100 : 140
+            let initial: CGFloat = variation == "gap" ? 95 : 100
             scroll.contentView.scroll(to: CGPoint(x: 0, y: initial))
             scroll.reflectScrolledClipView(scroll.contentView)
             backend.sharedVirtualViewport.refresh()
             if variation == "surviving generation" {
                 try apply([
-                    ["op": "create-node", "id": 8, "kind": "column"],
-                    ["op": "insert-child", "parent": 2, "child": 8, "index": 1],
-                    set(2, "virtual-total-count", 3), set(2, "virtual-indices", "[0,1,2]"),
-                    set(2, "virtual-row-keys", #"["parent","inserted","visible"]"#),
-                    set(2, "virtual-generation", 3),
+                    ["op": "create-node", "id": 6, "kind": "column"],
+                    ["op": "insert-child", "parent": 2, "child": 6, "index": 1],
+                    set(2, "virtual-total-count", 4), set(2, "virtual-indices", "[0,1,2,3]"),
+                    set(2, "virtual-row-keys", #"["first","inserted","visible","tail"]"#),
+                    set(2, "virtual-generation", 2),
                 ])
                 backend.sharedVirtualViewport.refresh()
                 XCTAssertEqual(scroll.contentView.bounds.minY, initial, accuracy: 0.1,
                     "Insertion before source.configure must retain the surviving reading anchor")
-                outer.configure(model: outerModel, backend: backend)
+                state.configure(model: model, backend: backend)
             }
-            let growth: CGFloat = nestedGap || variation.hasSuffix("clip") ? 20 : 30
-            first.setFrameSize(CGSize(width: 400, height: 80 + growth))
-            second.setFrameOrigin(CGPoint(x: 0, y: (nestedGap ? 90 : 80) + growth))
-            parent.setFrameSize(CGSize(width: parent.frame.width, height: originalHeight + growth))
-            childAnchor.setFrameSize(CGSize(width: 400, height: originalHeight + growth))
-            visible.setFrameOrigin(CGPoint(x: 0, y: originalHeight + 10 + growth))
-            child.measured(.init(id: 6, index: 0), height: 80 + growth)
-            outer.measured(.init(id: 3, index: 0), height: originalHeight + growth)
-            let query = LUIHostScrollMarker(frame: CGRect(x: 0, y: 145, width: 10, height: 10))
+            let clipped = variation.hasSuffix("clip") || variation == "transparent row"
+            first.setFrameSize(CGSize(width: 400, height: 120))
+            wrapper.setFrameOrigin(CGPoint(x: 0, y: 130))
+            if !clipped { tail.setFrameOrigin(CGPoint(x: 0, y: 230)) }
+            state.measured(.init(id: 3, index: 0), height: 120)
+            let query = LUIHostScrollMarker(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
             if variation == "setScrollTop" {
                 document.addSubview(query)
                 query.configure(model: owner, backend: backend, ownsScroll: true)
                 XCTAssertTrue(backend.setScrollTop(nodeID: 1, top: initial))
             } else if variation == "scrollIntoView" {
-                parent.addSubview(query)
+                // Keep the target in view so this is an explicit same-offset intent.
+                first.addSubview(query)
+                query.setFrameOrigin(CGPoint(x: 0, y: initial))
                 query.configure(model: try XCTUnwrap(backend.model(id: 3)), backend: backend, ownsScroll: false)
                 XCTAssertTrue(backend.scrollIntoView(nodeID: 3))
             }
-            let expected = variation.hasSuffix("clip") || variation == "setScrollTop"
-                || variation == "scrollIntoView" ? initial : initial + growth
+            let expected = clipped || variation == "setScrollTop" || variation == "scrollIntoView"
+                ? initial : initial + 30
             backend.sharedVirtualViewport.refresh()
             XCTAssertEqual(scroll.contentView.bounds.minY, expected, accuracy: 0.1, variation)
             if variation == "surviving generation" {
-                parent.configure(outer, row: .init(id: 3, index: 0), generation: 3, backend: backend)
-                visible.configure(outer, row: .init(id: 4, index: 2), generation: 3, backend: backend)
+                first.configure(state, row: .init(id: 3, index: 0), generation: 2, backend: backend)
+                visible.configure(state, row: .init(id: 4, index: 2), generation: 2, backend: backend)
+                tail.configure(state, row: .init(id: 5, index: 3), generation: 2, backend: backend)
             }
             backend.sharedVirtualViewport.refresh()
             XCTAssertEqual(scroll.contentView.bounds.minY, expected, accuracy: 0.1,
-                "Repeated refresh must not apply another correction: \(variation)")
+                "Repeated refresh must not compensate twice: \(variation)")
             query.removeFromSuperview()
         }
     }
@@ -206,12 +140,12 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         try apply([
             ["op": "create-node", "id": 1, "kind": "scroll"],
             set(1, "virtual-viewport-epoch", 7),
-            set(1, "virtual-retentions", #"[{"ticket":9,"path":["selected"],"key":"target"}]"#),
+            set(1, "virtual-retentions", #"[{"ticket":9,"key":"target"}]"#),
             ["op": "create-node", "id": 2, "kind": "virtual-list"],
             set(2, "virtual-total-count", 100), set(2, "virtual-generation", 1),
             set(2, "virtual-indices", "[20]"), set(2, "item-extent", 32),
             set(2, "virtual-owner-node", 1), set(2, "virtual-owner-epoch", 7),
-            set(2, "virtual-source-path", #"["selected"]"#), set(2, "virtual-row-keys", #"["target"]"#),
+            set(2, "virtual-row-keys", #"["target"]"#),
             ["op": "create-node", "id": 3, "kind": "text-field"],
             ["op": "insert-child", "parent": 2, "child": 3, "index": 0],
             ["op": "insert-child", "parent": 1, "child": 2, "index": 0],
@@ -264,6 +198,9 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
             }
         }
         let old = try XCTUnwrap(receipts().last?.1)
+        let attested = try JSONDecoder().decode(LUIVirtualReceipt.self, from: Data(old.utf8))
+        XCTAssertEqual(attested.rows.map(\.source), [2])
+        XCTAssertEqual(attested.rows.map(\.row), [3], "A flat receipt attests exactly one live source row")
         try apply([set(2, "virtual-generation", 2), set(2, "virtual-indices", "[21]")])
         state.configure(model: source, backend: backend)
         backend.sharedVirtualViewport.refresh()
