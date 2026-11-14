@@ -11,6 +11,17 @@ struct LUIStyleVariableTests {
             ("var(--caret, var(--ink))", ["--caret": .green, "--ink": .blue], .green),
             ("var(--caret, var(--ink))", ["var(--caret, var(--ink))": .red, "--ink": .blue], .red),
             ("var(--caret, #1234)", [:], luiHexColor("#1234")),
+            ("hsl(var(--border))", [:], .secondary.opacity(0.35)),
+            ("hsl(var(--border))", ["border": .blue], .blue),
+            ("hsl(var(--border))", ["--border": .green, "border": .blue], .green),
+            ("var(--lui-border)", ["--lui-border": .red], .red),
+            ("var(--missing, var(--border, #ff0000))", [:], .secondary.opacity(0.35)),
+            ("var(--missing, hsl(var(--border)))", [:], .secondary.opacity(0.35)),
+            ("var(--missing, #ff0000)", [:], luiHexColor("#ff0000")),
+            ("hsl(0, 100%, 50%)", [:], nil),
+            ("hsl(border)", [:], nil),
+            ("var(--missing, hsl(border))", [:], nil),
+            ("var(--abcdef)", [:], nil),
             ("var(--missing)", [:], nil),
             ("var(--missing", [:], nil)
         ]

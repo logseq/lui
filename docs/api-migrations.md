@@ -1,5 +1,23 @@
 # LUI API migration guide
 
+## Unreleased: Apple CSS variable color references
+
+Apple color props now resolve `var(--name, fallback)` and `hsl(var(--name))`
+through semantic theme colors and the existing built-in color names. For example,
+`background: hsl(var(--border))` now paints the built-in border color instead of
+remaining unstyled when no custom border token is registered. A theme's `--border`
+entry takes precedence over its `border` entry, then the built-in `border` color.
+Previously registered whole-expression colors retain highest precedence.
+
+Fallbacks resolve recursively, including nested `var()` and `hsl(var())` values.
+For example, `var(--missing, var(--border, #ff0000))` uses the border color before
+the literal red fallback. `var(--lui-border)` resolves a registered `--lui-border`
+or `lui-border` theme entry; it does not invent a default for that custom name.
+Unknown references without a resolvable fallback and malformed expressions still
+return no color. Literal HSL values remain unsupported; only the variable wrapper
+is unwrapped. The wire format and public APIs are unchanged. Hosts need no opt-in,
+but should expect these previously unstyled color props to become visible.
+
 ## Unreleased: Apple native dialogs during synchronized teardown
 
 Apple native alert and confirmation-dialog bindings now return false while

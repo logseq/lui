@@ -333,24 +333,77 @@ enum LUIThemeColorPolicy {
 
 enum LUIThemeColorResolver {
     static func color(_ name: String?, semanticColors: [String: Color]) -> Color? {
-        if let name, let semanticColor = registeredColor(name, in: semanticColors) {
+        resolve(name, semanticColors: semanticColors, depth: 0)
+    }
+
+    private static func resolve(
+        _ name: String?, semanticColors: [String: Color], depth: Int
+    ) -> Color? {
+        guard let name, depth < 64 else { return nil }
+        if let semanticColor = registeredColor(name, in: semanticColors) {
             return semanticColor
         }
-        if let name, name.contains("var(") {
-            let resolver = LUIStyleVariableResolver(lookup: { variable in
-                registeredColor(variable, in: semanticColors) == nil ? nil : variable
-            })
-            guard let resolved = resolver.resolve(name) else { return nil }
-            return color(resolved, semanticColors: semanticColors)
+        let expression = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if expression.hasPrefix("hsl("), expression.hasSuffix(")") {
+            let argument = String(expression.dropFirst(4).dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // This is a semantic token wrapper, not a literal HSL parser.
+            guard variableReference(argument) != nil else { return nil }
+            return resolve(argument, semanticColors: semanticColors, depth: depth + 1)
         }
+        if let reference = variableReference(expression) {
+            let token = String(reference.name.dropFirst(2)).lowercased()
+            if let color = registeredColor(reference.name, in: semanticColors)
+                ?? registeredColor(token, in: semanticColors)
+                ?? semanticColor(token)
+            {
+                return color
+            }
+            return reference.fallback.flatMap {
+                resolve($0, semanticColors: semanticColors, depth: depth + 1)
+            }
+        }
+        if let hex = luiHexColor(name) {
+            return hex
+        }
+        return semanticColor(name)
+    }
+
+    /// Split only the outer var(), retaining nested fallbacks for color resolution.
+    private static func variableReference(_ expression: String) -> (name: String, fallback: String?)? {
+        guard expression.hasPrefix("var("), expression.hasSuffix(")") else { return nil }
+        let body = expression.dropFirst(4).dropLast()
+        var depth = 0
+        var comma: String.Index?
+        for index in body.indices {
+            switch body[index] {
+            case "(": depth += 1
+            case ")":
+                guard depth > 0 else { return nil }
+                depth -= 1
+            case "," where depth == 0 && comma == nil: comma = index
+            default: break
+            }
+        }
+        guard depth == 0 else { return nil }
+        let name = body[..<(comma ?? body.endIndex)]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name.hasPrefix("--"), name.count > 2,
+              !name.contains(where: { $0.isWhitespace || "(),".contains($0) })
+        else { return nil }
+        let fallback = comma.map {
+            String(body[body.index(after: $0)...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return (name, fallback)
+    }
+
+    private static func semanticColor(_ name: String?) -> Color? {
         if LUIThemeColorPolicy.isMutedForeground(name) {
             return .secondary
         }
         if LUIThemeColorPolicy.isAccentForeground(name) {
             return .accentColor
-        }
-        if let name, let hex = luiHexColor(name) {
-            return hex
         }
         return switch name?.lowercased() {
         case nil: nil
