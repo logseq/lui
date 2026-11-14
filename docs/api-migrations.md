@@ -52,6 +52,14 @@ validated. `request_release` returns `Error Stale_receipt`, `Owner_retired`, or
 `Unsupported` when its proof/lifetime/binding is invalid. Cancellation explicitly
 abandons the logical obligation. Source generations and owner leases invalidate
 older receipts; completion of a scroll command alone is never physical proof.
+Once a bound source publishes its complete semantic-key index, a missing target
+or ancestor publishes `Missing_target` through `receipt`; an unbound or not yet
+published cold source continues waiting. Known owner/source/row changes publish
+`Stale` and clear a pending release. These SDK refusal statuses do not invent a
+native proof and do not release or cancel the ticket. For example, an application
+can observe `Missing_target` and call `cancel_retention` when it abandons that
+reveal. Cancelling an offscreen ticket removes its exclusive rows immediately,
+without waiting for another window event; other tickets and native pins survive.
 Existing scroll targets still cancel only with a fresh empty control token;
 reusing the same token with an empty target does not cancel pending work.
 
@@ -73,6 +81,13 @@ nested shared-source ScrollView. The first version fails closed for intervening
 scroll containers, scaled/rotated transforms, detached geometry, and stale row
 placement. Offscreen sources do not create overscan requests for unrelated
 rows. Ordinary sidebar/Journal/Views roots need no changes unless opted in.
+The outer owner anchors its actual native leading visible row across layout
+changes, preferring the deepest source at that position. Shared source
+measurements and generation reconfiguration do not independently scroll the
+owner. A retained offscreen child growing by 30 points and a later parent
+measurement of that same growth therefore cause one 30-point correction after
+native layout. Explicit scroll targets and native scrolling establish a new
+anchor; standalone sources retain their existing local compensation behavior.
 
 Native controls/extensions must call
 `LUIAppleBackend.registerVirtualNativeView(nodeID:view:)` for their exact retained
@@ -85,7 +100,15 @@ current owner/source/row incarnations, actual row anchors, geometry, window,
 visibility, and requested native focus. A successful call emits a compact opaque
 v1 receipt with status `pinned` or `focused`. Release rechecks the same physical
 proof and emits current-generation pin feedback before `released`; stale proof
-leaves the cold obligation intact. Built-in SwiftUI controls are not implicitly
+leaves the cold obligation intact. The latest successfully emitted receipt per
+live owner epoch/ticket remains recognizable after native unregister, proof-cache
+eviction, or physical owner detachment. Releasing those exact bytes emits `stale`
+once per unchanged request, including when proof becomes invalid during pin
+feedback. Unknown or altered receipt bytes cannot authorize a release. A fresh
+native registration/acknowledgement is required to retry successfully.
+`.visible` additionally requires a presented window and a nontransparent native
+view hierarchy; an ordered-out or transparent window/control may still satisfy
+`.attached` alone. Built-in SwiftUI controls are not implicitly
 registered by semantic key: downstream native integration owns their exact view
 lifetime and must not infer it from a midpoint hit test.
 
