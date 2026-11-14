@@ -2209,3 +2209,17 @@ Applications can keep `~pointer_capture:true` for primary dragging and handle
 `PointerUp (_, detail)` with `detail.button = 1` for middle-click actions. Do not
 assume that a captured control filters out non-primary releases. No property,
 event payload or primary drag/cancellation API changes are required.
+
+## Apple minimum-height columns retain intrinsic content height
+
+An Apple `column` with `min-height`, no positive `grow`, no fixed or maximum
+height, and no absolute positioning now retains its content's ideal height.
+Previously its minimum-height surface could compress under a parent stack while
+centering taller children outside that surface, including above a scroll
+document's origin. Fixed, maximum-height, growing and absolute columns retain
+their existing sizing behavior.
+
+Applications can keep `column ~min_height:60 children`: the 60-point empty
+surface remains, and taller content determines the surface height. Use an
+explicit height or maximum height when a bounded surface is intended. No API,
+schema, event or imperative-scroll behavior changes are required.

@@ -8251,6 +8251,18 @@ enum LUISurfaceFramePolicy {
             && model.derived.absoluteInsets == nil
     }
 
+    // A minimum is not a cap: a non-growing column must keep its content's
+    // ideal height rather than center taller children in a compressed frame.
+    @MainActor
+    static func columnIsIntrinsicHeight(model: LUINodeModel) -> Bool {
+        model.kind == .column
+            && model.surfaceMinHeight != nil
+            && model.derived.grow <= 0
+            && model.surfaceHeight == nil
+            && model.surfaceMaxHeight == nil
+            && model.derived.absoluteInsets == nil
+    }
+
     static func usesTopLeadingAlignment(kind: LUINodeKind) -> Bool {
         kind == .textarea
     }
@@ -8581,6 +8593,7 @@ private struct LUISurfaceModifier: ViewModifier {
                     kind: model.kind,
                     styleClass: model.derived.styleClass
                 ) || LUISurfaceFramePolicy.rowIsIntrinsicHeight(model: model)
+                    || LUISurfaceFramePolicy.columnIsIntrinsicHeight(model: model)
             )
             .modifier(
                 LUIContainerRelativeFrameModifier(
