@@ -187,10 +187,31 @@ import UIKit
       hosting.view.layoutIfNeeded()
       return native.convert(native.bounds, to: list).minY < 1000 && native.isFirstResponder
     }
-    list.setContentOffset(
-      CGPoint(
-        x: 0, y: list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom),
-      animated: false)
+    var readiness = LUIRuntimeScrollReadiness(expectedGeneration: source.epoch)
+    var lastGeometry: LUIRuntimeScrollReadiness.Sample?
+    try await wait("post-reorder native and virtual geometry settle") {
+      hosting.view.layoutIfNeeded()
+      guard let state = descendants(LUISparseScrollProbe.Probe.self, list)
+        .compactMap(\.state).first(where: { $0.contains(rowID) })
+      else {
+        readiness = LUIRuntimeScrollReadiness(expectedGeneration: source.epoch)
+        return false
+      }
+      let inset = list.adjustedContentInset
+      let sample = LUIRuntimeScrollReadiness.Sample(
+        generation: state.generation, virtualContentHeight: state.contentHeight,
+        nativeContentHeight: list.contentSize.height, boundsHeight: list.bounds.height,
+        insetTop: inset.top, insetBottom: inset.bottom, offset: list.contentOffset.y)
+      if sample != lastGeometry {
+        nativePresentationCheckpoint("BOUNDED_FAR_SCROLL_GEOMETRY \(sample)")
+        lastGeometry = sample
+      }
+      guard let bottom = readiness.bottomOffset(sample) else { return false }
+      nativePresentationCheckpoint(
+        "BOUNDED_FAR_SCROLL_READY generation=\(sample.generation) virtual=\(sample.virtualContentHeight) native=\(sample.nativeContentHeight) bounds=\(sample.boundsHeight) insets=\(inset) offset=\(sample.offset) bottom=\(bottom)")
+      list.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+      return true
+    }
     try await wait("true native far scroll") {
       source.lastFirst > 99000 && source.mounted[99999] != nil
     }

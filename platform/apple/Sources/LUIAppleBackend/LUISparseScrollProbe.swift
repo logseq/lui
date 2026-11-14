@@ -215,7 +215,7 @@ import SwiftUI
     static func dismantleUIView(_ view: Probe, coordinator: ()) { view.disconnect() }
 
     final class Probe: UIView {
-      private weak var state: LUISparseVirtualState?
+      private(set) weak var state: LUISparseVirtualState?
       private weak var scrollView: UIScrollView?
       private var observation: NSKeyValueObservation?
       private var notifications: [NSObjectProtocol] = []
