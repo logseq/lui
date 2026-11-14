@@ -183,6 +183,19 @@ ancestor proof chains, and nested anchor/window arbitration have been removed.
 Applications must not encode the old metadata or create a virtual list/owner
 inside a participating row. Use the typed SDK DSL/publication APIs.
 
+The exported helpers `Lui_virtual.Internal.source_path` and
+`Lui_virtual_json.path` are also removed. Neither has a flat replacement;
+downstream code must stop constructing or parsing semantic source paths.
+
+| Earlier e42 contract | Flat migration |
+| --- | --- |
+| `Lui_virtual.child_source` and recursive virtual child lists | Project journals/page-view descendants into one root row sequence. Depth, section and expansion are application data. |
+| Multiple root keys for one owner | Use one stable root key. Repeating that key returns the same source handle; a distinct second key is rejected. |
+| `VirtualSourcePath`, generated `virtualSourcePath` cases and `virtual-source-path` | Remove property construction, switch arms and manual wire emission. Do not send an empty path as a substitute; rebuild paired generated consumers. |
+| Retentions `{ticket,path,key}` | Publish `{ticket,key}` through the typed SDK. Release records remain `{ticket,receipt}`. |
+| Native receipt `rows` containing an ancestor-to-target proof chain | The paired SDK emits exactly one source-row proof and rejects multiple rows. Forward the opaque receipt unchanged; do not edit or truncate its JSON. |
+| Ancestor cold pins, deepest-descendant anchors, nested windows and parent/child measurement compensation | Retain the target flat row and use one owner window/leading-row anchor. The application loads and expands the domain tree before publishing the target row; it must not add a second compensation or ancestor proof chain. |
+
 `root_source`, capability/version names, native registration/acknowledgement,
 `VirtualRetention`, the UTF-8 C ABI, B1 callbacks, and release metadata signatures
 are unchanged. Existing owner/ticket/opaque-byte B3 forwarding needs no new
