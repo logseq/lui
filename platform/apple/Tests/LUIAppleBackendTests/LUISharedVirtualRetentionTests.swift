@@ -109,6 +109,18 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
             view: field, requirements: .attached), "Rotated sources cannot attest document geometry")
         sourceAnchor.frameRotation = 0
+        XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+            view: field, requirements: .attached))
+        let retired = try XCTUnwrap(receipts().last?.1)
+        backend.unregisterVirtualNativeView(registration)
+        backend.sharedVirtualViewport.refresh()
+        events.removeAll()
+        let retiredRelease = try JSONSerialization.data(withJSONObject: [["ticket": 9, "receipt": retired]])
+        try apply([set(1, "virtual-retention-releases", String(decoding: retiredRelease, as: UTF8.self))])
+        backend.sharedVirtualViewport.refresh()
+        XCTAssertEqual(receipts().map(\.0), ["stale"], "Retired native proof must explicitly refuse release")
+        backend.sharedVirtualViewport.refresh()
+        XCTAssertEqual(receipts().count, 1, "An unchanged refused release is answered once")
         field.removeFromSuperview()
         XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
             view: field, requirements: .attached))
