@@ -1,5 +1,26 @@
 # LUI API migration guide
 
+## Unreleased: Apple overlapping frame producers
+
+Transient SwiftUI view overlap can activate multiple frame reporters for the
+same retained model. When the most recently registered reporter disappears,
+the SDK now resumes the newest remaining live, active reporter that still
+represents that current model. Geometry comes only from that reporter's own
+matching sample. A reporter without a sample can resume registration and wait
+for its next geometry callback; released or unrepresented reporters cannot
+restore historical rectangles. Destructive model removal clears all registrations.
+
+For example, if A publishes a frame, B temporarily supersedes A, and B then
+disappears while A remains active, the next snapshot can contain A's latest
+sample without requiring A's unchanged geometry to fire again. If A has been
+released or the model was dropped, its old frame is not restored. Native inline
+producers without a SwiftUI reporter retain their single-owner cleanup behavior.
+
+`onFramesReport` and `emitFramesSnapshot()` retain their `[Int: CGRect]` API,
+batched delivery and reported-geometry semantics. Downstream hosts continue
+replacing their cached frame table on each report; no wire migration, layout
+barrier, coordinate adjustment or host-side recovery is required.
+
 ## Unreleased: Apple frame snapshots retire dropped owners
 
 Destructive `detach-subtree` and `drop-node` commits now revoke each removed

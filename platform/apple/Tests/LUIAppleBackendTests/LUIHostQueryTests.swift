@@ -92,6 +92,60 @@ struct LUIHostQueryTests {
         #expect(frames[1651] == nil)
     }
 
+    @Test("Removing a frame producer resumes only a live active producer of the current model")
+    func overlappingFrameProducers() throws {
+        for mode in ["live", "released", "unrepresented", "sampleless"] {
+            let backend = LUIAppleBackend()
+            backend.frameReportingEnabled = true
+            var frames: [Int: CGRect] = [:]
+            backend.onFramesReport = { frames = $0 }
+            try backend.apply(json: """
+            {"generation":1,"ops":[{"op":"create-node","id":675,"kind":"column"}]}
+            """)
+            var first: LUIFrameReporter? = LUIFrameReporter()
+            let isReleased = { [weak first] in first == nil }
+            let firstSource = try #require(first?.source)
+            let firstOwner = try #require(backend.frameOwner(nodeID: 675,
+                source: firstSource))
+            first?.represent(firstOwner)
+            first?.activate(firstOwner, backend: backend)
+            let firstRect = CGRect(x: 20, y: 183.5, width: 756, height: 97)
+            if mode != "sampleless" {
+                first?.observe(LUIFrameSample(owner: firstOwner, rect: firstRect))
+            }
+            let second = LUIFrameReporter()
+            let secondOwner = try #require(backend.frameOwner(nodeID: 675, source: second.source))
+            second.represent(secondOwner)
+            second.activate(secondOwner, backend: backend)
+            let secondRect = firstRect.offsetBy(dx: 0, dy: -9.5)
+            second.observe(LUIFrameSample(owner: secondOwner, rect: secondRect))
+            // A superseded but active producer may receive a newer sample.
+            let latestFirstRect = firstRect.offsetBy(dx: 0, dy: 3)
+            if mode != "sampleless" {
+                first?.observe(LUIFrameSample(owner: firstOwner, rect: latestFirstRect))
+            }
+            backend.emitFramesSnapshot()
+            #expect(frames[675] == secondRect)
+            if mode == "released" {
+                first = nil
+                #expect(isReleased())
+            } else if mode == "unrepresented" {
+                first?.represent(nil)
+            }
+            second.deactivate(secondOwner)
+            backend.emitFramesSnapshot()
+            #expect(frames[675] == (mode == "live" ? latestFirstRect : nil))
+            if mode == "sampleless" {
+                first?.observe(LUIFrameSample(owner: firstOwner, rect: latestFirstRect))
+                backend.emitFramesSnapshot()
+                #expect(frames[675] == latestFirstRect)
+            }
+            first?.deactivate(firstOwner)
+            backend.emitFramesSnapshot()
+            #expect(frames[675] == nil)
+        }
+    }
+
     @Test("Inline newline end carets retain their downstream line", arguments: ["Ptail\n", "Ptail\nQ"])
     func trailingLineGeometry(document: String) throws {
         #if os(macOS)
