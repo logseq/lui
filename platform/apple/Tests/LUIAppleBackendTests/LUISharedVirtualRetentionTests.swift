@@ -106,6 +106,80 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         backend.sharedVirtualViewport.refresh()
         XCTAssertEqual(scroll.contentView.bounds.minY, 120, accuracy: 0.1,
             "A visible descendant's leading row remains anchored within its ancestor row")
+
+        var batch = 1
+        func apply(_ ops: [[String: Any]]) throws {
+            batch += 1
+            let data = try JSONSerialization.data(withJSONObject: ["generation": batch, "ops": ops])
+            try backend.apply(json: String(decoding: data, as: UTF8.self))
+        }
+        let outerModel = try XCTUnwrap(backend.model(id: 2))
+        let childModel = try XCTUnwrap(backend.model(id: 5))
+        try apply([set(2, "virtual-total-count", 2), set(2, "virtual-indices", "[0,1]"),
+            set(2, "virtual-generation", 2), set(2, "gap", 10)])
+        outer.configure(model: outerModel, backend: backend)
+        parent.configure(outer, row: .init(id: 3, index: 0), generation: 2, backend: backend)
+        visible.configure(outer, row: .init(id: 4, index: 1), generation: 2, backend: backend)
+        for variation in ["outer gap", "nested gap", "horizontal clip", "ancestor clip",
+            "setScrollTop", "scrollIntoView", "surviving generation"] {
+            let nestedGap = variation == "nested gap"
+            let ancestorClip = variation == "ancestor clip"
+            try apply([set(5, "gap", nestedGap ? 10 : 0)])
+            child.configure(model: childModel, backend: backend)
+            let originalHeight: CGFloat = nestedGap ? 140 : 130
+            parent.frame = CGRect(x: 0, y: 0, width: ancestorClip ? 100 : 400, height: originalHeight)
+            parent.clipsToBounds = ancestorClip
+            childAnchor.frame = CGRect(x: variation == "horizontal clip" ? 500 : ancestorClip ? 200 : 0,
+                y: 0, width: 400, height: originalHeight)
+            first.frame = CGRect(x: 0, y: 0, width: 400, height: 80)
+            second.frame = CGRect(x: 0, y: nestedGap ? 90 : 80, width: 400, height: 50)
+            visible.setFrameOrigin(CGPoint(x: 0, y: originalHeight + 10))
+            child.measured(.init(id: 6, index: 0), height: 80)
+            outer.measured(.init(id: 3, index: 0), height: originalHeight)
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            backend.sharedVirtualViewport.refresh()
+            let initial: CGFloat = variation == "outer gap" ? 135 : nestedGap ? 85
+                : variation.hasSuffix("clip") ? 100 : 140
+            scroll.contentView.scroll(to: CGPoint(x: 0, y: initial))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            backend.sharedVirtualViewport.refresh()
+            if variation == "surviving generation" {
+                try apply([set(2, "virtual-generation", 3)])
+                outer.configure(model: outerModel, backend: backend)
+                backend.sharedVirtualViewport.refresh()
+                XCTAssertEqual(scroll.contentView.bounds.minY, initial, accuracy: 0.1,
+                    "A generation refresh before marker.configure must retain the surviving reading anchor")
+                parent.configure(outer, row: .init(id: 3, index: 0), generation: 3, backend: backend)
+                visible.configure(outer, row: .init(id: 4, index: 1), generation: 3, backend: backend)
+            }
+            let growth: CGFloat = nestedGap || variation.hasSuffix("clip") ? 20 : 30
+            first.setFrameSize(CGSize(width: 400, height: 80 + growth))
+            second.setFrameOrigin(CGPoint(x: 0, y: (nestedGap ? 90 : 80) + growth))
+            parent.setFrameSize(CGSize(width: parent.frame.width, height: originalHeight + growth))
+            childAnchor.setFrameSize(CGSize(width: 400, height: originalHeight + growth))
+            visible.setFrameOrigin(CGPoint(x: 0, y: originalHeight + 10 + growth))
+            child.measured(.init(id: 6, index: 0), height: 80 + growth)
+            outer.measured(.init(id: 3, index: 0), height: originalHeight + growth)
+            let query = LUIHostScrollMarker(frame: CGRect(x: 0, y: 145, width: 10, height: 10))
+            if variation == "setScrollTop" {
+                document.addSubview(query)
+                query.configure(model: owner, backend: backend, ownsScroll: true)
+                XCTAssertTrue(backend.setScrollTop(nodeID: 1, top: initial))
+            } else if variation == "scrollIntoView" {
+                parent.addSubview(query)
+                query.configure(model: try XCTUnwrap(backend.model(id: 3)), backend: backend, ownsScroll: false)
+                XCTAssertTrue(backend.scrollIntoView(nodeID: 3))
+            }
+            let expected = variation.hasSuffix("clip") || variation == "setScrollTop"
+                || variation == "scrollIntoView" ? initial : initial + growth
+            backend.sharedVirtualViewport.refresh()
+            XCTAssertEqual(scroll.contentView.bounds.minY, expected, accuracy: 0.1, variation)
+            backend.sharedVirtualViewport.refresh()
+            XCTAssertEqual(scroll.contentView.bounds.minY, expected, accuracy: 0.1,
+                "Repeated refresh must not apply another correction: \(variation)")
+            query.removeFromSuperview()
+        }
     }
 
     @MainActor

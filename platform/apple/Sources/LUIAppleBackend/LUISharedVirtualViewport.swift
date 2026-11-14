@@ -207,17 +207,17 @@ final class LUISharedVirtualViewport {
     @MainActor final class VisibleAnchor {
         weak var source: Source?
         weak var marker: LUISharedRowMarker?
+        weak var rowModel: AnyObject?
         let binding: LUISharedSourceBinding
-        let generation: Int
-        let rowIdentity: ObjectIdentifier
+        let key: String
         let position: CGFloat
         init(source: Source, marker: LUISharedRowMarker,
-            rowIdentity: ObjectIdentifier, position: CGFloat) {
+            rowModel: AnyObject, key: String, position: CGFloat) {
             self.source = source
             self.marker = marker
+            self.rowModel = rowModel
             binding = source.binding
-            generation = marker.generation
-            self.rowIdentity = rowIdentity
+            self.key = key
             self.position = position
         }
     }
@@ -489,7 +489,6 @@ final class LUISharedVirtualViewport {
     private func anchorFrame(_ marker: LUISharedRowMarker, source: Source) -> CGRect? {
         guard let model = source.model, let anchor = source.anchor, let geometry = source.geometry,
               backend?.model(id: model.id) === model,
-              model.property(.virtualGeneration)?.intValue == marker.generation,
               model.children.contains(marker.row.id), source.state?.contains(marker.row.id) == true,
               source.rowAnchors[marker.row.id]?.value === marker,
               marker.window != nil, marker.window === anchor.window,
@@ -505,6 +504,67 @@ final class LUISharedVirtualViewport {
         return CGRect(x: 0, y: position, width: 1, height: frame.height)
     }
 
+    private func anchorKey(_ marker: LUISharedRowMarker, source: Source) -> String? {
+        guard let index = source.model?.children.firstIndex(of: marker.row.id),
+              source.binding.keys.indices.contains(index) else { return nil }
+        return source.binding.keys[index]
+    }
+
+    private func anchorModel(_ node: Int) -> AnyObject? {
+        if let model = backend?.model(id: node) { return model }
+        return backend?.extensionModel(id: node)
+    }
+
+    // Candidate rows must really intersect the native viewport and every
+    // clipping ancestor. A saved row may move vertically outside the viewport
+    // before compensation, so its identity check only requires horizontal visibility.
+    private func anchorVisibility(_ marker: LUISharedRowMarker, owner: Owner,
+        verticalClip: Bool) -> CGRect? {
+        guard let scroll = owner.scroll, marker.window != nil, marker.window === scroll.window else { return nil }
+        #if os(macOS)
+        guard let document = scroll.documentView else { return nil }
+        let coordinates = document
+        var viewport = document.convert(scroll.contentView.bounds, from: scroll.contentView)
+        #else
+        let coordinates = scroll
+        var viewport = scroll.bounds.inset(by: scroll.adjustedContentInset)
+        #endif
+        var frame = marker.convert(marker.bounds, to: coordinates)
+        var ancestor: LUIHostNativeView? = marker
+        var foundScroll = false
+        while let view = ancestor {
+            #if os(macOS)
+            guard !view.isHidden, view.alphaValue > 0 else { return nil }
+            #else
+            guard !view.isHidden, view.alpha > 0 else { return nil }
+            #endif
+            if view === scroll { foundScroll = true }
+            if view.clipsToBounds {
+                var clip = view.convert(view.bounds, to: coordinates)
+                if !verticalClip {
+                    clip.origin.y = frame.minY
+                    clip.size.height = frame.height
+                }
+                frame = frame.intersection(clip)
+            }
+            ancestor = view.superview
+        }
+        guard foundScroll else { return nil }
+        if !verticalClip {
+            viewport.origin.y = frame.minY
+            viewport.size.height = frame.height
+        }
+        frame = frame.intersection(viewport)
+        guard frame.minX.isFinite, frame.minY.isFinite, frame.width.isFinite, frame.height.isFinite,
+              frame.width > 0, frame.height > 0 else { return nil }
+        #if os(macOS)
+        let top = document.isFlipped ? frame.minY - document.bounds.minY : document.bounds.maxY - frame.maxY
+        #else
+        let top = frame.minY + scroll.adjustedContentInset.top
+        #endif
+        return CGRect(x: frame.minX, y: top, width: frame.width, height: frame.height)
+    }
+
     // The owner's native visible row is the sole measurement anchor. Child
     // extents and later ancestor-height propagation cannot each apply a delta.
     private func preserveVisibleAnchor(_ owner: Owner, sources owned: [Int: Source]) {
@@ -514,14 +574,16 @@ final class LUISharedVirtualViewport {
             return
         }
         var currentOffset = offset
-        // Native scrolling establishes a new anchor; explicit SDK scrolls also
-        // clear it in setOffset. Content measurement never overrides an intent.
+        // Reading anchors survive generation updates only for the same semantic
+        // key, native marker and retained model. Receipt attestation stays generation-bound.
         if let previousOffset = owner.observedOffset, abs(previousOffset - offset) <= 0.1,
            let saved = owner.visibleAnchor, let source = saved.source,
            let sourceID = source.model?.id, owned[sourceID] === source,
            saved.binding.owner == source.binding.owner, saved.binding.epoch == source.binding.epoch,
            saved.binding.path == source.binding.path, let marker = saved.marker,
-           marker.generation == saved.generation, retainedIdentity(nodeID: marker.row.id) == saved.rowIdentity,
+           let rowModel = saved.rowModel, anchorModel(marker.row.id) === rowModel,
+           anchorKey(marker, source: source) == saved.key,
+           anchorVisibility(marker, owner: owner, verticalClip: false) != nil,
            let frame = anchorFrame(marker, source: source) {
             let delta = frame.minY - saved.position
             let target = min(max(0, offset + delta), max(0, total - height))
@@ -531,21 +593,49 @@ final class LUISharedVirtualViewport {
             }
         }
         owner.observedOffset = currentOffset
-        // Prefer the deepest row crossing the viewport's leading edge, so an
-        // interior descendant can stay fixed while its containing row grows.
-        var candidate: VisibleAnchor?
+        // Select the leading outer row first, then descend only through its
+        // semantic row path. Each level allows a next visible row after a gap.
+        var candidates: [[String]: [(anchor: VisibleAnchor, visible: CGRect)]] = [:]
         for source in owned.values {
             for weakMarker in source.rowAnchors.values {
                 guard let marker = weakMarker.value, let frame = anchorFrame(marker, source: source),
-                      frame.minY <= currentOffset, frame.maxY > currentOffset,
-                      let rowIdentity = retainedIdentity(nodeID: marker.row.id) else { continue }
-                if source.binding.path.count > (candidate?.binding.path.count ?? 0) {
-                    candidate = VisibleAnchor(source: source, marker: marker,
-                        rowIdentity: rowIdentity, position: frame.minY)
-                }
+                      let visible = anchorVisibility(marker, owner: owner, verticalClip: true),
+                      let rowModel = anchorModel(marker.row.id), let key = anchorKey(marker, source: source)
+                else { continue }
+                let candidate = VisibleAnchor(source: source, marker: marker,
+                    rowModel: rowModel, key: key, position: frame.minY)
+                let parentPath = Array(source.binding.path.dropLast())
+                candidates[parentPath, default: []].append((candidate, visible))
             }
         }
+        func leading(_ rows: [(anchor: VisibleAnchor, visible: CGRect)]) -> VisibleAnchor? {
+            rows.min { left, right in
+                let leftCrosses = left.visible.minY <= currentOffset && left.visible.maxY > currentOffset
+                let rightCrosses = right.visible.minY <= currentOffset && right.visible.maxY > currentOffset
+                if leftCrosses != rightCrosses { return leftCrosses }
+                if left.visible.minY != right.visible.minY { return left.visible.minY < right.visible.minY }
+                let leftPath = left.anchor.binding.path + [left.anchor.key]
+                let rightPath = right.anchor.binding.path + [right.anchor.key]
+                return leftPath.lexicographicallyPrecedes(rightPath)
+            }?.anchor
+        }
+        var candidate = leading(candidates[[]] ?? [])
+        while let parent = candidate {
+            let path = parent.binding.path + [parent.key]
+            guard let child = leading(candidates[path] ?? []) else { break }
+            candidate = child
+        }
         owner.visibleAnchor = candidate
+    }
+
+    // Public intents resolve their exact native scroll before invalidating it;
+    // internal measurement writes deliberately do not pass through this hook.
+    func explicitScroll(_ scroll: LUIHostNativeScroll) {
+        for owner in owners.values where owner.scroll === scroll {
+            owner.visibleAnchor = nil
+            owner.observedOffset = nil
+            schedule()
+        }
     }
 
     private func visible(_ view: LUIVirtualNativeView, in owner: Owner) -> Bool {
