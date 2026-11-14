@@ -481,22 +481,32 @@ final class LUISharedVirtualViewport {
         return .init(offset: offset, height: height, documentHeight: total, origin: origin)
     }
 
-    private func anchorFrame(_ marker: LUISharedRowMarker, source: Source) -> CGRect? {
-        guard let model = source.model, let anchor = source.anchor, let geometry = source.geometry,
+    private func anchorFrame(_ marker: LUISharedRowMarker, source: Source,
+        geometry: LUISharedViewportGeometry) -> CGRect? {
+        guard let model = source.model, let anchor = source.anchor,
               backend?.model(id: model.id) === model,
               model.children.contains(marker.row.id), source.state?.contains(marker.row.id) == true,
               source.rowAnchors[marker.row.id]?.value === marker,
-              marker.window != nil, marker.window === anchor.window,
-              marker.isDescendant(of: anchor) else { return nil }
-        let frame = marker.convert(marker.bounds, to: anchor)
-        #if os(macOS)
-        let top = anchor.isFlipped ? frame.minY - anchor.bounds.minY : anchor.bounds.maxY - frame.maxY
-        #else
-        let top = frame.minY - anchor.bounds.minY
-        #endif
-        let position = geometry.origin + top
-        guard position.isFinite, frame.height.isFinite, frame.height > 0 else { return nil }
-        return CGRect(x: 0, y: position, width: 1, height: frame.height)
+              marker.window != nil, marker.window === anchor.window else { return nil }
+        return LUISparseNativeObservation.anchorFrame(marker, source: anchor, geometry: geometry)
+    }
+
+    func completionObservation(state: LUISparseVirtualState, row: LUISparseVirtualState.Row,
+        key: String) -> LUISparseNativeObservation? {
+        guard let source = sources.values.first(where: { $0.state === state }),
+              let model = source.model, backend?.model(id: model.id) === model,
+              source.binding == state.sharedBinding, anchorKeys(source)?[row.id] == key,
+              let owner = owners[source.binding.owner], let ownerModel = owner.model,
+              owner.epoch == source.binding.epoch,
+              backend?.model(id: ownerModel.id) === ownerModel,
+              ownerModel.property(.virtualViewportEpoch)?.intValue == source.binding.epoch,
+              let scroll = owner.scroll, let anchor = source.anchor,
+              let marker = source.rowAnchors[row.id]?.value,
+              marker.row == row, marker.generation == state.generation,
+              let fresh = geometry(source, owner: owner),
+              let rect = anchorFrame(marker, source: source, geometry: fresh) else { return nil }
+        return LUISparseNativeObservation.read(scroll: scroll, source: anchor, marker: marker,
+            geometry: fresh, anchorRect: rect)
     }
 
     private func anchorKeys(_ source: Source) -> [Int: String]? {
@@ -565,11 +575,12 @@ final class LUISharedVirtualViewport {
 
     // One flat source's leading native row is the owner's sole measurement anchor.
     private func preserveVisibleAnchor(_ owner: Owner, source: Source?) {
-        guard let source, let scroll = owner.scroll, let (offset, height, total) = metrics(owner) else {
+        guard let source, let scroll = owner.scroll, let fresh = geometry(source, owner: owner) else {
             owner.visibleAnchor = nil
             owner.observedOffset = nil
             return
         }
+        let (offset, height, total) = (fresh.offset, fresh.height, fresh.documentHeight)
         var currentOffset = offset
         let keys = anchorKeys(source)
         // Reading anchors survive generation updates only for the same semantic
@@ -581,7 +592,7 @@ final class LUISharedVirtualViewport {
            let rowModel = saved.rowModel, anchorModel(marker.row.id) === rowModel,
            keys?[marker.row.id] == saved.key,
            anchorVisibility(marker, owner: owner, verticalClip: false) != nil,
-           let frame = anchorFrame(marker, source: source) {
+           let frame = anchorFrame(marker, source: source, geometry: fresh) {
             let delta = frame.minY - saved.position
             let target = min(max(0, offset + delta), max(0, total - height))
             if abs(target - offset) > 0.1,
@@ -592,7 +603,8 @@ final class LUISharedVirtualViewport {
         owner.observedOffset = currentOffset
         var candidates: [(anchor: VisibleAnchor, visible: CGRect)] = []
         for weakMarker in source.rowAnchors.values {
-            guard let marker = weakMarker.value, let frame = anchorFrame(marker, source: source),
+            guard let marker = weakMarker.value,
+                  let frame = anchorFrame(marker, source: source, geometry: fresh),
                   let visible = anchorVisibility(marker, owner: owner, verticalClip: true),
                   let rowModel = anchorModel(marker.row.id), let key = keys?[marker.row.id]
             else { continue }
@@ -837,18 +849,26 @@ final class LUISharedVirtualViewport {
         }
     }
 
-    func setOffset(_ local: CGFloat, state: LUISparseVirtualState, animated: Bool) {
+    @discardableResult
+    func setOffset(_ local: CGFloat, state: LUISparseVirtualState, animated: Bool) -> Bool {
         guard let source = sources.values.first(where: { $0.state === state }),
-              let geometry = source.geometry, let owner = owners[source.binding.owner],
+              let backend, let model = source.model, backend.model(id: model.id) === model,
+              let binding = try? LUISharedSourceBinding(properties: model.properties, children: model.children),
+              binding == source.binding, binding == state.sharedBinding,
+              let owner = owners[source.binding.owner], let geometry = geometry(source, owner: owner),
+              owner.epoch == binding.epoch, let ownerModel = owner.model,
+              backend.model(id: binding.owner) === ownerModel,
+              ownerModel.property(.virtualViewportEpoch)?.intValue == binding.epoch,
               let scroll = owner.scroll,
-              let backend else { return }
+              scroll.window != nil else { return false }
         _ = animated // Explicit shared-owner intents use current measured geometry.
         owner.visibleAnchor = nil
         owner.observedOffset = nil
-        _ = backend.setNativeScrollTop(scroll, top: geometry.target(local),
+        let issued = backend.setNativeScrollTop(scroll, top: geometry.target(local),
             documentHeight: geometry.documentHeight, viewportHeight: geometry.height)
         // The owner probe uses the same existing document and owns notifications.
         if owner.scroll != nil { schedule() }
+        return issued
     }
 
     func pointer(view: LUIVirtualNativeView?, down: Bool) {
