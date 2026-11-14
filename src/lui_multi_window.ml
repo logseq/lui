@@ -10,6 +10,7 @@ type lifecycle_state =
 type ('model, 'action, 'shared) t = {
   app_scheduler : Signal.scheduler;
   app_registry : Lui_extension.extension_registry;
+  app_virtual_capabilities : Lui_virtual.capability list;
   app_model : 'model Signal.state;
   app_reducer : 'model -> 'action -> 'model;
   app_view : ('model, 'action, 'shared) view;
@@ -39,12 +40,13 @@ and ('model, 'action, 'shared) surface = {
   mutable surface_state : lifecycle_state;
 }
 
-let create ?(registry = Lui_extension.registry ()) ~shared initial_model
+let create ?(registry = Lui_extension.registry ()) ?(virtual_capabilities = []) ~shared initial_model
     reducer view =
   let scheduler = Signal.scheduler () in
   {
     app_scheduler = scheduler;
     app_registry = registry;
+    app_virtual_capabilities = virtual_capabilities;
     app_model = Signal.state scheduler initial_model;
     app_reducer = reducer;
     app_view = view;
@@ -77,7 +79,7 @@ let open_window ?view t backend =
   let id = !(t.app_next_surface) in
   incr t.app_next_surface;
   let runtime =
-    Lui_runtime.create_with_extensions t.app_scheduler backend
+    Lui_runtime.create_with_extensions ~virtual_capabilities:t.app_virtual_capabilities t.app_scheduler backend
       t.app_registry
   in
   let scope =

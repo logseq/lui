@@ -956,6 +956,7 @@ val box :
   ?inert_signal:bool Signal.signal ->
   ?transition:string -> t list -> t
 val scroll :
+  ?virtual_owner:Lui_virtual.owner ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -1069,6 +1070,7 @@ val list :
    matches {!list} and is implemented on the web backend; native
    backends currently parse-accept these props without scrolling. *)
 val virtual_list :
+  ?viewport:Lui_virtual.source ->
   ?key:string ->
   ?overscan:int ->
   ?item_extent:float ->

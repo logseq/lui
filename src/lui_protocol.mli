@@ -309,6 +309,13 @@ type property =
   | ToggleDetailEnabled
   | FocusWithinEnabled
   | ShrinkValue
+  | VirtualViewportEpoch
+  | VirtualOwnerNode
+  | VirtualOwnerEpoch
+  | VirtualSourcePath
+  | VirtualRowKeys
+  | VirtualRetentions
+  | VirtualRetentionReleases
 
 module Property_map : Map.S with type key = property
 
@@ -366,6 +373,7 @@ type event =
   | ToggleChangedDetail of int * bool * int
   | FocusWithinChanged of int * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
+  | VirtualRetention of int * int * string
 
 type patch_op =
   | CreateNode of int * node_kind

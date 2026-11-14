@@ -39,6 +39,7 @@ type ('model, 'action, 'shared) view =
     opened yet; {!open_window} mounts [view] per backend. *)
 val create :
   ?registry:Lui_extension.extension_registry ->
+  ?virtual_capabilities:Lui_virtual.capability list ->
   shared:'shared ->
   'model ->
   ('model -> 'action -> 'model) ->
