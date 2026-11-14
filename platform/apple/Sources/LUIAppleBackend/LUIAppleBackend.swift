@@ -916,8 +916,9 @@ public final class LUIAppleBackend {
     // batches that cannot change any presentation.
     private var modalNodeCount = 0
     private var popoverNodeIDs: Set<Int> = []
+    private var dropdownNodeIDs: Set<Int> = []
     private var eventDeferralDepth = 0
-    private var deferredEvents: [LUIEvent] = []
+    private var deferredEvents: [(event: LUIEvent, isCurrent: (() -> Bool)?)] = []
     private var interactionLockedDrawers: Set<Int> = []
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
@@ -929,6 +930,7 @@ public final class LUIAppleBackend {
     let modalPresentation = LUIModalPresentationStore()
     let filePreviewPresentation = LUIFilePreviewStore()
     let anchoredPopovers = LUIAnchoredPopoverStore()
+    let anchoredMenus = LUIAnchoredMenuAdmission()
 
     public init(
         appIcons: [String: LUIAppleIconSource] = [:],
@@ -1295,6 +1297,7 @@ public final class LUIAppleBackend {
             commit(tree, touched: touched, dropped: dropped)
         }
         syncAnchoredPopovers()
+        syncAnchoredMenus()
         // A dialog/sheet's membership, anchor, or nesting only changes when
         // the structure moves or a presentation-relevant node mutates —
         // property-only patches elsewhere never do, so skip the tree walk.
@@ -1574,6 +1577,10 @@ public final class LUIAppleBackend {
     }
 
     func performDismiss(node: Int) throws {
+        try performDismiss(node: node, isCurrent: nil)
+    }
+
+    private func performDismiss(node: Int, isCurrent: (() -> Bool)?) throws {
         guard let model = models[node],
               model.kind == .select || model.kind == .combobox ||
                 model.kind == .dropdownMenu || model.kind == .popover || model.kind == .dialog ||
@@ -1582,7 +1589,7 @@ public final class LUIAppleBackend {
                 model.kind == .filePicker else {
             throw invalid("node \(node) is not dismissible")
         }
-        emit(.dismiss(node: node))
+        emit(.dismiss(node: node), isCurrent: isCurrent)
     }
 
     func performPicked(node: Int, payload: String) throws {
@@ -1742,6 +1749,7 @@ public final class LUIAppleBackend {
             nodeFrameReporters[id] = nil
             revokeNodeFrame(id)
             popoverNodeIDs.remove(id)
+            dropdownNodeIDs.remove(id)
             if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }
             if hostQueries.imageQueries.contains(id) { hostQueries.imageQueries.remove(id) }
             hostQueries.scrollQueries.remove(id)
@@ -1765,6 +1773,7 @@ public final class LUIAppleBackend {
             collectAncestors(of: id, into: &descendantsRefresh)
             if let state = tree.nodes[id] {
                 if state.kind == .popover { popoverNodeIDs.insert(id) }
+                if state.kind == .dropdownMenu { dropdownNodeIDs.insert(id) }
                 descendantsRefresh.insert(id)
                 let t1 = CFAbsoluteTimeGetCurrent()
                 if let model = models[id] {
@@ -1977,7 +1986,7 @@ public final class LUIAppleBackend {
         let events = deferredEvents
         deferredEvents.removeAll(keepingCapacity: true)
         for event in events {
-            onEvent?(event)
+            if event.isCurrent?() != false { onEvent?(event.event) }
         }
     }
 
@@ -1987,11 +1996,78 @@ public final class LUIAppleBackend {
         emit(.virtualRetention(owner: owner, ticket: ticket, receipt: receipt))
     }
 
-    private func emit(_ event: LUIEvent) {
+    private func emit(_ event: LUIEvent, isCurrent: (() -> Bool)? = nil) {
         if eventDeferralDepth > 0 {
-            deferredEvents.append(event)
-        } else {
+            deferredEvents.append((event, isCurrent))
+        } else if isCurrent?() != false {
             onEvent?(event)
+        }
+    }
+
+    func anchoredMenuPresentation(host: LUINodeModel) -> LUIAnchoredMenuLease? {
+        guard models[host.id] === host,
+              let lease = anchoredMenus.presentation(at: host.id),
+              lease.host === host, models[lease.menu.id] === lease.menu,
+              host.childData.anchoredMenuID == lease.menu.id,
+              !host.childData.hasComboboxChild else { return nil }
+        return lease
+    }
+
+    func dismissAnchoredMenu(_ lease: LUIAnchoredMenuLease) {
+        guard anchoredMenuPresentation(host: lease.host)?.id == lease.id,
+              anchoredMenus.take(lease) else { return }
+        try? performDismiss(node: lease.menu.id, isCurrent: { [weak self] in
+            guard let self else { return false }
+            let admitted = self.anchoredMenus.consumeClose(lease)
+            return admitted && self.models[lease.host.id] === lease.host
+                && self.models[lease.menu.id] === lease.menu
+                && lease.host.childData.anchoredMenuID == lease.menu.id
+                && !lease.host.childData.hasComboboxChild
+        })
+    }
+
+    private func syncAnchoredMenus() {
+        var candidates: [Int: LUIAnchoredMenuCandidate] = [:]
+        if !dropdownNodeIDs.isEmpty {
+            var pending = rootIDs.reversed().map { $0 }
+            var visited = Set<Int>()
+            while let id = pending.popLast() {
+                guard visited.insert(id).inserted else { continue }
+                if let host = models[id] {
+                    guard host.property(.display)?.stringValue != "none" else { continue }
+                    switch host.kind {
+                    case .stack, .panel, .card:
+                        if !host.childData.hasComboboxChild,
+                           let menuID = host.childData.anchoredMenuID,
+                           let menu = models[menuID],
+                           menu.property(.display)?.stringValue != "none" {
+                            #if os(iOS)
+                            let mode: LUIAnchoredMenuMode = LUIMenuPresentationPolicy.usesAnchoredPopover(
+                                styleClass: menu.derived.styleClass, model: menu, backend: self)
+                                ? .popover : .dialog
+                            #else
+                            let mode: LUIAnchoredMenuMode = .popover
+                            #endif
+                            candidates[id] = LUIAnchoredMenuCandidate(host: host, menu: menu, mode: mode)
+                        }
+                    default: break
+                    }
+                    // Native Menu/actions and standalone controls do not render
+                    // their children through LUIStackView's anchored host slot.
+                    switch host.kind {
+                    case .menuTrigger, .contextMenu, .combobox, .select: continue
+                    default: pending.append(contentsOf: host.children.reversed())
+                    }
+                } else if let extensionModel = extensionModels[id],
+                          extensionModel.properties["display"]?.stringValue != "none" {
+                    pending.append(contentsOf: extensionModel.children.reversed())
+                }
+            }
+        }
+        let retained = Set(dropdownNodeIDs.compactMap { models[$0].map(ObjectIdentifier.init) })
+        anchoredMenus.synchronize(candidates, retained: retained,
+                                  held: LUIAnchoredMenuAdmission.physicalHeld) {
+            self.models[$0.id] === $0
         }
     }
 

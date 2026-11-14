@@ -2088,7 +2088,7 @@ private struct LUIStackView: View {
                 triggerContent(excludingMenu: anchoredMenu?.id)
             }
         } else if hasSelectTrigger || anchoredMenu != nil {
-            LUIAnchoredMenuHost(model: anchoredMenu, backend: backend) {
+            LUIAnchoredMenuHost(host: model, backend: backend) {
                 triggerContent(excludingMenu: anchoredMenu?.id)
             }
         } else {
@@ -2483,32 +2483,31 @@ private struct LUIAnchoredComboboxMenuLayout: Layout {
 }
 
 private struct LUIAnchoredMenuHost<Content: View>: View {
-    let model: LUINodeModel?
+    let host: LUINodeModel
     let backend: LUIAppleBackend
     let content: Content
 
-    @State private var isPresented = false
+    private var model: LUINodeModel? { backend.anchoredMenuPresentation(host: host)?.menu }
 
     init(
-        model: LUINodeModel?,
+        host: LUINodeModel,
         backend: LUIAppleBackend,
         @ViewBuilder content: () -> Content
     ) {
-        self.model = model
+        self.host = host
         self.backend = backend
         self.content = content()
     }
 
     var body: some View {
+        let lease = backend.anchoredMenuPresentation(host: host)
+        let model = lease?.menu
+        Group {
         #if os(iOS)
-        if LUIMenuPresentationPolicy.usesAnchoredPopover(
-            styleClass: model?.derived.styleClass,
-            model: model,
-            backend: backend
-        ) {
+        if lease?.candidate.mode == .popover {
             content
                 .popover(
-                    isPresented: presentationBinding,
+                    isPresented: presentationBinding(lease),
                     attachmentAnchor: .point(attachmentPoint),
                     arrowEdge: arrowEdge
                 ) {
@@ -2516,39 +2515,29 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                         LUIDropdownMenuView(
                             model: model,
                             backend: backend,
-                            isPresented: true
+                            isPresented: true,
+                            closeHostedMenu: { if let lease { backend.dismissAnchoredMenu(lease) } }
                         )
                         .padding(arrowEdgeOffset)
                         .presentationCompactAdaptation(.popover)
                     }
                 }
-                .onChange(of: model?.revision, initial: true) { _, _ in
-                    // A mounted menu node means presented: re-present whenever
-                    // the model patches, so a reducer that ignored the dismiss
-                    // still reopens on the next trigger press.
-                    isPresented = model != nil
-                }
-                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         } else {
             content
                 .confirmationDialog(
                     dialogTitle,
-                    isPresented: presentationBinding,
+                    isPresented: presentationBinding(lease),
                     titleVisibility: dialogTitleVisibility
                 ) {
                     if let model {
                         LUINativeMenuActions(model: model, backend: backend)
                     }
                 }
-                .onChange(of: model?.revision, initial: true) { _, _ in
-                    isPresented = model != nil
-                }
-                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         }
         #else
         content
             .popover(
-                isPresented: presentationBinding,
+                isPresented: presentationBinding(lease),
                 attachmentAnchor: .point(attachmentPoint),
                 arrowEdge: arrowEdge
             ) {
@@ -2556,17 +2545,21 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                     LUIDropdownMenuView(
                         model: model,
                         backend: backend,
-                        isPresented: true
+                        isPresented: true,
+                        closeHostedMenu: { if let lease { backend.dismissAnchoredMenu(lease) } }
                     )
                     .padding(arrowEdgeOffset)
                     .presentationCompactAdaptation(.popover)
                 }
             }
-            .onChange(of: model?.revision, initial: true) { _, _ in
-                isPresented = model != nil
-            }
-            .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         #endif
+        }
+        .background {
+            LUIAnchoredMenuAttachmentProbe(host: host, backend: backend)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        }
+        .modifier(LUIVirtualPopupOwnership(presented: lease != nil))
     }
 
     private var arrowEdgeOffset: EdgeInsets {
@@ -2579,13 +2572,15 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
         }
     }
 
-    private var presentationBinding: Binding<Bool> {
+    private func presentationBinding(_ lease: LUIAnchoredMenuLease?) -> Binding<Bool> {
         Binding(
-            get: { isPresented },
+            get: {
+                guard let lease else { return false }
+                return backend.anchoredMenuPresentation(host: host)?.id == lease.id
+            },
             set: { presented in
-                isPresented = presented
-                if !presented, let model {
-                    try? backend.performDismiss(node: model.id)
+                if !presented, let lease {
+                    backend.dismissAnchoredMenu(lease)
                 }
             }
         )
@@ -4479,6 +4474,7 @@ private struct LUIDropdownMenuView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     var isPresented = false
+    var closeHostedMenu: (() -> Void)?
 
     @ViewBuilder
     var body: some View {
@@ -4519,7 +4515,11 @@ private struct LUIDropdownMenuView: View {
         )
 #if os(macOS)
         .onExitCommand {
-            try? backend.performDismiss(node: model.id)
+            if let closeHostedMenu {
+                closeHostedMenu()
+            } else {
+                try? backend.performDismiss(node: model.id)
+            }
         }
 #endif
     }
