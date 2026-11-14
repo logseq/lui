@@ -841,7 +841,6 @@ private struct LUINodeView: View {
                         .zIndex(paintOrder[childID] ?? 0)
                 }
             }
-            .modifier(LUIContainerPressModifier(model: model, backend: backend))
             )
         case .text:
             return AnyView(LUITextView(model: model, backend: backend))
@@ -6400,11 +6399,9 @@ private struct LUIRowView: View {
         if cross != "stretch" || model.derived.grow > 0
             || model.surfaceHeight != nil || model.surfaceMinHeight != nil {
             rowContent
-                .modifier(LUIContainerPressModifier(model: model, backend: backend))
         } else {
             rowContent
                 .fixedSize(horizontal: false, vertical: true)
-                .modifier(LUIContainerPressModifier(model: model, backend: backend))
         }
     }
 
@@ -6535,7 +6532,6 @@ private struct LUIColumnView: View {
                 ? .infinity : nil,
             alignment: frameAlignment
         )
-        .modifier(LUIContainerPressModifier(model: model, backend: backend))
     }
 
     @ViewBuilder
@@ -6659,7 +6655,8 @@ private struct LUIContainerPressModifier: ViewModifier {
     let backend: LUIAppleBackend
 
     func body(content: Content) -> some View {
-        if model.supportsPress {
+        if model.supportsPress &&
+            (model.kind == .row || model.kind == .column || model.kind == .box) {
             content
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -8476,6 +8473,7 @@ private struct LUISurfaceModifier: ViewModifier {
             content
                 .modifier(LUIPlainContainerSurfaceModifier(model: model))
                 .modifier(LUIHoverOpacityModifier(model: model))
+                .modifier(LUIContainerPressModifier(model: model, backend: backend))
         } else {
             decorated(content: content)
         }
@@ -8624,6 +8622,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 cornerRadius: radius,
                 clipsContent: clipsContent && !clipsInsideGlass
             ))
+            .modifier(LUIContainerPressModifier(model: model, backend: backend))
             // Margin is space outside the visual box: outer padding applied
             // after background/border/shadow/clip. leading/trailing stand in
             // for left/right — identical in LTR and mirrored in RTL.

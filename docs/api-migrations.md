@@ -1,5 +1,22 @@
 # LUI API migration guide
 
+## Unreleased: Apple transparent container presses
+
+Rows, columns and boxes with `press-enabled` now retain their native semantic
+tap region at exact `opacity: 0`, including when no `hover-opacity` is present.
+Opacity affects paint; it does not disable the container's press action. For
+example, changing only `opacity` from `1` to `0` preserves one semantic press
+per native click at the same visual-box location without a geometry update.
+
+The container gesture is attached after visual opacity and clipping, before
+outer margin, on both plain and decorated surfaces. Its region includes the
+surface padding while outer margin remains outside. Existing native disabled
+behavior and child controls continue to govern activation. Native controls keep
+their own actions; a container gesture is not added to other widget kinds.
+
+The event and frame-table APIs are unchanged. Downstream hosts need no raw
+pointer forwarding, synthetic press, opacity epsilon or cached-rectangle repair.
+
 ## Unreleased: Apple surface hover opacity
 
 Apple surfaces now render typed `hover-opacity` while an enabled node is under
