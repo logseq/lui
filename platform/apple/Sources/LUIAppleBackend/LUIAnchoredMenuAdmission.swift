@@ -95,6 +95,22 @@ final class LUIAnchoredMenuAdmission {
         invalidatePendingCloses()
     }
 
+    func retire(droppedNodeIDs: Set<Int>) {
+        guard !droppedNodeIDs.isEmpty else { return }
+        // Accepted destruction retires authority before observable models catch up.
+        // Recreating the same numeric IDs cannot restore these candidates/leases.
+        candidates = candidates.filter { _, item in
+            !droppedNodeIDs.contains(item.host.id) && !droppedNodeIDs.contains(item.menu.id)
+        }
+        for (id, source) in attachments where droppedNodeIDs.contains(source.host.id) {
+            source.revoke()
+            attachments[id] = nil
+        }
+        invalidatePendingCloses()
+        // Invalidate every affected context before publishing lease removal.
+        for id in leases.keys where candidates[id] == nil { revokeLease(at: id) }
+    }
+
     func attach(_ source: LUIAnchoredMenuAttachment, held: Bool) {
         guard source.isLive else { return }
         let id = source.host.id

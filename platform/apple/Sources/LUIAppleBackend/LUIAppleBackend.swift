@@ -1200,6 +1200,7 @@ public final class LUIAppleBackend {
         )
         let tB = CFAbsoluteTimeGetCurrent()
         withDeferredEventDelivery {
+            anchoredMenus.retire(droppedNodeIDs: effects.dropped)
             for id in effects.dropped { hostFocus.drop(nodeID: id) }
             pendingCommitTouched.formUnion(effects.touched)
             pendingCommitDropped.formUnion(effects.dropped)
