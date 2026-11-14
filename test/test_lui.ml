@@ -4763,6 +4763,12 @@ let test_shared_retention_handoff () =
   let child_source = Lui_virtual.child_source ~parent:root_source ~row_key:"90" ~key:"children" in
   let retention = Lui_virtual.retain child_source ~key:"80" in
   let other = Lui_virtual.retain child_source ~key:"80" in
+  let absent = Lui_virtual.retain root_source ~key:"absent" in
+  let cold_source = Lui_virtual.child_source ~parent:root_source ~row_key:"91" ~key:"cold" in
+  let cold = Lui_virtual.retain cold_source ~key:"unpublished" in
+  let status retained = Option.map Lui_virtual.receipt_status
+    (Signal.sample (Lui_virtual.receipt retained)) in
+  Alcotest.(check bool) "an unpublished root has no missing verdict" true (status absent = None);
   let backend = {backend_profile = profile MacOS SwiftUIHost; apply_batch = (fun _ -> true)} in
   let view _context source _send =
     let open Lui_elements in
@@ -4813,6 +4819,20 @@ let test_shared_retention_handoff () =
         (VirtualRetention (owner_node (), Lui_virtual.ticket retention, text)));
       flush () in
     flush ();
+    Alcotest.(check bool) "authoritative snapshot reports initially absent target" true
+      (status absent = Some Lui_virtual.Missing_target);
+    Alcotest.(check bool) "an unbound cold child still awaits its source" true (status cold = None);
+    let late_absent = Lui_virtual.retain root_source ~key:"also absent" in
+    Alcotest.(check bool) "retaining after publication reports missing immediately" true
+      (status late_absent = Some Lui_virtual.Missing_target);
+    let removed = Lui_virtual.retain root_source ~key:"50" in
+    ignore (Lui_app.send app (Replace (List.filter
+      (fun row -> row.identity <> 50 && row.identity <> 91) (Lui_app.model app)))); flush ();
+    Alcotest.(check bool) "removed retained target has a missing verdict" true
+      (status removed = Some Lui_virtual.Missing_target);
+    Alcotest.(check bool) "missing ancestor fails even an unbound descendant" true
+      (status cold = Some Lui_virtual.Missing_target);
+    List.iter Lui_virtual.cancel_retention [absent; late_absent; removed; cold];
     check_retained ();
     window root_source []; window child_source []; flush (); check_retained ();
     Lui_virtual.cancel_retention other;
@@ -4824,6 +4844,10 @@ let test_shared_retention_handoff () =
       (Lui_virtual.request_release retention proof = Ok ());
     window root_source []; window child_source []; flush (); check_retained ();
     ignore (Lui_app.send app (Replace (List.rev (Lui_app.model app)))); flush ();
+    Alcotest.(check bool) "source publication revokes the observable native proof" true
+      (status retention = Some Lui_virtual.Stale);
+    Alcotest.(check bool) "source revocation clears pending native release" true
+      (prop runtime (owner_node ()) "virtual-retention-releases" = Some (StringValue "[]"));
     deliver old_release; window root_source []; window child_source []; flush (); check_retained ();
     Alcotest.(check bool) "publication invalidates previous proof" true
       (Lui_virtual.request_release retention proof = Error Lui_virtual.Stale_receipt);
@@ -4861,9 +4885,12 @@ let test_shared_retention_handoff () =
     let view context selector _send =
       let open Lui_elements in
       let items = Signal.constant context.Lui_ui.ui_scheduler (rows 100) in
-      let shared_list source = capture_node mounted_source
+      let missing_items = Signal.constant context.Lui_ui.ui_scheduler
+        (List.filter (fun row -> row.identity <> 80) (rows 100)) in
+      let shared_list missing source = capture_node mounted_source
         (virtual_list ~viewport:source ~height:20 ~overscan:0 [
-          virtual_rows ~source:items ~key:(fun row -> row.identity) ~cmp:Int.compare
+          virtual_rows ~source:(if missing then missing_items else items)
+            ~key:(fun row -> row.identity) ~cmp:Int.compare
             ~scroll_key:(fun row -> string_of_int row.identity)
             ~mount:(fun row -> text_field ~text:(Signal.sample row).text []) ()]) in
       let branch make = dynamic (fun context parent ->
@@ -4873,17 +4900,17 @@ let test_shared_retention_handoff () =
           make value context None)) in
       column [if mode = `Source_only then
         capture_node mounted_owner (scroll ~virtual_owner:owner_a [
-          branch (fun _ -> shared_list source_a)])
+          branch (fun value -> shared_list (value = 3) source_a)])
         else branch (fun value ->
           let owner, source, _ = handles value in
-          capture_node mounted_owner (scroll ~virtual_owner:owner [shared_list source]))] in
+          capture_node mounted_owner (scroll ~virtual_owner:owner [shared_list (value = 3) source]))] in
     let app = Lui_app.create ~virtual_capabilities:[Lui_virtual.Shared_viewport_retention_v1]
       backend 0 (fun _ value -> value) view in
     Fun.protect (fun () ->
       ignore (Lui_app.start app);
       let runtime = Lui_app.runtime app in
       let flush () = ignore (Lui_app.flush app) in
-      let proof_serial = ref 0 in
+      let proof_serial = ref 0 and proof_epoch = ref 0 in
       let check selector =
         let owner, source, retained = handles selector in
         let binding = Option.get (Signal.sample (Lui_virtual.binding source)) in
@@ -4904,10 +4931,12 @@ let test_shared_retention_handoff () =
           | Some (StringValue text) -> Yojson.Basic.Util.(to_list (Yojson.Basic.from_string text) |> List.map to_string)
           | _ -> failwith "missing switched semantic keys" in
         let row = List.assoc "80" (List.combine keys (direct_rows runtime binding.node)) in
+        let epoch = int_prop runtime owner_node "virtual-viewport-epoch" in
+        if epoch <> !proof_epoch then begin proof_serial := 0; proof_epoch := epoch end;
         incr proof_serial;
         let envelope = Printf.sprintf
           "{\"version\":1,\"status\":\"focused\",\"owner\":%d,\"epoch\":%d,\"ticket\":%d,\"proof\":%d,\"rows\":[{\"source\":%d,\"generation\":%d,\"row\":%d,\"incarnation\":1}],\"geometry\":1,\"pins\":1,\"requirements\":[\"attached\",\"focus\"]}"
-          owner_node (int_prop runtime owner_node "virtual-viewport-epoch")
+          owner_node epoch
           (Lui_virtual.ticket retained) !proof_serial binding.node
           (int_prop runtime binding.node "virtual-generation") row in
         ignore (Lui_app.dispatch_event app (VirtualRetention (owner_node, Lui_virtual.ticket retained, envelope)));
@@ -4928,6 +4957,10 @@ let test_shared_retention_handoff () =
         (Signal.sample (Lui_virtual.binding source_a) = Some before);
       Alcotest.(check bool) "rollback preserves the previous pending proof" true
         (Lui_virtual.request_release retained_a proof = Ok ());
+      let after_rollback = Lui_virtual.retain source_a ~key:"80" in
+      Alcotest.(check bool) "rollback restores the authoritative key snapshot" true
+        (Signal.sample (Lui_virtual.receipt after_rollback) = None);
+      Lui_virtual.cancel_retention after_rollback;
       ignore (Lui_app.send app 4); flush ();
       let binding, _, envelope = check 4 in
       let owner_node = int_prop runtime binding.node "virtual-owner-node" in

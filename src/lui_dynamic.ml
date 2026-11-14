@@ -520,6 +520,8 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         Signal.dispose_subscription subscription;
         keyed.dispose_dynamic_keyed ()) }
   end else begin
+    let viewport_lease = Option.map (fun source ->
+      (Option.get (Signal.sample (Lui_virtual.binding source))).Lui_virtual.lease) viewport in
     let dataset = ref [||] in
     let positions = ref Keys.empty in
     let scroll_positions = ref Lui_protocol.String_map.empty in
@@ -596,7 +598,8 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
           Lui_runtime.set_prop application parent Lui_protocol.VirtualRowKeys
             (Lui_protocol.StringValue (Lui_virtual_json.encode_strings keys));
           let children = Lui_runtime.children application parent in
-          Lui_virtual.Internal.commit_rows viewport ~generation:epoch
+          Lui_virtual.Internal.commit_rows viewport ~lease:(Option.get viewport_lease) ~generation:epoch
+            ~contains:(fun key -> Lui_protocol.String_map.mem key targets)
             (List.combine keys children)) viewport;
         Lui_runtime.validate_virtual_list application parent;
         dataset := items; positions := indices; scroll_positions := targets;
