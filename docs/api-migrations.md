@@ -105,7 +105,7 @@ live owner epoch/ticket remains recognizable after native unregister, proof-cach
 eviction, or physical owner detachment. Releasing those exact bytes emits `stale`
 once per unchanged request, including when proof becomes invalid during pin
 feedback. Unknown or altered receipt bytes cannot authorize a release. A fresh
-native registration/acknowledgement is required to retry successfully.
+acknowledgement is required to retry successfully; re-register a retired view first.
 `.visible` additionally requires a presented window and a nontransparent native
 view hierarchy; an ordered-out or transparent window/control may still satisfy
 `.attached` alone. Built-in SwiftUI controls are not implicitly

@@ -255,6 +255,16 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         XCTAssertEqual(receipts().map(\.0), ["stale"], "Retired native proof must explicitly refuse release")
         backend.sharedVirtualViewport.refresh()
         XCTAssertEqual(receipts().count, 1, "An unchanged refused release is answered once")
+        let replacement = try backend.registerVirtualNativeView(nodeID: 3, view: field)
+        defer { backend.unregisterVirtualNativeView(replacement) }
+        XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+            view: field, requirements: .attached))
+        let replacementProof = try XCTUnwrap(receipts().last?.1)
+        XCTAssertNotEqual(replacementProof, retired, "Re-registering the same row requires fresh physical proof")
+        let replacementRelease = try JSONSerialization.data(withJSONObject: [["ticket": 9, "receipt": replacementProof]])
+        try apply([set(1, "virtual-retention-releases", String(decoding: replacementRelease, as: UTF8.self))])
+        backend.sharedVirtualViewport.refresh()
+        XCTAssertEqual(receipts().last?.0, "released")
         field.removeFromSuperview()
         XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
             view: field, requirements: .attached))
