@@ -58,6 +58,8 @@
       while !sparseWirePayloads.contains(where: { $0.0 == 20 && $0.2.contains("\(row)") })
         && ContinuousClock.now < deadline
       {
+        // Drive AppKit's update cycle while waiting without NSApplication.run().
+        window.update()
         try await Task.sleep(for: .milliseconds(15))
       }
       let callback = try #require(sparseWirePayloads.last { $0.0 == 20 })
