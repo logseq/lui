@@ -8416,6 +8416,38 @@ private struct LUIPlainContainerSurfaceModifier: ViewModifier {
     }
 }
 
+private struct LUIHoverOpacityModifier: ViewModifier {
+    let model: LUINodeModel
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hoveredModel: LUINodeModel?
+
+    func body(content: Content) -> some View {
+        let identity = ObjectIdentifier(model)
+        let baseOpacity = model.property(.opacity)?.doubleValue ?? 1
+        let hoverOpacity = model.property(.hoverOpacity)?.doubleValue
+        let opacity = hoveredModel === model && isEnabled && model.isEnabled
+            ? hoverOpacity ?? baseOpacity : baseOpacity
+        content
+            .opacity(opacity)
+            .onChange(of: identity) { hoveredModel = nil }
+            .background {
+                if hoverOpacity != nil {
+                    // Keep the hover box present even when paint is transparent.
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+            }
+            // Observe the content's ancestor so child controls do not cover the
+            // tracker. Keeping it mounted also supports adding hover while inside.
+            .onHover { inside in
+                hoveredModel = inside ? model : nil
+            }
+            .onDisappear {
+                if hoveredModel === model { hoveredModel = nil }
+            }
+    }
+}
+
 private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -8441,7 +8473,9 @@ private struct LUISurfaceModifier: ViewModifier {
 
     @ViewBuilder func body(content: Content) -> some View {
         if LUIPlainContainerSurfacePolicy.applies(kind: model.kind, properties: model.properties, styleClass: model.derived.styleClass) {
-            content.modifier(LUIPlainContainerSurfaceModifier(model: model))
+            content
+                .modifier(LUIPlainContainerSurfaceModifier(model: model))
+                .modifier(LUIHoverOpacityModifier(model: model))
         } else {
             decorated(content: content)
         }
@@ -8585,7 +8619,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 isEnabled: model.isEnabled,
                 hasExplicitBackground: backgroundName != nil
             ))
-            .opacity(model.property(.opacity)?.doubleValue ?? 1)
+            .modifier(LUIHoverOpacityModifier(model: model))
             .modifier(LUIOptionalClipModifier(
                 cornerRadius: radius,
                 clipsContent: clipsContent && !clipsInsideGlass

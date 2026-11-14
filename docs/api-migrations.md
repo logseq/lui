@@ -1,5 +1,24 @@
 # LUI API migration guide
 
+## Unreleased: Apple surface hover opacity
+
+Apple surfaces now render typed `hover-opacity` while an enabled node is under
+the native pointer. Hover opacity replaces the explicit `opacity` value rather
+than multiplying it; when the pointer leaves, the base opacity returns (default
+`1`). For example, `opacity: 0` with `hover-opacity: 1` is invisible until hovered.
+Touch input without hover continues to use base opacity. Existing native
+disabled emphasis remains a separate factor.
+
+Plain and decorated surfaces both support this behavior. Adding, changing or
+removing `hover-opacity` preserves the native content, draft and focus identity;
+it does not switch the plain/decorated rendering path. The hover tracker uses
+the laid-out visual box before outer margin, independently of paint opacity.
+Hover does not synthesize semantic presses or alter the frame-reporting API.
+Inline attributed Text runs remain part of their containing native text surface.
+
+The wire property and its finite `[0, 1]` range are unchanged. Downstream hosts
+need no protocol migration or pointer-event workaround.
+
 ## Unreleased: Apple overlapping frame producers
 
 Transient SwiftUI view overlap can activate multiple frame reporters for the
