@@ -1333,6 +1333,21 @@ let reconcile_subtree application saved parent old_root candidate_root =
     remap_node_values application.runtime_properties candidate_nodes mapping
       base_properties
   in
+  (* Owner references are node ids inside property values, so remapping only
+     their table keys would leave sources pointing at discarded candidates. *)
+  Hashtbl.iter (fun node properties ->
+    match Property_map.find_opt VirtualOwnerNode properties with
+    | Some (IntValue owner) -> Hashtbl.replace desired_properties node
+        (Property_map.add VirtualOwnerNode (IntValue (map_node mapping owner)) properties)
+    | _ -> ()) desired_properties;
+  let remap_virtual current saved =
+    let base = snapshot_hashtbl saved in
+    remove_node_keys base old_nodes;
+    remap_node_values current candidate_nodes mapping base in
+  let desired_virtual_sources = remap_virtual application.runtime_virtual_sources
+    saved.checkpoint_virtual_sources in
+  let desired_virtual_owners = remap_virtual application.runtime_virtual_owners
+    saved.checkpoint_virtual_owners in
   let base_echo = Hashtbl.copy saved.checkpoint_echo in
   remove_node_keys base_echo old_nodes;
   let desired_echo =
@@ -1498,6 +1513,10 @@ let reconcile_subtree application saved parent old_root candidate_root =
   replace application.mounted_nodes desired_standard;
   replace application.runtime_extension_nodes desired_extensions;
   replace application.runtime_properties desired_properties;
+  Hashtbl.reset application.runtime_virtual_sources;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_sources) desired_virtual_sources;
+  Hashtbl.reset application.runtime_virtual_owners;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_owners) desired_virtual_owners;
   replace application.runtime_echo desired_echo;
   replace application.runtime_extension_properties
     desired_extension_properties;
@@ -1545,6 +1564,8 @@ let reconcile_subtree application saved parent old_root candidate_root =
        if candidate <> node then
          set_alias application candidate node)
     mapping;
+  Hashtbl.iter (fun _ owner -> Lui_virtual.Internal.remap owner (map_node mapping))
+    application.runtime_virtual_owners;
   desired_root
 
 (* target is a descendant-or-self of root iff walking the parent chain
@@ -1786,6 +1807,8 @@ and unmount_node application node =
   Hashtbl.remove application.mounted_nodes node;
   Hashtbl.remove application.runtime_extension_nodes node;
   Hashtbl.remove application.runtime_properties node;
+  Hashtbl.remove application.runtime_virtual_sources node;
+  Hashtbl.remove application.runtime_virtual_owners node;
   Hashtbl.remove application.runtime_extension_properties node;
   Hashtbl.remove application.runtime_children node;
   Hashtbl.remove application.runtime_parents node;

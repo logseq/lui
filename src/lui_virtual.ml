@@ -190,17 +190,21 @@ module Internal = struct
     live owner;
     if owner.owner_binding <> None && not owner.replacing_owner then invalid_arg "shared virtual owner already bound";
     let binding = {node; lease = fresh owner} in
+    Hashtbl.iter (fun _ retention ->
+      retention.releasing <- None; set_receipt retention None) owner.tickets;
     owner.owner_binding <- Some binding; owner.publisher <- Some publish;
     notify owner; binding
   let unbind_owner owner binding =
-    if owner.owner_binding = Some binding then begin
+    if Option.fold ~none:false ~some:(fun current -> current.lease = binding.lease) owner.owner_binding then begin
       owner.owner_binding <- None; owner.publisher <- None;
       Hashtbl.iter (fun _ retention ->
         retention.releasing <- None; set_receipt retention None) owner.tickets;
       Hashtbl.iter (fun _ source ->
         source.bound <- None; source.generation <- 0; source.rows <- [];
-        publish_state owner source.binding_state None) owner.sources
-    end
+        source.adopt <- (fun _ -> ());
+        publish_state owner source.binding_state None) owner.sources;
+      true
+    end else false
   let bind_source source ~node ~owner_node =
     live source.owner;
     if source.bound <> None && not source.replacing_source then invalid_arg "shared virtual source already bound";
@@ -212,12 +216,14 @@ module Internal = struct
     publish_state source.owner source.binding_state (Some bound);
     bound
   let unbind_source source binding =
-    if source.bound = Some binding then begin
+    if Option.fold ~none:false ~some:(fun current -> current.lease = binding.lease) source.bound then begin
       source.bound <- None; source.generation <- 0; source.rows <- [];
+      source.adopt <- (fun _ -> ());
       publish_state source.owner source.binding_state None;
       Hashtbl.iter (fun _ retention -> retention.releasing <- None; set_receipt retention None)
-        source.owner.tickets
-    end
+        source.owner.tickets;
+      true
+    end else false
   let owner_binding source = source.owner.owner_binding
   let source_path source = Json.encode_strings source.path
   let retained_keys source =
@@ -233,8 +239,23 @@ module Internal = struct
     source.generation <- generation; source.rows <- rows
   let adopt_pins source ~node adopt =
     match source.bound with
-    | Some bound when bound.node = node -> source.adopt <- adopt
-    | _ -> ()
+    | Some bound when bound.node = node ->
+      source.adopt <- adopt;
+      fun () -> if Option.fold ~none:false
+        ~some:(fun current -> current.lease = bound.lease) source.bound then
+          source.adopt <- (fun _ -> ())
+    | _ -> (fun () -> ())
+  let remap owner node =
+    let binding current = Option.map
+      (fun bound -> {bound with node = node bound.node}) current in
+    owner.owner_binding <- binding owner.owner_binding;
+    let changed = Hashtbl.fold (fun _ source changed ->
+      let previous = source.bound in
+      source.bound <- binding source.bound;
+      source.rows <- List.map (fun (key, row) -> key, node row) source.rows;
+      if source.bound = previous then changed else source :: changed) owner.sources [] in
+    (* Every ancestor row is canonical before observers see a binding change. *)
+    List.iter (fun source -> publish_state owner source.binding_state source.bound) changed
   let replacing_owner owner =
     let previous = owner.replacing_owner in
     owner.replacing_owner <- true;
@@ -248,8 +269,12 @@ module Internal = struct
     let sources = Hashtbl.fold (fun _ source saved ->
       (source, source.bound, source.generation, source.rows, source.listeners, source.adopt) :: saved)
       owner.sources [] in
+    let receipts = Hashtbl.fold (fun _ retention saved ->
+      (retention, retention.latest, retention.releasing) :: saved) owner.tickets [] in
     fun () ->
       owner.owner_binding <- binding; owner.publisher <- publisher;
+      List.iter (fun (retention, latest, releasing) ->
+        retention.releasing <- releasing; set_receipt retention latest) receipts;
       List.iter (fun (source, bound, generation, rows, listeners, adopt) ->
         source.bound <- bound; source.generation <- generation; source.rows <- rows;
         source.listeners <- listeners; source.adopt <- adopt;

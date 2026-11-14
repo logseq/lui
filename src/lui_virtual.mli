@@ -64,16 +64,17 @@ val cancel_retention : retention -> unit
     are lease-fenced. Publishers run synchronously before reconciliation. *)
 module Internal : sig
   val bind_owner : owner -> node:int -> publish:(int -> string -> string -> unit) -> binding
-  val unbind_owner : owner -> binding -> unit
+  val unbind_owner : owner -> binding -> bool
   val bind_source : source -> node:int -> owner_node:int -> binding
-  val unbind_source : source -> binding -> unit
+  val unbind_source : source -> binding -> bool
   val owner_binding : source -> binding option
   val source_path : source -> string
   val retained_keys : source -> string list
   val on_change : source -> (unit -> unit) -> (unit -> unit)
   val commit_rows : source -> generation:int -> (string * int) list -> unit
   val accept_receipt : owner -> node:int -> ticket:int -> string -> unit
-  val adopt_pins : source -> node:int -> (int list -> unit) -> unit
+  val adopt_pins : source -> node:int -> (int list -> unit) -> (unit -> unit)
+  val remap : owner -> (int -> int) -> unit
   val checkpoint : owner -> (unit -> unit)
   val replacing_owner : owner -> (unit -> unit)
   val replacing_source : source -> (unit -> unit)

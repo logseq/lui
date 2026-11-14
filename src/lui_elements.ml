@@ -949,8 +949,12 @@ let scroll ?virtual_owner ?key ?gap ?main ?cross ?grow ?columns ?padding ?paddin
         Lui_virtual.Internal.accept_receipt owner ~node ~ticket receipt
       | _ -> ());
     Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
-      Lui_virtual.Internal.unbind_owner owner binding;
-      Hashtbl.remove application.Lui_runtime.runtime_virtual_owners node)) virtual_owner;
+      if Lui_virtual.Internal.unbind_owner owner binding then begin
+        let node = Lui_runtime.canonical_node application node in
+        if Option.fold ~none:false ~some:(fun current -> current == owner)
+          (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_owners node) then
+          Hashtbl.remove application.Lui_runtime.runtime_virtual_owners node
+      end)) virtual_owner;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.float_property context node Opacity) opacity;
   Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
@@ -1005,8 +1009,12 @@ let virtual_list ?viewport ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?
     Lui_ui.int_property context node VirtualOwnerEpoch owner.lease;
     Lui_ui.string_property context node VirtualSourcePath (Lui_virtual.Internal.source_path source);
     Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
-      Lui_virtual.Internal.unbind_source source bound;
-      Hashtbl.remove application.Lui_runtime.runtime_virtual_sources node)) viewport;
+      if Lui_virtual.Internal.unbind_source source bound then begin
+        let node = Lui_runtime.canonical_node application node in
+        if Option.fold ~none:false ~some:(fun current -> current == source)
+          (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_sources node) then
+          Hashtbl.remove application.Lui_runtime.runtime_virtual_sources node
+      end)) viewport;
   Option.iter (Lui_ui.int_property context node VirtualOverscan) overscan;
   Option.iter (Lui_ui.float_property context node VirtualItemExtent) item_extent;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
