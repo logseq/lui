@@ -4,8 +4,10 @@
 
 external stress_press_detail : int -> unit = "stress_press_detail"
 external stress_virtual_window : int -> unit = "stress_virtual_window"
+external stress_virtual_retention : int -> unit = "stress_virtual_retention"
 
 let window_callbacks = ref 0
+let retention_callbacks = ref 0
 
 let () =
   Callback.register "lui_ocaml_press_detail"
@@ -29,4 +31,17 @@ let () =
   stress_press_detail 4000;
   stress_virtual_window 1000;
   assert (!window_callbacks = 1000);
+  stress_virtual_retention 0;
+  Callback.register "lui_ocaml_virtual_retention_utf8"
+    (fun owner ticket receipt ->
+      incr retention_callbacks;
+      let buffer = Bytes.make 4096 'r' in
+      ignore (Sys.opaque_identity buffer);
+      Gc.minor ();
+      assert (owner = 9_007_199_254_740_993 && ticket = max_int);
+      if receipt = "!" then failwith "expected retention refusal";
+      assert (receipt = "r\230\150\135\000x" || receipt = "");
+      "");
+  stress_virtual_retention 1000;
+  assert (!retention_callbacks = 1002);
   print_endline "native bridge GC stress ok"
