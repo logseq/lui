@@ -504,16 +504,14 @@ final class LUISharedVirtualViewport {
         return CGRect(x: 0, y: position, width: 1, height: frame.height)
     }
 
-    private func anchorKey(_ marker: LUISharedRowMarker, source: Source) -> String? {
+    private func anchorKeys(_ source: Source) -> [Int: String]? {
         // Retained children update before the source configures. Resolve the key
         // from that same current metadata, while preserving the source lease/path.
         guard let model = source.model,
               let binding = try? LUISharedSourceBinding(properties: model.properties, children: model.children),
               binding.owner == source.binding.owner, binding.epoch == source.binding.epoch,
-              binding.path == source.binding.path,
-              let index = model.children.firstIndex(of: marker.row.id),
-              binding.keys.indices.contains(index) else { return nil }
-        return binding.keys[index]
+              binding.path == source.binding.path else { return nil }
+        return Dictionary(uniqueKeysWithValues: zip(model.children, binding.keys))
     }
 
     private func anchorModel(_ node: Int) -> AnyObject? {
@@ -580,6 +578,7 @@ final class LUISharedVirtualViewport {
             return
         }
         var currentOffset = offset
+        let keys = owned.compactMapValues { anchorKeys($0) }
         // Reading anchors survive generation updates only for the same semantic
         // key, native marker and retained model. Receipt attestation stays generation-bound.
         if let previousOffset = owner.observedOffset, abs(previousOffset - offset) <= 0.1,
@@ -588,7 +587,7 @@ final class LUISharedVirtualViewport {
            saved.binding.owner == source.binding.owner, saved.binding.epoch == source.binding.epoch,
            saved.binding.path == source.binding.path, let marker = saved.marker,
            let rowModel = saved.rowModel, anchorModel(marker.row.id) === rowModel,
-           anchorKey(marker, source: source) == saved.key,
+           keys[sourceID]?[marker.row.id] == saved.key,
            anchorVisibility(marker, owner: owner, verticalClip: false) != nil,
            let frame = anchorFrame(marker, source: source) {
             let delta = frame.minY - saved.position
@@ -602,11 +601,11 @@ final class LUISharedVirtualViewport {
         // Select the leading outer row first, then descend only through its
         // semantic row path. Each level allows a next visible row after a gap.
         var candidates: [[String]: [(anchor: VisibleAnchor, visible: CGRect)]] = [:]
-        for source in owned.values {
+        for (sourceID, source) in owned {
             for weakMarker in source.rowAnchors.values {
                 guard let marker = weakMarker.value, let frame = anchorFrame(marker, source: source),
                       let visible = anchorVisibility(marker, owner: owner, verticalClip: true),
-                      let rowModel = anchorModel(marker.row.id), let key = anchorKey(marker, source: source)
+                      let rowModel = anchorModel(marker.row.id), let key = keys[sourceID]?[marker.row.id]
                 else { continue }
                 let candidate = VisibleAnchor(source: source, marker: marker,
                     rowModel: rowModel, key: key, position: frame.minY)
