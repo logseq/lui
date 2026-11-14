@@ -1,5 +1,122 @@
 # LUI API migration guide
 
+## Unreleased: Shared outer virtual viewport and physical retention (opt-in v1)
+
+Applications may explicitly select
+`~virtual_capabilities:[Lui_virtual.Shared_viewport_retention_v1]` on
+`Lui_app` constructors, `Lui_runtime.create_application`, or
+`Lui_multi_window.create`. The default remains `[]`.
+Only `SwiftUIHost` supports `shared-viewport-retention-v1`; selecting it on an
+unsupported host or binding an owner/source without selecting it raises
+`Invalid_argument`. Standalone `virtual_rows`, its defaults, and existing
+`VirtualWindow` ABI remain unchanged.
+
+`Lui_virtual` adds opaque `owner`, `source`, `retention`, and `receipt` handles,
+`binding = {node : int; lease : int}`, `create_owner`, `dispose_owner`,
+`root_source`, `child_source`, `binding`, `retain`, `ticket`, `receipt`,
+`receipt_status`, `request_release`, `cancel_retention`, and `supports`.
+`shared_viewport_version` is `1`. Create handles in application state before
+mounting. Bind an owner with `Lui_elements.scroll ~virtual_owner` and a source
+with `Lui_elements.virtual_list ~viewport`; direct `Lui_dynamic.virtual_rows`
+callers also pass `~viewport:source`. Use stable semantic `scroll_key` values in
+the source's `virtual_rows`. Binding/receipt signals are borrowed:
+do not dispose them from consuming views. Unmount invalidates the binding
+lease; explicitly dispose the owner when its application state ends.
+
+```ocaml
+let owner = Lui_virtual.create_owner () in
+let outline = Lui_virtual.root_source owner ~key:"selected-root" in
+let children = Lui_virtual.child_source ~parent:outline
+    ~row_key:parent_key ~key:"children" in
+let retained = Lui_virtual.retain children ~key:target_key in
+let native_ticket = Lui_virtual.ticket retained in
+(* Build scroll ~virtual_owner:owner and virtual_list ~viewport:outline;
+   propagate [children] explicitly into the retained parent's child list.
+   Pass native_ticket to the native registration/focus integration. *)
+ignore native_ticket;
+match Signal.sample (Lui_virtual.receipt retained) with
+| Some proof when Lui_virtual.receipt_status proof = Lui_virtual.Focused ->
+    ignore (Lui_virtual.request_release retained proof)
+| _ -> ()
+```
+
+Retaining a descendant also retains every semantic ancestor before cold mount,
+through viewport feedback, reorder, and row render replacement. A release
+request retains those keys until a matching native `Released` receipt is
+validated. `request_release` returns `Error Stale_receipt`, `Owner_retired`, or
+`Unsupported` when its proof/lifetime/binding is invalid. Cancellation explicitly
+abandons the logical obligation. Source generations and owner leases invalidate
+older receipts; completion of a scroll command alone is never physical proof.
+Existing scroll targets still cancel only with a fresh empty control token;
+reusing the same token with an empty target does not cancel pending work.
+
+The typed schema appends `virtual-viewport-epoch`, `virtual-owner-node`,
+`virtual-owner-epoch`, `virtual-source-path`, `virtual-row-keys`,
+`virtual-retentions`, and `virtual-retention-releases` after existing properties.
+Owner/source leases are positive integers. A source path is an odd-length JSON
+string vector `[rootSource, parentRowKey, childSource, ...]`; row keys are a
+nonempty unique string vector parallel to mounted children/virtual indices.
+Retention records are `{ticket,path,key}`, releases are `{ticket,receipt}` with
+the exact original opaque receipt string. Duplicate paths, incorrect ancestry,
+cross-owner binding, malformed records, and nonpositive epochs are rejected.
+These are canonical typed properties, not data attributes.
+
+Apple shared sources reuse their declared owner's existing vertical native
+scroll view. Local content position is `outerOffset - sourceOrigin`; nested
+sources measure their own origin in that same outer document. There is no
+nested shared-source ScrollView. The first version fails closed for intervening
+scroll containers, scaled/rotated transforms, detached geometry, and stale row
+placement. Offscreen sources do not create overscan requests for unrelated
+rows. Ordinary sidebar/Journal/Views roots need no changes unless opted in.
+
+Native controls/extensions must call
+`LUIAppleBackend.registerVirtualNativeView(nodeID:view:)` for their exact retained
+node and unregister the returned `LUIVirtualNativeRegistration` when that view
+lifetime ends. Duplicate/cross-node registration is rejected. After layout,
+call `acknowledgeVirtualRetention(ownerNode:ticket:view:requirements:)` using
+`LUIVirtualHandoffRequirements` (`.attached`, `.visible`, `.focus`). Attachment
+is always required. The backend verifies the live registration/model identity,
+current owner/source/row incarnations, actual row anchors, geometry, window,
+visibility, and requested native focus. A successful call emits a compact opaque
+v1 receipt with status `pinned` or `focused`. Release rechecks the same physical
+proof and emits current-generation pin feedback before `released`; stale proof
+leaves the cold obligation intact. Built-in SwiftUI controls are not implicitly
+registered by semantic key: downstream native integration owns their exact view
+lifetime and must not infer it from a midpoint hit test.
+
+`LUIEvent.virtualRetention(owner:ticket:receipt:)` and OCaml
+`VirtualRetention of int * int * string` are appended; OCaml's constructor is
+after `ExtensionEvent` so previous runtime tags remain stable. Apple's legacy
+C callback appends kind `21`, node argument `0`, and JSON
+`{"owner":integer,"ticket":integer,"receipt":string}` preserving full integers.
+Kind `20` remains unchanged. External legacy callback consumers must decode kind
+21; typed hosts forward the receipt unchanged to the ABI below.
+
+The generic native ABI appends:
+
+```c
+int32_t lui_ocaml_virtual_retention_utf8(
+    int64_t owner, int64_t ticket, const char *receipt, int32_t length);
+int32_t lui_ocaml_virtual_viewport_version(void);
+```
+
+The receipt function rejects IDs `<= 0` or `> Max_long`, a NULL receipt even
+when length is zero, and negative length before acquiring the runtime lock.
+A non-NULL zero-length payload reaches the strict SDK decoder. Copying uses the
+exact byte length, including embedded NUL; the callback named
+`lui_<prefix>_virtual_retention_utf8` receives three GC-rooted OCaml arguments
+(owner, ticket, bytes) with existing batch/exception semantics. `VirtualRetention`
+does not replace `VirtualWindow` feedback. The viewport probe returns `1` on
+Apple and `0` elsewhere; `lui_ocaml_virtual_rows_version` is unchanged.
+
+Before downstream enablement, pair the OCaml and Swift SDK revision and verify
+`Lui_virtual.shared_viewport_version`,
+`LUIAppleBackend.sharedVirtualViewportVersion`, and the C capability probe are
+all `1`. Update OCaml, Swift package, and Swift resolution pins together.
+Transport-only builds may forward the new event while leaving capability
+selection empty. SDK policy/unit/compilation checks do not establish physical
+Logseq scrolling, visibility, focus, or IME acceptance on macOS/iOS.
+
 ## Unreleased: Apple CSS variable color references
 
 Apple color props now resolve `var(--name, fallback)` and `hsl(var(--name))`

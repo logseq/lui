@@ -216,6 +216,10 @@ struct LUIHostedScrollView: View {
                    minHeight: horizontal ? viewportSize.height : nil, alignment: .topLeading)
             .environment(\.luiInsideScroll, true)
             .background {
+                if model.property(.virtualViewportEpoch) != nil {
+                    LUISharedOwnerProbe(model: model, backend: backend)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
                 if backend.hostQueries.scrollQueries.contains(model.id) {
                     LUIHostScrollProbe(model: model, backend: backend, ownsScroll: true)
                         .allowsHitTesting(false).accessibilityHidden(true)

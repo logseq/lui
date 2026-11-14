@@ -18,6 +18,7 @@ public enum LUIEvent: Equatable, Sendable {
     case scrollCompleted(node: Int, token: Int, outcome: String)
     case visibleRange(node: Int, first: Int, last: Int)
     case virtualWindow(node: Int, generation: Int, first: Int, last: Int, pins: [Int])
+    case virtualRetention(owner: Int, ticket: Int, receipt: String)
     case picked(node: Int, payload: String)
     // Pointer-detail payloads share one record across the wire. On SwiftUI
     // gestures that expose no hit position the host emits zero coordinates —
@@ -155,6 +156,10 @@ enum LUIWireValue: Decodable, Equatable {
             return intValue.map { $0 >= -1 } ?? false
         case .virtualIndices:
             return stringValue.flatMap(LUISparseVirtualMetadata.canonicalIndices) != nil
+        case .virtualViewportEpoch, .virtualOwnerNode, .virtualOwnerEpoch:
+            return intValue.map { $0 > 0 } ?? false
+        case .virtualSourcePath, .virtualRowKeys, .virtualRetentions, .virtualRetentionReleases:
+            return stringValue != nil
         case .headingLevel:
             guard let value = intValue else { return false }
             return (1...6).contains(value)
@@ -1173,7 +1178,7 @@ struct LUIRetainedTree {
         if let scope {
             for id in scope {
                 if let node = nodes[id] {
-                    try validateNode(node)
+                    try validateNode(node, id: id)
                 }
                 if let node = extensionNodes[id] {
                     try validateExtensionNode(
@@ -1184,8 +1189,8 @@ struct LUIRetainedTree {
             }
             return
         }
-        for (_, node) in nodes {
-            try validateNode(node)
+        for (id, node) in nodes {
+            try validateNode(node, id: id)
         }
         for (_, node) in extensionNodes {
             try validateExtensionNode(
@@ -1195,9 +1200,48 @@ struct LUIRetainedTree {
         }
     }
 
-    private func validateNode(_ node: LUINodeState) throws {
+    private func validateNode(_ node: LUINodeState, id: Int) throws {
             if node.kind == .virtualList {
                 _ = try LUISparseVirtualMetadata(properties: node.properties, children: node.children)
+                if let binding = try LUISharedSourceBinding(properties: node.properties, children: node.children) {
+                    guard let owner = nodes[binding.owner], owner.kind == .scroll,
+                          owner.properties[.virtualViewportEpoch]?.intValue == binding.epoch else {
+                        throw invalid("shared virtual source has no matching owner epoch")
+                    }
+                    var path = binding.path
+                    var current = node.parent
+                    var child = id
+                    var visited = Set<Int>()
+                    while let id = current, id != binding.owner, visited.insert(id).inserted {
+                        if let ancestor = nodes[id], ancestor.kind == .virtualList,
+                           let source = try LUISharedSourceBinding(properties: ancestor.properties, children: ancestor.children) {
+                            guard path.count >= 3, source.owner == binding.owner, source.epoch == binding.epoch,
+                                  source.path == Array(path.dropLast(2)),
+                                  let index = ancestor.children.firstIndex(of: child),
+                                  source.keys[index] == path[path.count - 2] else {
+                                throw invalid("nested virtual source does not match its ancestor semantic row")
+                            }
+                            path = source.path
+                        }
+                        child = id
+                        current = nodes[id]?.parent ?? extensionNodes[id]?.parent
+                    }
+                    guard current == binding.owner, path.count == 1 else {
+                        throw invalid("shared virtual source ancestry crosses its declared owner or path")
+                    }
+                }
+            }
+            if node.kind == .scroll {
+                _ = try LUISharedSourceBinding.retentions(node.properties)
+                _ = try LUISharedSourceBinding.releases(node.properties)
+                if let epoch = node.properties[.virtualViewportEpoch] {
+                    guard let epoch = epoch.intValue, epoch > 0,
+                          node.properties[.orientation]?.stringValue != "horizontal" else {
+                        throw invalid("shared virtual owner requires a positive epoch and vertical scrolling")
+                    }
+                } else if node.properties[.virtualRetentions] != nil || node.properties[.virtualRetentionReleases] != nil {
+                    throw invalid("virtual retention metadata requires an owner epoch")
+                }
             }
             if node.kind == .root {
                 guard node.parent == nil else {

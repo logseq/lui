@@ -1,5 +1,7 @@
 import LUIAppleBackend
 import SwiftUI
+@_silgen_name("lui_ocaml_virtual_retention_utf8")
+private func virtualRetentionOCaml(_ owner: Int64, _ ticket: Int64, _ receipt: UnsafePointer<CChar>?, _ length: Int32) -> Int32
 import Observation
 import Foundation
 
@@ -50,6 +52,9 @@ let receivePatch: PatchCallback = { source in
                 ids.withUnsafeBufferPointer {
                     recovery.check(virtualWindowOCaml(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count)))
                 }
+            case let .virtualRetention(owner, ticket, receipt):
+                guard let length = Int32(exactly: receipt.utf8.count) else { recovery.check(0); return }
+                receipt.withCString { recovery.check(virtualRetentionOCaml(Int64(owner), Int64(ticket), $0, length)) }
             case let .visibleRange(node, first, last): recovery.check(visibleRangeOCaml(Int64(node), Int64(first), Int64(last)))
             case let .scrollCompleted(node, token, outcome):
                 outcome.withCString { recovery.check(scrollCompletedOCaml(Int64(node), Int64(token), $0)) }

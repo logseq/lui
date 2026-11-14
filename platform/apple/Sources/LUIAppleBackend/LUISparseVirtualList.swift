@@ -108,6 +108,9 @@ final class LUISparseVirtualState {
   @ObservationIgnored private var handledToken: Int?
   @ObservationIgnored private var pendingToken: Int?
   @ObservationIgnored private var targetIndex: Int?
+  @ObservationIgnored private(set) var sharedBinding: LUISharedSourceBinding?
+  @ObservationIgnored private var sharedGeometry: LUISharedViewportGeometry?
+  @ObservationIgnored private var sharedPins: Set<Int> = []
   @ObservationIgnored var scroll: ((CGFloat, Bool) -> Void)?
   @ObservationIgnored var refreshOwners: (() -> Void)?
 
@@ -122,6 +125,19 @@ final class LUISparseVirtualState {
     let changed = isNew || generation != metadata.generation
     self.model = model
     self.backend = backend
+    let wasShared = sharedBinding != nil
+    sharedBinding = try? LUISharedSourceBinding(properties: model.properties, children: model.children)
+    if let sharedBinding {
+      backend.sharedVirtualViewport.source(state: self, model: model, binding: sharedBinding)
+      scroll = { [weak self, weak backend] offset, animated in
+        guard let self else { return }
+        backend?.sharedVirtualViewport.setOffset(offset, state: self, animated: animated)
+      }
+    } else if wasShared {
+      backend.sharedVirtualViewport.removeSource(self)
+      sharedGeometry = nil
+      sharedPins.removeAll()
+    }
     active = true
     rows = zip(model.children, metadata.indices).map { Row(id: $0.0, index: $0.1) }
     let extent = model.property(.itemExtent)?.doubleValue ?? 32
@@ -190,6 +206,7 @@ final class LUISparseVirtualState {
     let difference = extents.origin(first) - before
     if abs(difference) > 0.1 { setOffset(offset + difference, animated: false) }
     schedule()
+    if sharedBinding != nil { backend?.sharedVirtualViewport.schedule() }
   }
   func row(at position: CGFloat) -> Int? {
     let index = extents.index(at: position)
@@ -208,6 +225,20 @@ final class LUISparseVirtualState {
     }
   }
   func contains(_ id: Int) -> Bool { rows.contains { $0.id == id } }
+  func sharedRowGeometry(_ id: Int) -> (index: Int, origin: CGFloat, height: CGFloat)? {
+    guard let row = rows.first(where: { $0.id == id }), heights[id] != nil else { return nil }
+    return (row.index, extents.origin(row.index), extents.height(row.index))
+  }
+  var sharedInteractionRows: Set<Int> { Set(popups.keys).union(presentedRows()) }
+  func sharedViewport(_ geometry: LUISharedViewportGeometry?, pins: Set<Int>) {
+    let changed = geometry != sharedGeometry || pins != sharedPins
+    sharedGeometry = geometry
+    sharedPins = pins
+    guard let geometry else { return }
+    offset = geometry.localOffset
+    viewportHeight = geometry.height
+    if changed { schedule() }
+  }
   func flushOwnership() { deliver() }
   func presentationsChanged() { schedule() }
   private func presentedRows() -> Set<Int> {
@@ -235,6 +266,7 @@ final class LUISparseVirtualState {
       if popups[row]?.isEmpty == true { popups.removeValue(forKey: row) }
     }
     schedule()
+    if sharedBinding != nil { backend?.sharedVirtualViewport.schedule() }
   }
   private func schedule() {
     guard active, task == nil else { return }
@@ -246,18 +278,20 @@ final class LUISparseVirtualState {
     }
   }
   private func deliver() {
-    guard active, viewportHeight > 0, let backend, let model,
+    guard active, viewportHeight > 0, sharedBinding == nil || sharedGeometry != nil, let backend, let model,
       backend.model(id: model.id) === model,
       model.property(.virtualGeneration)?.intValue == generation
     else { return }
     refreshOwners?()
     let count = extents.count
-    let first = count > 0 ? extents.index(at: offset) : 0
-    let last = count > 0 ? min(count, extents.index(at: offset + viewportHeight - 0.01) + 1) : 0
-    let overscan = model.property(.overscan)?.intValue ?? 5
+    let intersects = count > 0 && offset < extents.height && offset + viewportHeight > 0
+    let first = intersects ? extents.index(at: max(0, offset)) : (offset > 0 ? count : 0)
+    let last = intersects ? min(count, extents.index(at: min(extents.height, offset + viewportHeight) - 0.01) + 1) : first
+    let overscan = intersects ? (model.property(.overscan)?.intValue ?? 5) : 0
     let presented = presentedRows()
     let pins = rows.filter {
       $0.id == focused || $0.id == pressed || popups[$0.id] != nil || presented.contains($0.id)
+        || sharedPins.contains($0.id)
     }.map(\.id).sorted()
     let request = Request(
       generation: generation, first: max(0, first - min(overscan, first)),
@@ -279,9 +313,13 @@ final class LUISparseVirtualState {
     finishTargetIfReady()
   }
   private func setOffset(_ value: CGFloat, animated: Bool) {
-    let next = max(0, min(value, max(0, extents.height - viewportHeight)))
+    let next = clampedOffset(value)
     offset = next
     scroll?(next, animated)
+  }
+  private func clampedOffset(_ value: CGFloat) -> CGFloat {
+    if let geometry = sharedGeometry { return geometry.target(value) - geometry.origin }
+    return max(0, min(value, max(0, extents.height - viewportHeight)))
   }
   private func handleTarget(_ index: Int?) {
     guard let model, let token = model.scrollToken, handledToken != token else { return }
@@ -313,7 +351,7 @@ final class LUISparseVirtualState {
   }
   private func finishTargetIfReady() {
     guard let token = pendingToken, let index = targetIndex, completion == nil else { return }
-    let desired = max(0, min(targetOffset(index), max(0, extents.height - viewportHeight)))
+    let desired = clampedOffset(targetOffset(index))
     if abs(offset - desired) > 1 {
       setOffset(desired, animated: false)
       schedule()
@@ -345,6 +383,10 @@ final class LUISparseVirtualState {
     emittedVisible = nil
     refreshOwners = nil
     scroll = nil
+    if sharedBinding != nil { backend?.sharedVirtualViewport.removeSource(self) }
+    sharedBinding = nil
+    sharedGeometry = nil
+    sharedPins.removeAll()
   }
 }
 
@@ -353,7 +395,26 @@ struct LUISparseVirtualListView: View {
   let backend: LUIAppleBackend
   @State private var state = LUISparseVirtualState()
   var body: some View {
-    ScrollView {
+    Group {
+      if model.property(.virtualOwnerNode) != nil {
+        rowsContent.background { LUISharedSourceProbe(state: state, backend: backend) }
+      } else {
+        ScrollView {
+          rowsContent.background { LUISparseScrollProbe(state: state).frame(width: 0, height: 0) }
+        }
+      }
+    }
+    .onChange(of: model.revision, initial: true) { _, _ in
+      state.configure(model: model, backend: backend)
+    }
+    .onChange(of: backend.virtualPresentationIDs) { _, _ in
+      state.presentationsChanged()
+      if model.property(.virtualOwnerNode) != nil { backend.sharedVirtualViewport.schedule() }
+    }
+    .onAppear { state.configure(model: model, backend: backend) }
+    .onDisappear { state.dispose() }
+  }
+  private var rowsContent: some View {
       ZStack(alignment: .topLeading) {
         Color.clear.frame(height: state.contentHeight).accessibilityHidden(true)
         ForEach(state.rows) { row in
@@ -361,6 +422,12 @@ struct LUISparseVirtualListView: View {
             .environment(\.luiVirtualRowOwner, LUIVirtualRowOwner(state: state, row: row.id))
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
+            .background {
+              if model.property(.virtualOwnerNode) != nil {
+                LUISharedRowProbe(state: state, row: row,
+                    generation: model.property(.virtualGeneration)?.intValue ?? 0, backend: backend)
+              }
+            }
             .onGeometryChange(for: CGFloat.self) {
               $0.size.height
             } action: {
@@ -371,13 +438,5 @@ struct LUISparseVirtualListView: View {
         }
       }
       .frame(maxWidth: .infinity, alignment: .topLeading)
-      .background { LUISparseScrollProbe(state: state).frame(width: 0, height: 0) }
-    }
-    .onChange(of: model.revision, initial: true) { _, _ in
-      state.configure(model: model, backend: backend)
-    }
-    .onChange(of: backend.virtualPresentationIDs) { _, _ in state.presentationsChanged() }
-    .onAppear { state.configure(model: model, backend: backend) }
-    .onDisappear { state.dispose() }
   }
 }
