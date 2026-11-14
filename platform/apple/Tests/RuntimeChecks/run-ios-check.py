@@ -71,6 +71,9 @@ def main():
         checkpoint_name = f"native-check-{uuid.uuid4().hex}.log"
         source = directory / "Check.swift"
         check = Path(__file__).with_name(filename).read_text().replace("@main", "", 1)
+        if args.check == "bounded-virtual-rows":
+            helper = Path(__file__).parent.parent / "LUIAppleBackendTests" / "LUIRuntimeScrollHandoff.swift"
+            check = helper.read_text() + "\n" + check
         source.write_text(check + r"""
 @MainActor func nativePresentationCheckpoint(_ message: String) {
     setbuf(stdout, nil)
