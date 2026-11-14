@@ -45,21 +45,34 @@ extension LUINodeModel {
 @Observable
 final class LUIAnchoredPopoverStore {
     private(set) var items: [Int: LUIAnchoredPopoverPresentation] = [:]
-    private var dismissed: Set<ObjectIdentifier> = []
+    private var dismissed: [ObjectIdentifier: LUINodeModel] = [:]
 
-    func synchronize(_ items: [Int: LUIAnchoredPopoverPresentation]) {
-        dismissed.formIntersection(items.values.map(\.id))
+    func synchronize(_ items: [Int: LUIAnchoredPopoverPresentation],
+                     retained: Set<ObjectIdentifier>, held: Bool) {
+        // Eligibility (including anchor geometry/reachability) is not the
+        // lifetime of the application's declaration. Only real retirement
+        // releases a dismissal or a rejected opening.
+        dismissed = dismissed.filter { retained.contains($0.key) }
+        if held {
+            for (anchorID, item) in items {
+                let previous = self.items[anchorID]
+                if previous?.id != item.id || previous?.anchorIdentity != item.anchorIdentity {
+                    dismissed[item.id] = item.model
+                }
+            }
+        }
         if self.items != items { self.items = items }
     }
 
     func presentation(at anchorID: Int) -> LUIAnchoredPopoverPresentation? {
-        guard let item = items[anchorID], !dismissed.contains(item.id) else { return nil }
+        guard let item = items[anchorID], dismissed[item.id] == nil else { return nil }
         return item
     }
 
     func dismiss(_ item: LUIAnchoredPopoverPresentation) -> Bool {
-        guard presentation(at: item.anchorID) == item else { return false }
-        dismissed.insert(item.id)
+        guard let current = presentation(at: item.anchorID),
+              current.id == item.id, current.anchorIdentity == item.anchorIdentity else { return false }
+        dismissed[item.id] = item.model
         return true
     }
 }

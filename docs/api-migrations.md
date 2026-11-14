@@ -1,5 +1,24 @@
 # LUI API migration guide
 
+## Unreleased: Apple anchored popover declaration ownership
+
+Native anchored popover dismissals now remain suppressed for the lifetime of
+the retained popover model, including commits where its anchor is temporarily
+unreachable. Geometry-only updates no longer cause a current dismissal callback
+to be rejected. A stale callback still cannot dismiss a replacement model or
+anchor identity. Primitive binding feedback remains close-only.
+
+On macOS, a new or rebound anchored candidate encountered while a physical
+mouse button is held is rejected for that declaration's lifetime. Releasing the
+button or repainting does not replay it. Retry by removing the rejected popover
+declaration, committing its retirement, and constructing a fresh declaration
+from a neutral explicit user action. An already admitted presentation keeps
+working during a hold, including geometry updates. iOS admission is unchanged.
+
+There are no public Swift/OCaml signatures, wire fields, or schema changes.
+This does not add a timed outside-close grace or infer a dismissal reason from
+the unit Dismiss event. Applications own any target-specific re-show delay.
+
 ## Unreleased: Flat Apple virtual list retention (opt-in v1)
 
 Applications may explicitly select
