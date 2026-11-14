@@ -87,9 +87,4 @@ let vector text =
     if Hashtbl.mem seen value then fail ();
     Hashtbl.add seen value ()) values;
   values
-let path value =
-  let values = strings value in
-  if List.length values mod 2 <> 1 then fail ();
-  List.iter (fun value -> ignore (nonempty value)) values;
-  values
 let encode_strings values = encode (Array (List.map (fun value -> String value) values))
