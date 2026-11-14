@@ -1,15 +1,23 @@
 # LUI API migration guide
 
-## Unreleased: Shared outer virtual viewport and physical retention (opt-in v1)
+## Unreleased: Flat Apple virtual list retention (opt-in v1)
 
 Applications may explicitly select
 `~virtual_capabilities:[Lui_virtual.Shared_viewport_retention_v1]` on
-`Lui_app` constructors, `Lui_runtime.create_application`, or
+`Lui_app` constructors, `Lui_runtime.create` / `create_with_extensions`, or
 `Lui_multi_window.create`. The default remains `[]`.
 Only `SwiftUIHost` supports `shared-viewport-retention-v1`; selecting it on an
 unsupported host or binding an owner/source without selecting it raises
-`Invalid_argument`. Standalone `virtual_rows`, its defaults, and existing
-`VirtualWindow` ABI remain unchanged.
+`Invalid_argument`. Standalone `virtual_rows` remains available without the
+capability and keeps its default configuration. The existing `VirtualWindow`
+ABI is unchanged.
+
+Apple sparse window delivery now checks source/viewport intersection before
+overscan, including standalone lists. A nonempty source outside the viewport
+can therefore emit an empty half-open maintenance window (`first = last`),
+with independent pins. Inclusive public visible ranges can be `(0,-1)` or
+`(count,count-1)`. Preserve these empty intervals instead of fabricating a
+visible row or inferring missing-target/release completion.
 
 Direct consumers of emitted Melange JavaScript must account for the new optional
 argument: `App.create(undefined, undefined, backend, model, reducer, view)` passes
@@ -18,7 +26,7 @@ callers keep named optional arguments.
 
 `Lui_virtual` adds opaque `owner`, `source`, `retention`, and `receipt` handles,
 `binding = {node : int; lease : int}`, `create_owner`, `dispose_owner`,
-`root_source`, `child_source`, `binding`, `retain`, `ticket`, `receipt`,
+`root_source`, `binding`, `retain`, `ticket`, `receipt`,
 `receipt_status`, `request_release`, `cancel_retention`, and `supports`.
 `shared_viewport_version` is `1`. Create handles in application state before
 mounting. Bind an owner with `Lui_elements.scroll ~virtual_owner` and a source
@@ -28,15 +36,24 @@ the source's `virtual_rows`. Binding/receipt signals are borrowed:
 do not dispose them from consuming views. Unmount invalidates the binding
 lease; explicitly dispose the owner when its application state ends.
 
+Each owner has at most one flat root source. Owners cannot nest. Independent
+scrolling documents may have independent owners. A participating source/owner
+cannot be nested under another virtual list, and its rows cannot contain virtual lists or
+owners. Ordinary non-virtual layout/editor children remain supported. Journals
+and page view use the same flat contract: the application projects the expanded
+tree into ordered rows carrying depth/section data rather than recursively
+creating virtual child lists. Supply the complete projected row sequence,
+including off-window rows, with unique stable semantic keys. Application loading
+and expansion must put a hidden target in that projection; the SDK does not
+expand branches or retain semantic ancestors.
+
 ```ocaml
 let owner = Lui_virtual.create_owner () in
 let outline = Lui_virtual.root_source owner ~key:"selected-root" in
-let children = Lui_virtual.child_source ~parent:outline
-    ~row_key:parent_key ~key:"children" in
-let retained = Lui_virtual.retain children ~key:target_key in
+let retained = Lui_virtual.retain outline ~key:target_key in
 let native_ticket = Lui_virtual.ticket retained in
-(* Build scroll ~virtual_owner:owner and virtual_list ~viewport:outline;
-   propagate [children] explicitly into the retained parent's child list.
+(* Build one scroll ~virtual_owner:owner and virtual_list ~viewport:outline;
+   supply its flat projected rows with stable semantic scroll_key values.
    Pass native_ticket to the native registration/focus integration. *)
 ignore native_ticket;
 match Signal.sample (Lui_virtual.receipt retained) with
@@ -45,15 +62,15 @@ match Signal.sample (Lui_virtual.receipt retained) with
 | _ -> ()
 ```
 
-Retaining a descendant also retains every semantic ancestor before cold mount,
-through viewport feedback, reorder, and row render replacement. A release
-request retains those keys until a matching native `Released` receipt is
+Retaining a flat row keeps its semantic key before cold mount, through viewport
+feedback, reorder, and row render replacement. A release request retains that
+key until a matching native `Released` receipt is
 validated. `request_release` returns `Error Stale_receipt`, `Owner_retired`, or
 `Unsupported` when its proof/lifetime/binding is invalid. Cancellation explicitly
 abandons the logical obligation. Source generations and owner leases invalidate
 older receipts; completion of a scroll command alone is never physical proof.
-Once a bound source publishes its complete semantic-key index, a missing target
-or ancestor publishes `Missing_target` through `receipt`; an unbound or not yet
+Once a bound source publishes its complete projected-key index, a missing target
+publishes `Missing_target` through `receipt`; an unbound or not yet
 published cold source continues waiting. Known owner/source/row changes publish
 `Stale` and clear a pending release. These SDK refusal statuses do not invent a
 native proof and do not release or cancel the ticket. For example, an application
@@ -67,35 +84,32 @@ Existing scroll targets still cancel only with a fresh empty control token;
 reusing the same token with an empty target does not cancel pending work.
 
 The typed schema appends `virtual-viewport-epoch`, `virtual-owner-node`,
-`virtual-owner-epoch`, `virtual-source-path`, `virtual-row-keys`,
+`virtual-owner-epoch`, `virtual-row-keys`,
 `virtual-retentions`, and `virtual-retention-releases` after existing properties.
-Owner/source leases are positive integers. A source path is an odd-length JSON
-string vector `[rootSource, parentRowKey, childSource, ...]`; row keys are a
-nonempty unique string vector parallel to mounted children/virtual indices.
-Retention records are `{ticket,path,key}`, releases are `{ticket,receipt}` with
-the exact original opaque receipt string. Duplicate paths, incorrect ancestry,
-cross-owner binding, malformed records, and nonpositive epochs are rejected.
+Owner/source leases are positive integers. Row keys are a unique string vector
+of nonempty semantic keys parallel to mounted children/virtual indices.
+Retention records are `{ticket,key}`, releases are `{ticket,receipt}` with
+the exact original opaque receipt string. Multiple sources per owner, nested
+virtual lists/owners on the participating path, cross-owner binding, malformed
+records, and nonpositive epochs are rejected atomically.
 These are canonical typed properties, not data attributes.
 
-Apple shared sources reuse their declared owner's existing vertical native
-scroll view. Local content position is `outerOffset - sourceOrigin`; nested
-sources measure their own origin in that same outer document. There is no
-nested shared-source ScrollView. The first version fails closed for intervening
+The flat source reuses its declared owner's existing vertical native scroll
+view. Local content position is `ownerOffset - sourceOrigin`; there are no
+child-source paths, nested virtual windows, or multilevel anchor arbitration.
+The first version fails closed for intervening
 scroll containers, scaled/rotated transforms, detached geometry, and stale row
 placement. Offscreen sources do not create overscan requests for unrelated
 rows. Ordinary sidebar/Journal/Views roots need no changes unless opted in.
-The outer owner anchors its actual native leading visible row across layout
-changes, preferring the deepest source at that position. Shared source
+The owner anchors its actual native leading visible flat row across layout
+changes, choosing a crossing row or the next visible row after a gap. Source
 measurements and generation reconfiguration do not independently scroll the
-owner. A retained offscreen child growing by 30 points and a later parent
-measurement of that same growth therefore cause one 30-point correction after
-native layout. Explicit scroll targets and native scrolling establish a new
-anchor; standalone sources retain their existing local compensation behavior.
+owner. Apply one correction for that row's physical displacement after native
+layout. Explicit scroll targets and native scrolling establish a new anchor;
+standalone sources retain their existing local compensation behavior.
 Reading anchors follow the same semantic key and retained native row model
 across source generations; physical receipts remain generation-bound. Selection
-starts with the leading visible outer row and descends through its semantic
-parent path, including the next visible row when the viewport starts in a gap.
-Clipped or hidden descendants cannot replace a visible ancestor's anchor.
+uses the one flat source and checks native clipping/hidden/alpha eligibility.
 Public `setScrollTop` and `scrollIntoView` establish a new anchor even when the
 accepted intent leaves the native offset unchanged.
 Shared owner corrections and source scroll targets use that owner's bound native
@@ -111,7 +125,8 @@ After layout, call `acknowledgeVirtualRetention(ownerNode:ticket:view:requiremen
 is always required. The backend verifies the live registration/model identity,
 current owner/source/row incarnations, actual row anchors, geometry, window,
 visibility, and requested native focus. A successful call emits a compact opaque
-v1 receipt with status `pinned` or `focused`. Release rechecks the same physical
+v1 receipt with status `pinned` or `focused` and exactly one source-row proof.
+Release rechecks the same physical
 proof and emits current-generation pin feedback before `released`; stale proof
 leaves the cold obligation intact. The latest successfully emitted receipt per
 live owner epoch/ticket remains recognizable after native unregister, proof-cache
@@ -157,6 +172,23 @@ all `1`. Update OCaml, Swift package, and Swift resolution pins together.
 Transport-only builds may forward the new event while leaving capability
 selection empty. SDK policy/unit/compilation checks do not establish physical
 Logseq scrolling, visibility, focus, or IME acceptance on macOS/iOS.
+
+### Migration from the earlier e42a6e6a proposal
+
+The unreleased feature has been narrowed to flat lists. Remove `child_source`
+calls and project expanded descendants into the single root source instead.
+A second distinct `root_source` key for one owner is rejected; reuse its stable
+root handle. `VirtualSourcePath` / `virtual-source-path`, retention `path`,
+ancestor proof chains, and nested anchor/window arbitration have been removed.
+Applications must not encode the old metadata or create a virtual list/owner
+inside a participating row. Use the typed SDK DSL/publication APIs.
+
+`root_source`, capability/version names, native registration/acknowledgement,
+`VirtualRetention`, the UTF-8 C ABI, B1 callbacks, and release metadata signatures
+are unchanged. Existing owner/ticket/opaque-byte B3 forwarding needs no new
+parser or callback adaptation. Capability and receipt versions remain `1` for
+this unreleased feature; rebuild OCaml and Swift from the same selected SHA.
+No compatibility alias or fallback for the removed nested API is provided.
 
 ## Unreleased: Apple CSS variable color references
 

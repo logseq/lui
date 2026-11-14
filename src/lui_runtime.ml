@@ -2070,6 +2070,38 @@ let recorded_parent application node =
   | Some parent -> Some (canonical_node application parent)
   | None -> None
 
+(* Check the proposed edge before mutating ownership. Standalone-only trees
+   retain their existing nesting behavior. Shared rows contain ordinary content. *)
+let validate_flat_virtual_insertion application parent child =
+  if application.runtime_virtual_capabilities <> [] then begin
+    let property node property =
+      match Hashtbl.find_opt application.runtime_properties node with
+      | Some properties -> Property_map.mem property properties
+      | None -> false in
+    let is_virtual node =
+      Hashtbl.find_opt application.mounted_nodes node = Some VirtualList in
+    let rec ancestors node =
+      let virtual_row = is_virtual node in
+      let shared_row = virtual_row && property node VirtualOwnerNode in
+      let shared_owner = property node VirtualViewportEpoch in
+      match Hashtbl.find_opt application.runtime_parents node with
+      | None -> virtual_row, shared_row, shared_owner
+      | Some parent ->
+        let outer_virtual, outer_shared, outer_owner = ancestors parent in
+        virtual_row || outer_virtual, shared_row || outer_shared,
+        shared_owner || outer_owner in
+    let under_virtual, under_shared, under_owner = ancestors parent in
+    if under_virtual || under_owner then begin
+      let rec validate node =
+        if (under_virtual && is_virtual node
+            && (under_shared || property node VirtualOwnerNode))
+           || property node VirtualViewportEpoch then
+          invalid_arg "shared virtual owners must be independent and their rows flat";
+        List.iter validate (children application node) in
+      validate child
+    end
+  end
+
 let insert_child application parent child index =
   let parent = canonical_node application parent in
   let child = canonical_node application child in
@@ -2118,6 +2150,7 @@ let insert_child application parent child index =
     invalid_arg "child index is out of bounds";
   if descendant application child parent then
     invalid_arg "child insertion would create a cycle";
+  validate_flat_virtual_insertion application parent child;
   Hashtbl.replace application.runtime_children parent
     (Lui_sequence.insert current index child);
   Hashtbl.replace application.runtime_parents child parent;
@@ -2300,7 +2333,7 @@ let validate_extension_nodes application =
 
 let virtual_source_property = function
   | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex
-  | VirtualOwnerNode | VirtualOwnerEpoch | VirtualSourcePath | VirtualRowKeys -> true
+  | VirtualOwnerNode | VirtualOwnerEpoch | VirtualRowKeys -> true
   | _ -> false
 
 let validate_virtual_list application node =
@@ -2355,7 +2388,7 @@ let validate_virtual_list_operations application operations =
 let validate_shared_virtual application operations =
   let shared_property = function
     | VirtualViewportEpoch | VirtualRetentions | VirtualRetentionReleases
-    | VirtualOwnerNode | VirtualOwnerEpoch | VirtualSourcePath | VirtualRowKeys -> true
+    | VirtualOwnerNode | VirtualOwnerEpoch | VirtualRowKeys -> true
     | _ -> false in
   if application.runtime_virtual_capabilities = [] then
     (* Standalone updates must stay proportional to their dirty scope. *)
@@ -2377,7 +2410,7 @@ let validate_shared_virtual application operations =
     node = ancestor || match Hashtbl.find_opt application.runtime_parents node with
       | Some parent -> descendant parent ancestor
       | None -> false in
-  let paths = Hashtbl.create 8 in
+  let sources = Hashtbl.create 8 in
   let enabled () =
     if not (List.mem Lui_virtual.Shared_viewport_retention_v1 application.runtime_virtual_capabilities) then
       invalid_arg "shared virtual viewport capability was not negotiated" in
@@ -2385,14 +2418,15 @@ let validate_shared_virtual application operations =
     if List.exists (fun property -> Property_map.mem property properties)
         [VirtualViewportEpoch; VirtualRetentions; VirtualRetentionReleases] then begin
       enabled ();
+      Option.iter (fun parent -> validate_flat_virtual_insertion application parent node)
+        (Hashtbl.find_opt application.runtime_parents node);
       ignore (integer properties VirtualViewportEpoch);
       let tickets = Hashtbl.create 8 in
       List.iter (fun record ->
-        let fields = object_ ["ticket"; "path"; "key"] record in
+        let fields = object_ ["ticket"; "key"] record in
         let ticket = positive (List.assoc "ticket" fields) in
         if Hashtbl.mem tickets ticket then fail ();
         Hashtbl.add tickets ticket ();
-        ignore (path (List.assoc "path" fields));
         ignore (nonempty (string (List.assoc "key" fields))))
         (array (decode (encoded properties VirtualRetentions)));
       let releases = Hashtbl.create 8 in
@@ -2407,10 +2441,13 @@ let validate_shared_virtual application operations =
         if List.assoc "owner" receipt <> Int node
            || List.assoc "ticket" receipt <> Int ticket
            || List.assoc "epoch" receipt <> Int (integer properties VirtualViewportEpoch)
-        then fail ()) (array (decode (encoded properties VirtualRetentionReleases)))
+        then fail ();
+        (match array (List.assoc "rows" receipt) with
+         | [_] -> ()
+         | _ -> fail ())) (array (decode (encoded properties VirtualRetentionReleases)))
     end;
     if List.exists (fun property -> Property_map.mem property properties)
-        [VirtualOwnerNode; VirtualOwnerEpoch; VirtualSourcePath; VirtualRowKeys] then begin
+        [VirtualOwnerNode; VirtualOwnerEpoch; VirtualRowKeys] then begin
       enabled ();
       let owner = integer properties VirtualOwnerNode in
       let epoch = integer properties VirtualOwnerEpoch in
@@ -2418,31 +2455,22 @@ let validate_shared_virtual application operations =
          || integer (values owner) VirtualViewportEpoch <> epoch
          || not (descendant node owner) then
         invalid_arg "shared virtual source is outside its bound owner";
-      let source_path = path (decode (encoded properties VirtualSourcePath)) in
-      if Hashtbl.mem paths (owner, source_path) then
-        invalid_arg "duplicate shared virtual source path";
-      Hashtbl.add paths (owner, source_path) node;
+      if Hashtbl.find_opt application.mounted_nodes node <> Some VirtualList then
+        invalid_arg "shared virtual source must bind a virtual-list";
+      if Hashtbl.mem sources owner then
+        invalid_arg "shared virtual owner permits only one source list";
+      Hashtbl.add sources owner node;
+      Option.iter (fun parent -> validate_flat_virtual_insertion application parent node)
+        (Hashtbl.find_opt application.runtime_parents node);
       let keys = vector (encoded properties VirtualRowKeys) in
       if List.length keys <> List.length (children application node)
          || not (Property_map.mem VirtualGeneration properties) then
         invalid_arg "shared virtual row keys do not match sparse children";
       validate_virtual_list application node
     end) application.runtime_properties;
-  (* A logical child source must physically live inside its declared semantic
-     parent row, not merely somewhere inside the same scroll owner. *)
-  Hashtbl.iter (fun (owner, source_path) node ->
-    match List.rev source_path with
-    | _child :: parent_key :: reversed_parent ->
-      let parent = match Hashtbl.find_opt paths (owner, List.rev reversed_parent) with
-        | Some parent -> parent
-        | None -> invalid_arg "shared virtual parent source is not bound" in
-      let keys = vector (encoded (values parent) VirtualRowKeys) in
-      let rows = List.combine keys (children application parent) in
-      (match List.assoc_opt parent_key rows with
-       | Some row when descendant node row -> ()
-       | _ -> invalid_arg "shared virtual source is outside its semantic parent row")
-    | [_] -> ()
-    | _ -> fail ()) paths
+  Hashtbl.iter (fun _ source ->
+    List.iter (fun child -> validate_flat_virtual_insertion application source child)
+      (children application source)) sources
   end
 
 let handler_count application = !(application.runtime_handler_count)

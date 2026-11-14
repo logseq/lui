@@ -1878,11 +1878,6 @@
       "swift": "virtualOwnerEpoch"
     },
     {
-      "lg": "VirtualSourcePath",
-      "wire": "virtual-source-path",
-      "swift": "virtualSourcePath"
-    },
-    {
       "lg": "VirtualRowKeys",
       "wire": "virtual-row-keys",
       "swift": "virtualRowKeys"
@@ -2373,7 +2368,6 @@
       "virtual-scroll-index",
       "virtual-owner-node",
       "virtual-owner-epoch",
-      "virtual-source-path",
       "virtual-row-keys"
     ],
     "scroll": [

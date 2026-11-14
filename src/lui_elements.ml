@@ -1010,7 +1010,6 @@ let virtual_list ?viewport ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?
     Hashtbl.add application.Lui_runtime.runtime_virtual_sources node source;
     Lui_ui.int_property context node VirtualOwnerNode owner.node;
     Lui_ui.int_property context node VirtualOwnerEpoch owner.lease;
-    Lui_ui.string_property context node VirtualSourcePath (Lui_virtual.Internal.source_path source);
     Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
       if Lui_virtual.Internal.unbind_source source bound then begin
         let node = Lui_runtime.canonical_node application node in

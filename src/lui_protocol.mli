@@ -312,7 +312,6 @@ type property =
   | VirtualViewportEpoch
   | VirtualOwnerNode
   | VirtualOwnerEpoch
-  | VirtualSourcePath
   | VirtualRowKeys
   | VirtualRetentions
   | VirtualRetentionReleases
