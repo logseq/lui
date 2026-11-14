@@ -60,6 +60,9 @@ native proof and do not release or cancel the ticket. For example, an applicatio
 can observe `Missing_target` and call `cancel_retention` when it abandons that
 reveal. Cancelling an offscreen ticket removes its exclusive rows immediately,
 without waiting for another window event; other tickets and native pins survive.
+Source-generated receipt changes publish after reconciliation commits. An
+observer may synchronously cancel a missing or stale target without reverting
+the source generation; failed candidate mounts publish no intermediate refusal.
 Existing scroll targets still cancel only with a fresh empty control token;
 reusing the same token with an empty target does not cancel pending work.
 
@@ -88,14 +91,22 @@ owner. A retained offscreen child growing by 30 points and a later parent
 measurement of that same growth therefore cause one 30-point correction after
 native layout. Explicit scroll targets and native scrolling establish a new
 anchor; standalone sources retain their existing local compensation behavior.
+Reading anchors follow the same semantic key and retained native row model
+across source generations; physical receipts remain generation-bound. Selection
+starts with the leading visible outer row and descends through its semantic
+parent path, including the next visible row when the viewport starts in a gap.
+Clipped or hidden descendants cannot replace a visible ancestor's anchor.
+Public `setScrollTop` and `scrollIntoView` establish a new anchor even when the
+accepted intent leaves the native offset unchanged.
 Shared owner corrections and source scroll targets use that owner's bound native
 scroller directly; optional host scroll-query probes are not a prerequisite.
 
 Native controls/extensions must call
 `LUIAppleBackend.registerVirtualNativeView(nodeID:view:)` for their exact retained
 node and unregister the returned `LUIVirtualNativeRegistration` when that view
-lifetime ends. Duplicate/cross-node registration is rejected. After layout,
-call `acknowledgeVirtualRetention(ownerNode:ticket:view:requirements:)` using
+lifetime ends. Registering the same view for the same retained model is
+idempotent; rebinding it to another model invalidates its previous registration.
+After layout, call `acknowledgeVirtualRetention(ownerNode:ticket:view:requirements:)` using
 `LUIVirtualHandoffRequirements` (`.attached`, `.visible`, `.focus`). Attachment
 is always required. The backend verifies the live registration/model identity,
 current owner/source/row incarnations, actual row anchors, geometry, window,
