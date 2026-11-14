@@ -17,6 +17,7 @@ extension LUIAppleBackend {
     public func setScrollTop(nodeID: Int, top: CGFloat) -> Bool {
         guard top.isFinite, let marker = scrollMarker(nodeID: nodeID, container: true),
               let scroll = marker.scroll, let metrics = marker.metrics else { return false }
+        sharedVirtualViewport.explicitScroll(scroll)
         return setNativeScrollTop(scroll, top: top, documentHeight: metrics.contentSize.height,
             viewportHeight: metrics.viewportSize.height)
     }
@@ -56,6 +57,9 @@ extension LUIAppleBackend {
               let scroll = LUIHostScrollMarker.enclosingScroll(of: target) else { return false }
         #if os(macOS)
         guard scroll.documentView != nil else { return false }
+        #endif
+        sharedVirtualViewport.explicitScroll(scroll)
+        #if os(macOS)
         _ = target.scrollToVisible(target.bounds)
         #else
         scroll.scrollRectToVisible(target.convert(target.bounds, to: scroll), animated: false)
