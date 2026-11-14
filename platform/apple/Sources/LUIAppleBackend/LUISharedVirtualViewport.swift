@@ -192,6 +192,9 @@ final class LUISharedVirtualViewport {
         var signature: [Int: LUISharedViewportGeometry] = [:]
         var pinSet = Set<Int>()
         var attempted = Set<String>()
+        // One issued envelope per live ticket survives physical proof retirement.
+        // Only exact SDK-issued bytes may produce a refusal after cache eviction.
+        var issuedReceipts: [Int: (receipt: LUIVirtualReceipt, envelope: String)] = [:]
         init(model: LUINodeModel, scroll: LUIHostNativeScroll, epoch: Int) {
             self.model = model
             self.scroll = scroll
@@ -292,7 +295,11 @@ final class LUISharedVirtualViewport {
 
     func owner(model: LUINodeModel, scroll: LUIHostNativeScroll) {
         guard let epoch = model.property(.virtualViewportEpoch)?.intValue, epoch > 0 else { return }
-        if let old = owners[model.id], old.model === model, old.scroll === scroll, old.epoch == epoch {
+        if let old = owners[model.id], old.model === model, old.epoch == epoch {
+            if old.scroll !== scroll {
+                old.scroll = scroll
+                proofs = proofs.filter { $0.value.receipt.owner != model.id }
+            }
             schedule()
             return
         }
@@ -303,7 +310,9 @@ final class LUISharedVirtualViewport {
 
     func removeOwner(model: LUINodeModel, scroll: LUIHostNativeScroll?) {
         guard let old = owners[model.id], old.model === model, old.scroll === scroll else { return }
-        owners[model.id] = nil
+        // Native detachment retires physical evidence, not the semantic lease's
+        // ability to refuse its last issued receipt while the ticket is live.
+        old.scroll = nil
         proofs = proofs.filter { $0.value.receipt.owner != model.id }
         schedule()
     }
@@ -561,11 +570,12 @@ final class LUISharedVirtualViewport {
         for source in Array(sources.values) where source.binding.owner == ownerNode {
             source.state?.flushOwnership()
         }
-        guard let installed = proofs[receipt.proof], ticket(number, owner: owner) != nil,
+        guard owners[ownerNode] === owner, let installed = proofs[receipt.proof], ticket(number, owner: owner) != nil,
               proofIsCurrent(installed, owner: owner) else {
             proofs[receipt.proof] = nil
             return false
         }
+        owner.issuedReceipts[number] = (receipt, envelope)
         backend?.performVirtualRetention(owner: ownerNode, ticket: number, receipt: envelope)
         return true
     }
@@ -581,7 +591,7 @@ final class LUISharedVirtualViewport {
         owners = owners.filter { _, owner in
             guard let model = owner.model else { return false }
             return backend.model(id: model.id) === model
-                && model.property(.virtualViewportEpoch)?.intValue == owner.epoch && owner.scroll != nil
+                && model.property(.virtualViewportEpoch)?.intValue == owner.epoch
         }
         sources = sources.filter { _, source in
             guard let model = source.model else { return false }
@@ -631,23 +641,38 @@ final class LUISharedVirtualViewport {
                 let direct = Set(source.model?.children ?? []).intersection(pins)
                 source.state?.sharedViewport(source.geometry, pins: direct)
             }
-            guard let model = owner.model, let releases = try? LUISharedSourceBinding.releases(model.properties) else { continue }
+            guard let model = owner.model,
+                  let retentions = try? LUISharedSourceBinding.retentions(model.properties),
+                  let releases = try? LUISharedSourceBinding.releases(model.properties) else { continue }
+            let tickets = Set(retentions.map(\.ticket))
+            owner.issuedReceipts = owner.issuedReceipts.filter { tickets.contains($0.key) }
+            owner.attempted.formIntersection(Set(owner.issuedReceipts.values.map(\.envelope)))
             owner.attempted.formIntersection(Set(releases.map(\.receipt)))
-            for release in releases where owner.attempted.insert(release.receipt).inserted {
-                guard let incoming = release.receipt.data(using: .utf8),
-                      let receipt = try? JSONDecoder().decode(LUIVirtualReceipt.self, from: incoming),
-                      let proof = proofs[receipt.proof], proof.envelope == release.receipt,
-                      receipt.owner == ownerID, receipt.ticket == release.ticket,
-                      ticket(release.ticket, owner: owner) != nil else { continue }
+            for release in releases {
+                guard owners[ownerID] === owner, backend.model(id: ownerID) === model,
+                      model.property(.virtualViewportEpoch)?.intValue == owner.epoch,
+                      let issued = owner.issuedReceipts[release.ticket],
+                      issued.receipt.owner == ownerID, issued.receipt.epoch == owner.epoch,
+                      issued.receipt.ticket == release.ticket, tickets.contains(release.ticket),
+                      issued.envelope.utf8.elementsEqual(release.receipt.utf8),
+                      owner.attempted.insert(issued.envelope).inserted else { continue }
+                let receipt = issued.receipt
                 var response = receipt
-                if proofIsCurrent(proof, owner: owner) {
+                response.status = "stale"
+                if let proof = proofs[receipt.proof], proof.envelope.utf8.elementsEqual(issued.envelope.utf8),
+                   proofIsCurrent(proof, owner: owner) {
                     // Feedback adopts the full physical pin set before shared
                     // OCaml may remove its cold-key retention.
                     for source in Array(owned.values) { source.state?.flushOwnership() }
-                    guard owners[ownerID] === owner, proofIsCurrent(proof, owner: owner) else { continue }
-                    proof.released = true
-                    response.status = "released"
-                } else { response.status = "stale" }
+                    if owners[ownerID] === owner, proofs[receipt.proof] === proof,
+                       proofIsCurrent(proof, owner: owner) {
+                        proof.released = true
+                        response.status = "released"
+                    }
+                }
+                guard owners[ownerID] === owner, backend.model(id: ownerID) === model,
+                      model.property(.virtualViewportEpoch)?.intValue == owner.epoch,
+                      ticket(release.ticket, owner: owner) != nil else { continue }
                 if let envelope = try? response.encoded() {
                     backend.performVirtualRetention(owner: ownerID, ticket: release.ticket, receipt: envelope)
                 }
