@@ -62,6 +62,7 @@ type application = {
   runtime_virtual_capabilities : Lui_virtual.capability list;
   runtime_virtual_sources : (int, Lui_virtual.source) Hashtbl.t;
   runtime_virtual_owners : (int, Lui_virtual.owner) Hashtbl.t;
+  runtime_virtual_receipts : (int, Lui_virtual.owner) Hashtbl.t;
   runtime_extension_registry : Lui_extension.extension_registry;
   next_node_id : int ref;
   next_virtual_generation : int ref;
@@ -117,6 +118,7 @@ type application = {
 type runtime_checkpoint = {
   checkpoint_virtual_sources : (int, Lui_virtual.source) Hashtbl.t;
   checkpoint_virtual_owners : (int, Lui_virtual.owner) Hashtbl.t;
+  checkpoint_virtual_receipts : (int, Lui_virtual.owner) Hashtbl.t;
   checkpoint_restore_virtual : (unit -> unit) list;
   checkpoint_nodes : int list option;
   checkpoint_generation : int;
@@ -192,6 +194,7 @@ let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler 
     runtime_virtual_capabilities = virtual_capabilities;
     runtime_virtual_sources = Hashtbl.create 8;
     runtime_virtual_owners = Hashtbl.create 8;
+    runtime_virtual_receipts = Hashtbl.create 8;
     runtime_extension_registry = registry;
     next_node_id = ref 0;
     next_virtual_generation = ref 0;
@@ -275,6 +278,7 @@ let checkpoint ?nodes application =
   {
     checkpoint_virtual_sources = snapshot_hashtbl application.runtime_virtual_sources;
     checkpoint_virtual_owners = snapshot_hashtbl application.runtime_virtual_owners;
+    checkpoint_virtual_receipts = snapshot_hashtbl application.runtime_virtual_receipts;
     checkpoint_restore_virtual = Hashtbl.fold (fun _ owner saved ->
       Lui_virtual.Internal.checkpoint owner :: saved) application.runtime_virtual_owners [];
     checkpoint_nodes = nodes;
@@ -415,6 +419,8 @@ let restore application saved =
   Hashtbl.iter (Hashtbl.replace application.runtime_virtual_sources) saved.checkpoint_virtual_sources;
   Hashtbl.reset application.runtime_virtual_owners;
   Hashtbl.iter (Hashtbl.replace application.runtime_virtual_owners) saved.checkpoint_virtual_owners;
+  Hashtbl.reset application.runtime_virtual_receipts;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_receipts) saved.checkpoint_virtual_receipts;
   List.iter (fun restore -> restore ()) saved.checkpoint_restore_virtual;
   let replace target source =
     (match affected with None -> Hashtbl.reset target
@@ -2504,6 +2510,36 @@ let apply_pending_batch application batch operation_count next_generation =
     invalid_arg "backend rejected patch batch"
   end
 
+(* Receipt observers can synchronously cancel, release or dispose scopes.
+   Publish only after signal-driven transactions have committed or rolled back,
+   then settle any work the observers queued before serializing the batch. *)
+let publish_virtual_receipts application =
+  let pending = Hashtbl.fold (fun node owner pending -> (node, owner) :: pending)
+    application.runtime_virtual_receipts [] in
+  Hashtbl.clear application.runtime_virtual_receipts;
+  let rec publish = function
+    | [] -> ()
+    | (_, owner) :: rest as pending ->
+      (try Lui_virtual.Internal.flush_receipts owner with failure ->
+        List.iter (fun (node, owner) ->
+          Hashtbl.replace application.runtime_virtual_receipts node owner) pending;
+        raise failure);
+      publish rest in
+  publish pending
+
+let rec stabilize application =
+  match Signal.stabilize application.runtime_scheduler with
+  | () ->
+    if Hashtbl.length application.runtime_virtual_receipts > 0 then begin
+      publish_virtual_receipts application;
+      stabilize application
+    end
+  | exception failure ->
+    (* A retirement callback may fail after structural ownership committed.
+       Its committed source snapshot still revokes old native proofs. *)
+    publish_virtual_receipts application;
+    raise failure
+
 let rec flush application =
   if !(application.runtime_flushing) then begin
     application.runtime_flush_dirty := true;
@@ -2513,7 +2549,7 @@ let rec flush application =
     application.runtime_flushing := true;
     let flushed =
       try
-        Signal.stabilize application.runtime_scheduler;
+        stabilize application;
         if !(application.runtime_extension_dirty) then begin
           validate_extension_nodes application;
           application.runtime_extension_dirty := false

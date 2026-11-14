@@ -18,6 +18,8 @@ type owner = {
   mutable serial : int;
   mutable owner_binding : binding option;
   mutable publisher : (int -> string -> string -> unit) option;
+  mutable schedule_receipts : (unit -> unit) option;
+  mutable receipts_dirty : bool;
   mutable replacing_owner : bool;
   sources : (string list, source) Hashtbl.t;
   tickets : (int, retention) Hashtbl.t;
@@ -51,7 +53,8 @@ let fresh owner =
 let live owner = if owner.retired then invalid_arg "shared virtual owner retired"
 let create_owner () = {
   scheduler = Signal.scheduler (); retired = false; serial = 0;
-  owner_binding = None; publisher = None; sources = Hashtbl.create 8;
+  owner_binding = None; publisher = None; schedule_receipts = None;
+  receipts_dirty = false; sources = Hashtbl.create 8;
   replacing_owner = false;
   tickets = Hashtbl.create 8;
 }
@@ -116,7 +119,7 @@ let dispose_owner owner =
     Hashtbl.clear owner.tickets;
     (* Clear native obligations while the owner publisher is still bound. *)
     notify owner;
-    owner.owner_binding <- None; owner.publisher <- None;
+    owner.owner_binding <- None; owner.publisher <- None; owner.schedule_receipts <- None;
     Hashtbl.iter (fun _ source ->
       source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
       publish_state owner source.binding_state None;
@@ -179,7 +182,10 @@ let retain source ~key =
     receipt_state = Signal.state source.owner.scheduler None; latest = None;
     releasing = None; active = true } in
   Hashtbl.add source.owner.tickets retention.id retention;
-  refresh_receipts source.owner;
+  (* A staged source snapshot is not authoritative to observers until its
+     runtime transaction has committed. Already committed snapshots can still
+     answer a new retention synchronously. *)
+  if not source.owner.receipts_dirty then refresh_receipts source.owner;
   notify source.owner;
   retention
 let request_release retention receipt =
@@ -218,21 +224,33 @@ let decode_receipt envelope =
    geometry = Json.positive (field "geometry"); pins = Json.positive (field "pins"); requirements}}
 
 module Internal = struct
-  let bind_owner owner ~node ~publish =
+  let stage_receipts owner =
+    owner.receipts_dirty <- true;
+    Option.iter (fun schedule -> schedule ()) owner.schedule_receipts
+  let flush_receipts owner =
+    if owner.receipts_dirty then begin
+      owner.receipts_dirty <- false;
+      try refresh_receipts owner with failure ->
+        stage_receipts owner;
+        raise failure
+    end
+  let bind_owner owner ~node ~publish ~schedule_receipts =
     live owner;
     if owner.owner_binding <> None && not owner.replacing_owner then invalid_arg "shared virtual owner already bound";
     let binding = {node; lease = fresh owner} in
     owner.owner_binding <- Some binding; owner.publisher <- Some publish;
-    refresh_receipts owner;
+    owner.schedule_receipts <- Some schedule_receipts;
+    stage_receipts owner;
     notify owner; binding
   let unbind_owner owner binding =
     if Option.fold ~none:false ~some:(fun current -> current.lease = binding.lease) owner.owner_binding then begin
       owner.owner_binding <- None; owner.publisher <- None;
+      stage_receipts owner;
+      owner.schedule_receipts <- None;
       Hashtbl.iter (fun _ source ->
         source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
         source.adopt <- (fun _ -> ());
         publish_state owner source.binding_state None) owner.sources;
-      refresh_receipts owner;
       true
     end else false
   let bind_source source ~node ~owner_node =
@@ -243,7 +261,7 @@ module Internal = struct
      | _ -> invalid_arg "shared virtual source requires its bound owner");
     let bound = {node; lease = fresh source.owner} in
     source.bound <- Some bound; source.generation <- 0; source.rows <- []; source.contains <- None;
-    refresh_receipts source.owner;
+    stage_receipts source.owner;
     publish_state source.owner source.binding_state (Some bound);
     bound
   let unbind_source source binding =
@@ -251,7 +269,7 @@ module Internal = struct
       source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
       source.adopt <- (fun _ -> ());
       publish_state source.owner source.binding_state None;
-      refresh_receipts source.owner;
+      stage_receipts source.owner;
       true
     end else false
   let owner_binding source = source.owner.owner_binding
@@ -270,7 +288,7 @@ module Internal = struct
     | Some bound, Some owner when bound.lease = lease && source.owner_epoch = owner.lease
         && generation >= source.generation ->
       source.generation <- generation; source.rows <- rows; source.contains <- Some contains;
-      refresh_receipts source.owner
+      stage_receipts source.owner
     | _ -> ()
   let adopt_pins source ~node adopt =
     match source.bound with
@@ -301,6 +319,7 @@ module Internal = struct
     fun () -> source.replacing_source <- previous
   let checkpoint owner =
     let binding = owner.owner_binding and publisher = owner.publisher in
+    let schedule_receipts = owner.schedule_receipts and receipts_dirty = owner.receipts_dirty in
     let sources = Hashtbl.fold (fun _ source saved ->
       (source, source.bound, source.owner_epoch, source.generation, source.rows,
         source.contains, source.listeners, source.adopt) :: saved)
@@ -309,6 +328,7 @@ module Internal = struct
       (retention, retention.latest, retention.releasing) :: saved) owner.tickets [] in
     fun () ->
       owner.owner_binding <- binding; owner.publisher <- publisher;
+      owner.schedule_receipts <- schedule_receipts; owner.receipts_dirty <- receipts_dirty;
       List.iter (fun (source, bound, owner_epoch, generation, rows, contains, listeners, adopt) ->
         source.bound <- bound; source.owner_epoch <- owner_epoch;
         source.generation <- generation; source.rows <- rows; source.contains <- contains;
