@@ -290,6 +290,13 @@ enum LUIProperty: String, Decodable, Hashable {
     case toggleDetailEnabled = "toggle-detail-enabled"
     case focusWithinEnabled = "focus-within-enabled"
     case shrink = "shrink"
+    case virtualViewportEpoch = "virtual-viewport-epoch"
+    case virtualOwnerNode = "virtual-owner-node"
+    case virtualOwnerEpoch = "virtual-owner-epoch"
+    case virtualSourcePath = "virtual-source-path"
+    case virtualRowKeys = "virtual-row-keys"
+    case virtualRetentions = "virtual-retentions"
+    case virtualRetentionReleases = "virtual-retention-releases"
 }
 
 enum LUISchemaMatrix {
@@ -421,7 +428,8 @@ enum LUISchemaMatrix {
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],
         .switchControl: [.foreground],
-        .virtualList: [.overscan, .itemExtent, .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex],
+        .virtualList: [.overscan, .itemExtent, .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex, .virtualOwnerNode, .virtualOwnerEpoch, .virtualSourcePath, .virtualRowKeys],
+        .scroll: [.virtualViewportEpoch, .virtualRetentions, .virtualRetentionReleases],
         .textField: [.readOnly],
         .secureField: [.readOnly],
         .input: [.readOnly],

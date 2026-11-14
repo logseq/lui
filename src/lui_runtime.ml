@@ -59,6 +59,9 @@ type application = {
   runtime_scheduler : Signal.scheduler;
   runtime_backend : backend;
   runtime_virtual_rows : bool;
+  runtime_virtual_capabilities : Lui_virtual.capability list;
+  runtime_virtual_sources : (int, Lui_virtual.source) Hashtbl.t;
+  runtime_virtual_owners : (int, Lui_virtual.owner) Hashtbl.t;
   runtime_extension_registry : Lui_extension.extension_registry;
   next_node_id : int ref;
   next_virtual_generation : int ref;
@@ -112,6 +115,9 @@ type application = {
 }
 
 type runtime_checkpoint = {
+  checkpoint_virtual_sources : (int, Lui_virtual.source) Hashtbl.t;
+  checkpoint_virtual_owners : (int, Lui_virtual.owner) Hashtbl.t;
+  checkpoint_restore_virtual : (unit -> unit) list;
   checkpoint_nodes : int list option;
   checkpoint_generation : int;
   checkpoint_next_node_id : int;
@@ -167,17 +173,25 @@ let empty_diagnostics () =
     flush_signal_dirty_task_count = 0;
   }
 
-let create_with_extensions ?virtual_rows scheduler backend registry =
+let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler backend registry =
+  List.iter (fun capability ->
+    if not (Lui_virtual.supports backend.backend_profile.profile_host capability) then
+      invalid_arg "shared virtual viewport unsupported by this host") virtual_capabilities;
   let virtual_rows = match virtual_rows with
     | Some supported -> supported
     | None -> (match backend.backend_profile.profile_host with
       | WebHost | SwiftUIHost | KotlinHost -> true
       | GenericHost -> false) in
   Lui_extension.freeze registry;
+  if virtual_capabilities <> [] && not virtual_rows then
+    invalid_arg "shared virtual viewport requires virtual rows";
   {
     runtime_scheduler = scheduler;
     runtime_backend = backend;
     runtime_virtual_rows = virtual_rows;
+    runtime_virtual_capabilities = virtual_capabilities;
+    runtime_virtual_sources = Hashtbl.create 8;
+    runtime_virtual_owners = Hashtbl.create 8;
     runtime_extension_registry = registry;
     next_node_id = ref 0;
     next_virtual_generation = ref 0;
@@ -214,8 +228,8 @@ let create_with_extensions ?virtual_rows scheduler backend registry =
 
 let clock application = application.runtime_clock
 
-let create ?virtual_rows scheduler backend =
-  create_with_extensions ?virtual_rows scheduler backend (Lui_extension.registry ())
+let create ?virtual_rows ?virtual_capabilities scheduler backend =
+  create_with_extensions ?virtual_rows ?virtual_capabilities scheduler backend (Lui_extension.registry ())
 
 let remove_alias application candidate =
   match Hashtbl.find_opt application.runtime_node_aliases candidate with
@@ -259,6 +273,10 @@ let checkpoint ?nodes application =
       saved in
   let segments = copy application.dynamic_segments in
   {
+    checkpoint_virtual_sources = snapshot_hashtbl application.runtime_virtual_sources;
+    checkpoint_virtual_owners = snapshot_hashtbl application.runtime_virtual_owners;
+    checkpoint_restore_virtual = Hashtbl.fold (fun _ owner saved ->
+      Lui_virtual.Internal.checkpoint owner :: saved) application.runtime_virtual_owners [];
     checkpoint_nodes = nodes;
     checkpoint_generation = !(application.runtime_generation);
     checkpoint_next_node_id = !(application.next_node_id);
@@ -393,6 +411,11 @@ let restore application saved =
   in
   application.next_node_id := saved.checkpoint_next_node_id;
   application.next_virtual_generation := saved.checkpoint_next_virtual_generation;
+  Hashtbl.reset application.runtime_virtual_sources;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_sources) saved.checkpoint_virtual_sources;
+  Hashtbl.reset application.runtime_virtual_owners;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_owners) saved.checkpoint_virtual_owners;
+  List.iter (fun restore -> restore ()) saved.checkpoint_restore_virtual;
   let replace target source =
     (match affected with None -> Hashtbl.reset target
     | Some nodes -> List.iter (Hashtbl.remove target) nodes);
@@ -2247,7 +2270,8 @@ let validate_extension_nodes application =
     application.runtime_extension_nodes
 
 let virtual_source_property = function
-  | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex -> true
+  | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex
+  | VirtualOwnerNode | VirtualOwnerEpoch | VirtualSourcePath | VirtualRowKeys -> true
   | _ -> false
 
 let validate_virtual_list application node =
@@ -2298,6 +2322,99 @@ let validate_virtual_list_operations application operations =
       Hashtbl.replace parents parent ()
     | _ -> ()) operations;
   Hashtbl.iter (fun parent () -> validate_virtual_list application parent) parents
+
+let validate_shared_virtual application operations =
+  let shared_property = function
+    | VirtualViewportEpoch | VirtualRetentions | VirtualRetentionReleases
+    | VirtualOwnerNode | VirtualOwnerEpoch | VirtualSourcePath | VirtualRowKeys -> true
+    | _ -> false in
+  if application.runtime_virtual_capabilities = [] then
+    (* Standalone updates must stay proportional to their dirty scope. *)
+    List.iter (function
+      | SetProp (_, property, _) when shared_property property ->
+        invalid_arg "shared virtual viewport capability was not negotiated"
+      | _ -> ()) operations
+  else begin
+  let open Lui_virtual_json in
+  let values node = Option.value
+    (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
+  let integer properties property = match Property_map.find_opt property properties with
+    | Some (IntValue value) when value > 0 -> value
+    | _ -> invalid_arg "incomplete shared virtual binding" in
+  let encoded properties property = match Property_map.find_opt property properties with
+    | Some (StringValue value) -> value
+    | _ -> invalid_arg "incomplete shared virtual metadata" in
+  let rec descendant node ancestor =
+    node = ancestor || match Hashtbl.find_opt application.runtime_parents node with
+      | Some parent -> descendant parent ancestor
+      | None -> false in
+  let paths = Hashtbl.create 8 in
+  let enabled () =
+    if not (List.mem Lui_virtual.Shared_viewport_retention_v1 application.runtime_virtual_capabilities) then
+      invalid_arg "shared virtual viewport capability was not negotiated" in
+  Hashtbl.iter (fun node properties ->
+    if List.exists (fun property -> Property_map.mem property properties)
+        [VirtualViewportEpoch; VirtualRetentions; VirtualRetentionReleases] then begin
+      enabled ();
+      ignore (integer properties VirtualViewportEpoch);
+      let tickets = Hashtbl.create 8 in
+      List.iter (fun record ->
+        let fields = object_ ["ticket"; "path"; "key"] record in
+        let ticket = positive (List.assoc "ticket" fields) in
+        if Hashtbl.mem tickets ticket then fail ();
+        Hashtbl.add tickets ticket ();
+        ignore (path (List.assoc "path" fields));
+        ignore (nonempty (string (List.assoc "key" fields))))
+        (array (decode (encoded properties VirtualRetentions)));
+      let releases = Hashtbl.create 8 in
+      List.iter (fun record ->
+        let fields = object_ ["ticket"; "receipt"] record in
+        let ticket = positive (List.assoc "ticket" fields) in
+        if not (Hashtbl.mem tickets ticket) || Hashtbl.mem releases ticket then fail ();
+        Hashtbl.add releases ticket ();
+        let receipt = object_ ["version"; "status"; "owner"; "epoch"; "ticket";
+          "proof"; "rows"; "geometry"; "pins"; "requirements"]
+          (decode (string (List.assoc "receipt" fields))) in
+        if List.assoc "owner" receipt <> Int node
+           || List.assoc "ticket" receipt <> Int ticket
+           || List.assoc "epoch" receipt <> Int (integer properties VirtualViewportEpoch)
+        then fail ()) (array (decode (encoded properties VirtualRetentionReleases)))
+    end;
+    if List.exists (fun property -> Property_map.mem property properties)
+        [VirtualOwnerNode; VirtualOwnerEpoch; VirtualSourcePath; VirtualRowKeys] then begin
+      enabled ();
+      let owner = integer properties VirtualOwnerNode in
+      let epoch = integer properties VirtualOwnerEpoch in
+      if Hashtbl.find_opt application.mounted_nodes owner <> Some Scroll
+         || integer (values owner) VirtualViewportEpoch <> epoch
+         || not (descendant node owner) then
+        invalid_arg "shared virtual source is outside its bound owner";
+      let source_path = path (decode (encoded properties VirtualSourcePath)) in
+      if Hashtbl.mem paths (owner, source_path) then
+        invalid_arg "duplicate shared virtual source path";
+      Hashtbl.add paths (owner, source_path) node;
+      let keys = vector (encoded properties VirtualRowKeys) in
+      if List.length keys <> List.length (children application node)
+         || not (Property_map.mem VirtualGeneration properties) then
+        invalid_arg "shared virtual row keys do not match sparse children";
+      validate_virtual_list application node
+    end) application.runtime_properties;
+  (* A logical child source must physically live inside its declared semantic
+     parent row, not merely somewhere inside the same scroll owner. *)
+  Hashtbl.iter (fun (owner, source_path) node ->
+    match List.rev source_path with
+    | _child :: parent_key :: reversed_parent ->
+      let parent = match Hashtbl.find_opt paths (owner, List.rev reversed_parent) with
+        | Some parent -> parent
+        | None -> invalid_arg "shared virtual parent source is not bound" in
+      let keys = vector (encoded (values parent) VirtualRowKeys) in
+      let rows = List.combine keys (children application parent) in
+      (match List.assoc_opt parent_key rows with
+       | Some row when descendant node row -> ()
+       | _ -> invalid_arg "shared virtual source is outside its semantic parent row")
+    | [_] -> ()
+    | _ -> fail ()) paths
+  end
 
 let handler_count application = !(application.runtime_handler_count)
 
@@ -2384,6 +2501,7 @@ let rec flush application =
           else elide_pending_ops application
         in
         validate_virtual_list_operations application operations;
+        validate_shared_virtual application operations;
         (* detach before apply: ops queued while the backend applies
            this batch (emits re-entering through event dispatch) land
            in the next batch instead of being re-sent under a stale

@@ -54,6 +54,7 @@ val keyed :
   ('b -> 'b -> int) ->
   (Lui_ui.ui_context -> 'a Signal.signal -> int) -> 'b ui_keyed
 val virtual_rows :
+  ?viewport:Lui_virtual.source ->
   ?scroll_key:('a -> string) ->
   Lui_ui.ui_context -> int -> 'a list Signal.signal ->
   ('a -> 'b) -> ('b -> 'b -> int) ->

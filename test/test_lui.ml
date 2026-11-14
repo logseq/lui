@@ -4757,7 +4757,98 @@ let test_empty_clear_and_disposal_release_every_row_for_host host () =
 
 let test_empty_clear_and_disposal_release_every_row () = test_empty_clear_and_disposal_release_every_row_for_host WebHost ()
 
+let test_shared_retention_handoff () =
+  let owner = Lui_virtual.create_owner () in
+  let root_source = Lui_virtual.root_source owner ~key:"root" in
+  let child_source = Lui_virtual.child_source ~parent:root_source ~row_key:"90" ~key:"children" in
+  let retention = Lui_virtual.retain child_source ~key:"80" in
+  let other = Lui_virtual.retain child_source ~key:"80" in
+  let backend = {backend_profile = profile MacOS SwiftUIHost; apply_batch = (fun _ -> true)} in
+  let view _context source _send =
+    let open Lui_elements in
+    scroll ~virtual_owner:owner [
+      virtual_list ~viewport:root_source ~height:20 ~overscan:0 [
+        virtual_rows ~source ~key:(fun row -> row.identity, row.text) ~cmp:Stdlib.compare
+          ~scroll_key:(fun row -> string_of_int row.identity)
+          ~mount:(fun row ->
+            let row = Signal.sample row in
+            column [text ~value:row.text [];
+              if row.identity = 90 then
+                virtual_list ~viewport:child_source ~height:20 ~overscan:0 [
+                  virtual_rows ~source ~key:(fun row -> row.identity, row.text) ~cmp:Stdlib.compare
+                    ~scroll_key:(fun row -> string_of_int row.identity)
+                    ~mount:(fun row -> text_field ~text:(Signal.sample row).text []) ()]
+              else text ~value:"leaf" []]) ()]] in
+  let app = Lui_app.create ~virtual_capabilities:[Lui_virtual.Shared_viewport_retention_v1]
+    backend (rows 100) reducer view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app);
+    let runtime = Lui_app.runtime app in
+    let flush () = ignore (Lui_app.flush app) in
+    let bound source = Option.get (Signal.sample (Lui_virtual.binding source)) in
+    let owner_node () = int_prop runtime (bound root_source).node "virtual-owner-node" in
+    let row source key =
+      let node = (bound source).node in
+      let keys = match prop runtime node "virtual-row-keys" with
+        | Some (StringValue text) -> Yojson.Basic.Util.(to_list (Yojson.Basic.from_string text) |> List.map to_string)
+        | _ -> failwith "missing semantic keys" in
+      List.assoc_opt key (List.combine keys (direct_rows runtime node)) in
+    let window source pins =
+      let node = (bound source).node in
+      ignore (Lui_app.dispatch_event app
+        (VirtualWindow (node, int_prop runtime node "virtual-generation", 0, 1, pins))) in
+    let check_retained () =
+      Alcotest.(check bool) "cold ancestor remains mounted" true (Option.is_some (row root_source "90"));
+      Alcotest.(check bool) "cold descendant remains mounted" true (Option.is_some (row child_source "80")) in
+    let envelope status proof =
+      let row_json source key =
+        let node = (bound source).node in
+        Printf.sprintf "{\"source\":%d,\"generation\":%d,\"row\":%d,\"incarnation\":1}"
+          node (int_prop runtime node "virtual-generation") (Option.get (row source key)) in
+      Printf.sprintf "{\"version\":1,\"status\":\"%s\",\"owner\":%d,\"epoch\":%d,\"ticket\":%d,\"proof\":%d,\"rows\":[%s,%s],\"geometry\":1,\"pins\":1,\"requirements\":[\"attached\",\"focus\"]}"
+        status (owner_node ()) (int_prop runtime (owner_node ()) "virtual-viewport-epoch")
+        (Lui_virtual.ticket retention) proof (row_json root_source "90") (row_json child_source "80") in
+    let deliver text =
+      ignore (Lui_app.dispatch_event app
+        (VirtualRetention (owner_node (), Lui_virtual.ticket retention, text)));
+      flush () in
+    flush ();
+    check_retained ();
+    window root_source []; window child_source []; flush (); check_retained ();
+    Lui_virtual.cancel_retention other;
+    window root_source []; window child_source []; flush (); check_retained ();
+    let old_release = envelope "released" 1 in
+    deliver (envelope "focused" 1);
+    let proof = Option.get (Signal.sample (Lui_virtual.receipt retention)) in
+    Alcotest.(check bool) "valid receipt requests transfer" true
+      (Lui_virtual.request_release retention proof = Ok ());
+    window root_source []; window child_source []; flush (); check_retained ();
+    ignore (Lui_app.send app (Replace (List.rev (Lui_app.model app)))); flush ();
+    deliver old_release; window root_source []; window child_source []; flush (); check_retained ();
+    Alcotest.(check bool) "publication invalidates previous proof" true
+      (Lui_virtual.request_release retention proof = Error Lui_virtual.Stale_receipt);
+    (* A render-key change recreates the nested source at the same semantic
+       path. Its old native receipt must not release the new incarnation. *)
+    ignore (Lui_app.send app (Edit (90, "new incarnation"))); flush ();
+    deliver old_release; window root_source []; window child_source []; flush (); check_retained ();
+    deliver (envelope "focused" 2);
+    let proof = Option.get (Signal.sample (Lui_virtual.receipt retention)) in
+    Alcotest.(check bool) "new incarnation obtains fresh proof" true
+      (Lui_virtual.request_release retention proof = Ok ());
+    let root_pin = Option.get (row root_source "90") in
+    let child_pin = Option.get (row child_source "80") in
+    window root_source [root_pin]; window child_source [child_pin];
+    deliver (envelope "released" 2); flush ();
+    Alcotest.(check bool) "handoff publishes released receipt" true
+      (Option.map Lui_virtual.receipt_status (Signal.sample (Lui_virtual.receipt retention))
+       = Some Lui_virtual.Released);
+    window child_source []; window root_source []; flush ();
+    Alcotest.(check bool) "physical unpin permits eviction after release" true
+      (Option.is_none (row root_source "90")))
+    ~finally:(fun () -> ignore (Lui_app.dispose app); Lui_virtual.dispose_owner owner)
+
 let tests = [
+  "nested cold retention uses proof-backed two-phase handoff", test_shared_retention_handoff;
   "100k rows retain bounded UI tree and wire", test_initial_tree_is_bounded;
   "unknown height bootstraps bounded rows", test_unmeasured_bootstrap_is_bounded;
   "overlap retains identity and evictions dispose", test_window_overlap_retains_identity_and_disposes_evictions;

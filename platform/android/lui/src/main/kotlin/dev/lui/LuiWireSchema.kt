@@ -297,6 +297,13 @@ enum class LuiProperty(val wireName: String) {
     toggleDetailEnabled("toggle-detail-enabled"),
     focusWithinEnabled("focus-within-enabled"),
     shrink("shrink"),
+    virtualViewportEpoch("virtual-viewport-epoch"),
+    virtualOwnerNode("virtual-owner-node"),
+    virtualOwnerEpoch("virtual-owner-epoch"),
+    virtualSourcePath("virtual-source-path"),
+    virtualRowKeys("virtual-row-keys"),
+    virtualRetentions("virtual-retentions"),
+    virtualRetentionReleases("virtual-retention-releases"),
     ;
 
     companion object {
@@ -350,7 +357,8 @@ object LuiSchemaMatrix {
         LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.switchControl to setOf(LuiProperty.foreground),
-        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent, LuiProperty.virtualTotalCount, LuiProperty.virtualGeneration, LuiProperty.virtualIndices, LuiProperty.virtualScrollIndex),
+        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent, LuiProperty.virtualTotalCount, LuiProperty.virtualGeneration, LuiProperty.virtualIndices, LuiProperty.virtualScrollIndex, LuiProperty.virtualOwnerNode, LuiProperty.virtualOwnerEpoch, LuiProperty.virtualSourcePath, LuiProperty.virtualRowKeys),
+        LuiNodeKind.scroll to setOf(LuiProperty.virtualViewportEpoch, LuiProperty.virtualRetentions, LuiProperty.virtualRetentionReleases),
         LuiNodeKind.textField to setOf(LuiProperty.readOnly),
         LuiNodeKind.secureField to setOf(LuiProperty.readOnly),
         LuiNodeKind.input to setOf(LuiProperty.readOnly),

@@ -1861,6 +1861,41 @@
       "lg": "ShrinkValue",
       "wire": "shrink",
       "swift": "shrink"
+    },
+    {
+      "lg": "VirtualViewportEpoch",
+      "wire": "virtual-viewport-epoch",
+      "swift": "virtualViewportEpoch"
+    },
+    {
+      "lg": "VirtualOwnerNode",
+      "wire": "virtual-owner-node",
+      "swift": "virtualOwnerNode"
+    },
+    {
+      "lg": "VirtualOwnerEpoch",
+      "wire": "virtual-owner-epoch",
+      "swift": "virtualOwnerEpoch"
+    },
+    {
+      "lg": "VirtualSourcePath",
+      "wire": "virtual-source-path",
+      "swift": "virtualSourcePath"
+    },
+    {
+      "lg": "VirtualRowKeys",
+      "wire": "virtual-row-keys",
+      "swift": "virtualRowKeys"
+    },
+    {
+      "lg": "VirtualRetentions",
+      "wire": "virtual-retentions",
+      "swift": "virtualRetentions"
+    },
+    {
+      "lg": "VirtualRetentionReleases",
+      "wire": "virtual-retention-releases",
+      "swift": "virtualRetentionReleases"
     }
   ],
   "events": [
@@ -2059,6 +2094,11 @@
         ":int",
         ":bool"
       ]
+    },
+    {
+      "lg": "VirtualRetention",
+      "fields": [":int", ":int", ":string"],
+      "afterExtension": true
     }
   ],
   "kindProperties": {
@@ -2330,7 +2370,16 @@
       "virtual-total-count",
       "virtual-generation",
       "virtual-indices",
-      "virtual-scroll-index"
+      "virtual-scroll-index",
+      "virtual-owner-node",
+      "virtual-owner-epoch",
+      "virtual-source-path",
+      "virtual-row-keys"
+    ],
+    "scroll": [
+      "virtual-viewport-epoch",
+      "virtual-retentions",
+      "virtual-retention-releases"
     ],
     "text-field": [
       "read-only"
