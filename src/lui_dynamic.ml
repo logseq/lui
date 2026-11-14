@@ -81,6 +81,18 @@ let segment_disposer application segment dispose_reactive () =
   Fun.protect dispose_reactive
     ~finally:(fun () -> Lui_runtime.unregister_dynamic_segment application segment)
 
+let replacing_virtual_nodes application nodes =
+  let replacements = List.filter_map (fun node ->
+    match Hashtbl.find_opt application.Lui_runtime.runtime_virtual_sources node with
+    | Some source -> Some (Lui_virtual.Internal.replacing_source source)
+    | None -> Option.map Lui_virtual.Internal.replacing_owner
+        (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_owners node)) nodes in
+  let finished = ref false in
+  fun () -> if not !finished then begin
+    finished := true;
+    List.iter (fun finish -> finish ()) replacements
+  end
+
 let switch context parent source equal mount =
   let application = context.Lui_ui.ui_application in
   let segment = Lui_runtime.register_dynamic_segment application parent in
@@ -131,6 +143,9 @@ let switch context parent source equal mount =
           | Some old_node ->
             let old_scope = !current_scope in
             let saved = Lui_runtime.checkpoint_subtree application parent old_node in
+            let finish_replacements = replacing_virtual_nodes application
+              (Lui_runtime.collect_subtree_nodes application.Lui_runtime.runtime_children
+                (Lui_runtime.canonical_node application old_node)) in
             let candidate = ref None in
             let committed = ref false in
             (try
@@ -151,6 +166,7 @@ let switch context parent source equal mount =
                   throwing mount hook rolls back to an old scope whose
                   subscriptions were never disposed. *)
                Signal.mount branch_context.Lui_ui.ui_scope;
+               finish_replacements ();
                !current_retired := true;
                Lui_runtime.retire_checkpoint_dynamic_segments saved old_node;
                current_key := next_key;
@@ -160,6 +176,7 @@ let switch context parent source equal mount =
                committed := true;
                Signal.dispose_scope old_scope
              with failure ->
+               finish_replacements ();
                (* A mount or reconcile failure can leave tables half rebuilt;
                   restore the checkpoint and discard the candidate branch so
                   the old branch stays mounted. *)
@@ -351,6 +368,9 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
           application.Lui_runtime.runtime_children entry.keyed_item_node) nodes)
         [Lui_runtime.canonical_node application parent] old in
       let saved = Lui_runtime.checkpoint ~nodes application in
+      let retiring = List.filter (fun node ->
+        node <> Lui_runtime.canonical_node application parent) nodes in
+      let finish_replacements = replacing_virtual_nodes application retiring in
       let previous_entries = !entries in
       let previous_ordered = !ordered and previous_nodes = !nodes_ref in
       let mounted = ref [] in
@@ -378,6 +398,7 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
           mounted := entry :: !mounted;
           Signal.mount scope;
           Some entry) items in
+      finish_replacements ();
       let old = !ordered in
       let old_positions = ref Keys.empty in
       Array.iteri (fun index (key, _) -> old_positions := Keys.add key index !old_positions) old;
@@ -436,6 +457,7 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
          nodes_ref := Array.to_list (Array.map (fun (key, entry) -> { ui_key = key; ui_node = entry.keyed_item_node }) next);
          Option.iter (fun commit -> commit ()) commit
        with failure ->
+         finish_replacements ();
          Lui_runtime.restore application saved;
          entries := previous_entries;
          ordered := previous_ordered; nodes_ref := previous_nodes;
@@ -482,10 +504,12 @@ let keyed context parent source key_fn compare mount =
       Signal.dispose_subscription subscription;
       keyed.dispose_dynamic_keyed ()) }
 
-let virtual_rows (type key) ?scroll_key context parent source
+let virtual_rows (type key) ?viewport ?scroll_key context parent source
     (key_fn : _ -> key) compare mount =
   let module Keys = Map.Make (struct type t = key let compare = compare end) in
   let application = context.Lui_ui.ui_application in
+  if Option.is_some viewport && Option.is_none scroll_key then
+    invalid_arg "shared virtual rows require semantic scroll_key";
   let segment = Lui_runtime.register_dynamic_segment ~exclusive:true application parent in
   let reconcile, keyed = keyed_controller context parent segment key_fn compare mount in
   if not application.Lui_runtime.runtime_virtual_rows then begin
@@ -496,6 +520,8 @@ let virtual_rows (type key) ?scroll_key context parent source
         Signal.dispose_subscription subscription;
         keyed.dispose_dynamic_keyed ()) }
   end else begin
+    let viewport_lease = Option.map (fun source ->
+      (Option.get (Signal.sample (Lui_virtual.binding source))).Lui_virtual.lease) viewport in
     let dataset = ref [||] in
     let positions = ref Keys.empty in
     let scroll_positions = ref Lui_protocol.String_map.empty in
@@ -536,11 +562,33 @@ let virtual_rows (type key) ?scroll_key context parent source
         indices := Keys.add key index !indices;
         Option.iter (fun scroll_key ->
           let key = scroll_key item in
+          if Option.is_some viewport && key = "" then
+            invalid_arg "shared virtual row key must not be empty";
           if Lui_protocol.String_map.mem key !targets then
             invalid_arg "virtual_rows contains a duplicate scroll_key";
           targets := Lui_protocol.String_map.add key index !targets) scroll_key) items;
       items, !indices, !targets in
-    let reconcile_indices items indices targets epoch selected =
+    let window_keys = ref [] and native_pins = ref [] and adopted_pins = ref [] in
+    let visible_indices indices = List.filter_map (fun key -> Keys.find_opt key indices) !window_keys in
+    let reconcile_indices ?window_pins items indices targets epoch selected =
+      let visible_keys = List.map (fun index -> key_fn items.(index)) selected in
+      (* Cold semantic keys are unioned before every reconciliation, including
+         bootstrap and source publications, before any row has a native id. *)
+      let retained = match viewport with
+        | None -> []
+        | Some viewport -> List.filter_map (fun key ->
+            Lui_protocol.String_map.find_opt key targets)
+            (Lui_virtual.Internal.retained_keys viewport) in
+      let pins = match window_pins with
+        | Some pins -> pins
+        | None -> List.rev_append !native_pins !adopted_pins in
+      let pins = List.map (Lui_runtime.canonical_node application) pins in
+      let physical = List.filter_map (fun entry ->
+        if List.mem (Lui_runtime.canonical_node application entry.ui_node) pins
+        then Keys.find_opt entry.ui_key indices else None)
+        !(keyed.key_nodes) in
+      let selected = List.sort_uniq Int.compare
+        (List.rev_append physical (List.rev_append retained selected)) in
       let target_index = target targets (property Lui_protocol.ScrollTarget) in
       let selected_items = List.map (Array.get items) selected in
       reconcile selected_items ~commit:(fun () ->
@@ -550,8 +598,19 @@ let virtual_rows (type key) ?scroll_key context parent source
             Lui_protocol.VirtualIndices,
               Lui_protocol.StringValue (Lui_protocol.virtual_indices_to_string selected);
             Lui_protocol.VirtualScrollIndex, Lui_protocol.IntValue target_index ];
+        Option.iter (fun viewport ->
+          let keys = List.map (fun index ->
+            (Option.get scroll_key) items.(index)) selected in
+          Lui_runtime.set_prop application parent Lui_protocol.VirtualRowKeys
+            (Lui_protocol.StringValue (Lui_virtual_json.encode_strings keys));
+          let children = Lui_runtime.children application parent in
+          Lui_virtual.Internal.commit_rows viewport ~lease:(Option.get viewport_lease) ~generation:epoch
+            ~contains:(fun key -> Lui_protocol.String_map.mem key targets)
+            (List.combine keys children)) viewport;
         Lui_runtime.validate_virtual_list application parent;
         dataset := items; positions := indices; scroll_positions := targets;
+        window_keys := visible_keys;
+        Option.iter (fun pins -> native_pins := pins; adopted_pins := []) window_pins;
         revision := epoch) in
     let update_source items =
       if not !stopped && Lui_runtime.node_live application parent then begin
@@ -559,8 +618,10 @@ let virtual_rows (type key) ?scroll_key context parent source
         (* Keep matched mounted keys through the generation handshake. A new
            bootstrap is needed only if no old row remains, avoiding growth
            across repeated source revisions before the host responds. *)
-        let selected = List.filter_map (fun entry -> Keys.find_opt entry.ui_key indices)
-          !(keyed.key_nodes) |> List.sort_uniq Int.compare in
+        let selected = (match viewport with
+          | Some _ -> visible_indices indices
+          | None -> List.filter_map (fun entry -> Keys.find_opt entry.ui_key indices)
+              !(keyed.key_nodes)) |> List.sort_uniq Int.compare in
         let selected = if selected = [] then bootstrap (Array.length items) else selected in
         let saved = Lui_runtime.checkpoint
           ~nodes:[Lui_runtime.canonical_node application parent] application in
@@ -576,6 +637,15 @@ let virtual_rows (type key) ?scroll_key context parent source
           raise failure)
       end in
     update_source (Signal.sample source);
+    let clear_adopted_pins = Option.map (fun viewport ->
+      Lui_virtual.Internal.adopt_pins viewport ~node:parent (fun pins ->
+        adopted_pins := List.sort_uniq Int.compare (List.rev_append pins !adopted_pins))) viewport in
+    let unsubscribe_retention = Option.map (fun viewport ->
+      Lui_virtual.Internal.on_change viewport (fun () ->
+        if not !stopped && Lui_runtime.node_live application parent then begin
+          let selected = visible_indices !positions in
+          reconcile_indices !dataset !positions !scroll_positions !revision selected
+        end)) viewport in
     segment.Lui_runtime.dynamic_segment_on_property := Some (fun name value ->
       if name = Lui_protocol.ScrollTarget && not !stopped then
         Lui_runtime.set_prop application parent Lui_protocol.VirtualScrollIndex
@@ -588,28 +658,22 @@ let virtual_rows (type key) ?scroll_key context parent source
         if first < 0 || last < first then invalid_arg "invalid virtual row window";
         let count = Array.length !dataset in
         let first = min count first and last = min count last in
-        let selected = ref Lui_protocol.Int_map.empty in
-        for index = first to last - 1 do
-          selected := Lui_protocol.Int_map.add index () !selected
-        done;
-        List.iter (fun node ->
-          match List.find_opt (fun entry ->
-            Lui_runtime.canonical_node application entry.ui_node
-              = Lui_runtime.canonical_node application node
-            && Lui_runtime.node_live application node) !(keyed.key_nodes) with
-          | None -> ()
-          | Some entry -> Option.iter (fun index ->
-              selected := Lui_protocol.Int_map.add index () !selected)
-              (Keys.find_opt entry.ui_key !positions)) pins;
-        let selected = Lui_protocol.Int_map.bindings !selected |> List.map fst in
-        reconcile_indices !dataset !positions !scroll_positions !revision selected
+        (* Native emits its current pin snapshot before a released receipt.
+           The receipt's adopted snapshot also covers the immediate cold-key
+           removal, until the next current-generation window replaces it. *)
+        let pins = List.filter (Lui_runtime.node_live application) pins in
+        let selected = List.init (last - first) (fun index -> first + index) in
+        reconcile_indices ~window_pins:pins !dataset !positions !scroll_positions !revision selected
       | _ -> ());
     let dispose () =
       if not !stopped then begin
         stopped := true;
         Signal.dispose_subscription subscription;
+        Option.iter (fun unsubscribe -> unsubscribe ()) unsubscribe_retention;
+        Option.iter (fun clear -> clear ()) clear_adopted_pins;
         segment.Lui_runtime.dynamic_segment_on_property := None;
         dataset := [||]; positions := Keys.empty;
+        window_keys := []; native_pins := []; adopted_pins := [];
         scroll_positions := Lui_protocol.String_map.empty;
         keyed.dispose_dynamic_keyed ()
       end in

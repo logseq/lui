@@ -311,6 +311,12 @@ type property =
   | ToggleDetailEnabled
   | FocusWithinEnabled
   | ShrinkValue
+  | VirtualViewportEpoch
+  | VirtualOwnerNode
+  | VirtualOwnerEpoch
+  | VirtualRowKeys
+  | VirtualRetentions
+  | VirtualRetentionReleases
 
 module Property_map =
   Map.Make
@@ -375,6 +381,7 @@ type event =
   | ToggleChangedDetail of int * bool * int
   | FocusWithinChanged of int * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
+  | VirtualRetention of int * int * string
 
 type patch_op =
   | CreateNode of int * node_kind
@@ -435,6 +442,7 @@ let event_node event =
   | NavigationKey (node, _, _)
   | ScrollEdges (node, _, _)
   | VirtualWindow (node, _, _, _, _)
+  | VirtualRetention (node, _, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -581,6 +589,7 @@ let event_supported kind event =
   | ScrollCompleted _ | VisibleRange _ | ScrollEdges _ ->
       kind = ListContainer || kind = VirtualList
   | VirtualWindow _ -> kind = VirtualList
+  | VirtualRetention _ -> kind = Scroll
   | Picked _ -> kind = FilePicker
   | PointerMove _ | PointerCancel _ -> kind = Row || kind = Box
   | PressDetail _ | PointerDown _ | PointerUp _ ->
@@ -956,6 +965,8 @@ let can_contain_children kind =
 
 let common_property_supported kind property =
   match property with
+  | VirtualViewportEpoch | VirtualRetentions | VirtualRetentionReleases -> kind = Scroll
+  | VirtualOwnerNode | VirtualOwnerEpoch | VirtualRowKeys -> kind = VirtualList
   | ReadOnly -> List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
   | VirtualOverscan | VirtualItemExtent | VirtualTotalCount | VirtualGeneration
   | VirtualIndices | VirtualScrollIndex -> kind = VirtualList
@@ -1323,7 +1334,9 @@ let common_property_supported kind property =
   | MinHeightViewport | MaxHeightViewport -> kind <> Tooltip
 
 let property_supported kind property =
-  if property = ReadOnly then List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
+  if List.mem property [VirtualViewportEpoch; VirtualRetentions; VirtualRetentionReleases] then kind = Scroll
+  else if List.mem property [VirtualOwnerNode; VirtualOwnerEpoch; VirtualRowKeys] then kind = VirtualList
+  else if property = ReadOnly then List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
   else if List.mem property [VirtualOverscan; VirtualItemExtent; VirtualTotalCount;
     VirtualGeneration; VirtualIndices; VirtualScrollIndex] then kind = VirtualList
   else if property = AccessibilityIdentifier then true
@@ -1614,6 +1627,8 @@ let virtual_indices_to_string indices =
 
 let property_value_supported property value =
   match (property, value) with
+  | (VirtualViewportEpoch | VirtualOwnerEpoch | VirtualOwnerNode), IntValue n -> n > 0
+  | (VirtualRowKeys | VirtualRetentions | VirtualRetentionReleases), StringValue _ -> true
   | ReadOnly, BoolValue _ -> true
   | VirtualOverscan, IntValue n -> n >= 0
   | VirtualItemExtent, FloatValue f -> is_finite f && f > 0.

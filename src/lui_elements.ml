@@ -475,7 +475,9 @@ let virtual_rows ?scroll_key ~source ~key ~cmp ~mount () : t =
   match parent with
   | None -> invalid_arg "virtual_rows requires a virtual-list parent"
   | Some node ->
-    ignore (Lui_dynamic.virtual_rows ?scroll_key context node source key cmp
+    let viewport = Hashtbl.find_opt
+      context.Lui_ui.ui_application.Lui_runtime.runtime_virtual_sources node in
+    ignore (Lui_dynamic.virtual_rows ?viewport ?scroll_key context node source key cmp
       (fun item_context item_source -> mount item_source item_context None));
     node
 
@@ -928,9 +930,34 @@ let box ?key ?gap ?main ?cross ?grow ?shrink ?columns ?padding ?padding_horizont
   mount_children context node children;
   node
 
-let scroll ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?orientation ?opacity ?opacity_signal ?transition (children : t list) : t =
+let scroll ?virtual_owner ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?orientation ?opacity ?opacity_signal ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.scroll context in
+  Option.iter (fun owner ->
+    if Option.value orientation ~default:`vertical <> `vertical then
+      invalid_arg "shared virtual viewport requires vertical scrolling";
+    let application = context.Lui_ui.ui_application in
+    if not (List.mem Lui_virtual.Shared_viewport_retention_v1 application.Lui_runtime.runtime_virtual_capabilities) then
+      invalid_arg "shared virtual viewport capability was not negotiated";
+    let binding = Lui_virtual.Internal.bind_owner owner ~node
+      ~schedule_receipts:(fun () ->
+        Hashtbl.replace application.Lui_runtime.runtime_virtual_receipts node owner)
+      ~publish:(fun epoch retentions releases ->
+      Lui_runtime.set_prop application node VirtualViewportEpoch (IntValue epoch);
+      Lui_runtime.set_prop application node VirtualRetentions (StringValue retentions);
+      Lui_runtime.set_prop application node VirtualRetentionReleases (StringValue releases)) in
+    Hashtbl.add application.Lui_runtime.runtime_virtual_owners node owner;
+    Lui_ui.on_event context node (function
+      | VirtualRetention (node, ticket, receipt) ->
+        Lui_virtual.Internal.accept_receipt owner ~node ~ticket receipt
+      | _ -> ());
+    Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
+      if Lui_virtual.Internal.unbind_owner owner binding then begin
+        let node = Lui_runtime.canonical_node application node in
+        if Option.fold ~none:false ~some:(fun current -> current == owner)
+          (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_owners node) then
+          Hashtbl.remove application.Lui_runtime.runtime_virtual_owners node
+      end)) virtual_owner;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.float_property context node Opacity) opacity;
   Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
@@ -969,9 +996,27 @@ let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   mount_children context node children;
   node
 
-let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?scroll_target ?scroll_anchor ?scroll_token ?scroll_target_signal ?scroll_token_signal ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
+let virtual_list ?viewport ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?scroll_target ?scroll_anchor ?scroll_token ?scroll_target_signal ?scroll_token_signal ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.virtual_list context in
+  Option.iter (fun source ->
+    let application = context.Lui_ui.ui_application in
+    if not (List.mem Lui_virtual.Shared_viewport_retention_v1 application.Lui_runtime.runtime_virtual_capabilities) then
+      invalid_arg "shared virtual viewport capability was not negotiated";
+    let owner = match Lui_virtual.Internal.owner_binding source with
+      | Some bound -> bound
+      | None -> invalid_arg "shared virtual source has no bound owner" in
+    let bound = Lui_virtual.Internal.bind_source source ~node ~owner_node:owner.node in
+    Hashtbl.add application.Lui_runtime.runtime_virtual_sources node source;
+    Lui_ui.int_property context node VirtualOwnerNode owner.node;
+    Lui_ui.int_property context node VirtualOwnerEpoch owner.lease;
+    Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
+      if Lui_virtual.Internal.unbind_source source bound then begin
+        let node = Lui_runtime.canonical_node application node in
+        if Option.fold ~none:false ~some:(fun current -> current == source)
+          (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_sources node) then
+          Hashtbl.remove application.Lui_runtime.runtime_virtual_sources node
+      end)) viewport;
   Option.iter (Lui_ui.int_property context node VirtualOverscan) overscan;
   Option.iter (Lui_ui.float_property context node VirtualItemExtent) item_extent;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;

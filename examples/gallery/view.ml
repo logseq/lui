@@ -1925,6 +1925,7 @@ let event_payload = function
   | ExtensionEvent (_, identifier, name, _) -> "extension:" ^ identifier ^ ":" ^ name
   | FocusWithinChanged (_, within) -> Printf.sprintf "focus-within:%b" within
   | PointerMove _ -> "pointer-move"
+  | VirtualRetention _ -> "virtual-retention"
   | PointerCancel _ -> "pointer-cancel"
   | ToggleChangedDetail (_, checked, modifiers) ->
     Printf.sprintf "toggle-detail:%b:%d" checked modifiers

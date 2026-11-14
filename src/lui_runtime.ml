@@ -59,6 +59,10 @@ type application = {
   runtime_scheduler : Signal.scheduler;
   runtime_backend : backend;
   runtime_virtual_rows : bool;
+  runtime_virtual_capabilities : Lui_virtual.capability list;
+  runtime_virtual_sources : (int, Lui_virtual.source) Hashtbl.t;
+  runtime_virtual_owners : (int, Lui_virtual.owner) Hashtbl.t;
+  runtime_virtual_receipts : (int, Lui_virtual.owner) Hashtbl.t;
   runtime_extension_registry : Lui_extension.extension_registry;
   next_node_id : int ref;
   next_virtual_generation : int ref;
@@ -112,6 +116,10 @@ type application = {
 }
 
 type runtime_checkpoint = {
+  checkpoint_virtual_sources : (int, Lui_virtual.source) Hashtbl.t;
+  checkpoint_virtual_owners : (int, Lui_virtual.owner) Hashtbl.t;
+  checkpoint_virtual_receipts : (int, Lui_virtual.owner) Hashtbl.t;
+  checkpoint_restore_virtual : (unit -> unit) list;
   checkpoint_nodes : int list option;
   checkpoint_generation : int;
   checkpoint_next_node_id : int;
@@ -167,17 +175,26 @@ let empty_diagnostics () =
     flush_signal_dirty_task_count = 0;
   }
 
-let create_with_extensions ?virtual_rows scheduler backend registry =
+let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler backend registry =
+  List.iter (fun capability ->
+    if not (Lui_virtual.supports backend.backend_profile.profile_host capability) then
+      invalid_arg "shared virtual viewport unsupported by this host") virtual_capabilities;
   let virtual_rows = match virtual_rows with
     | Some supported -> supported
     | None -> (match backend.backend_profile.profile_host with
       | WebHost | SwiftUIHost | KotlinHost -> true
       | GenericHost -> false) in
   Lui_extension.freeze registry;
+  if virtual_capabilities <> [] && not virtual_rows then
+    invalid_arg "shared virtual viewport requires virtual rows";
   {
     runtime_scheduler = scheduler;
     runtime_backend = backend;
     runtime_virtual_rows = virtual_rows;
+    runtime_virtual_capabilities = virtual_capabilities;
+    runtime_virtual_sources = Hashtbl.create 8;
+    runtime_virtual_owners = Hashtbl.create 8;
+    runtime_virtual_receipts = Hashtbl.create 8;
     runtime_extension_registry = registry;
     next_node_id = ref 0;
     next_virtual_generation = ref 0;
@@ -214,8 +231,8 @@ let create_with_extensions ?virtual_rows scheduler backend registry =
 
 let clock application = application.runtime_clock
 
-let create ?virtual_rows scheduler backend =
-  create_with_extensions ?virtual_rows scheduler backend (Lui_extension.registry ())
+let create ?virtual_rows ?virtual_capabilities scheduler backend =
+  create_with_extensions ?virtual_rows ?virtual_capabilities scheduler backend (Lui_extension.registry ())
 
 let remove_alias application candidate =
   match Hashtbl.find_opt application.runtime_node_aliases candidate with
@@ -259,6 +276,11 @@ let checkpoint ?nodes application =
       saved in
   let segments = copy application.dynamic_segments in
   {
+    checkpoint_virtual_sources = snapshot_hashtbl application.runtime_virtual_sources;
+    checkpoint_virtual_owners = snapshot_hashtbl application.runtime_virtual_owners;
+    checkpoint_virtual_receipts = snapshot_hashtbl application.runtime_virtual_receipts;
+    checkpoint_restore_virtual = Hashtbl.fold (fun _ owner saved ->
+      Lui_virtual.Internal.checkpoint owner :: saved) application.runtime_virtual_owners [];
     checkpoint_nodes = nodes;
     checkpoint_generation = !(application.runtime_generation);
     checkpoint_next_node_id = !(application.next_node_id);
@@ -393,6 +415,13 @@ let restore application saved =
   in
   application.next_node_id := saved.checkpoint_next_node_id;
   application.next_virtual_generation := saved.checkpoint_next_virtual_generation;
+  Hashtbl.reset application.runtime_virtual_sources;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_sources) saved.checkpoint_virtual_sources;
+  Hashtbl.reset application.runtime_virtual_owners;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_owners) saved.checkpoint_virtual_owners;
+  Hashtbl.reset application.runtime_virtual_receipts;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_receipts) saved.checkpoint_virtual_receipts;
+  List.iter (fun restore -> restore ()) saved.checkpoint_restore_virtual;
   let replace target source =
     (match affected with None -> Hashtbl.reset target
     | Some nodes -> List.iter (Hashtbl.remove target) nodes);
@@ -1310,6 +1339,21 @@ let reconcile_subtree application saved parent old_root candidate_root =
     remap_node_values application.runtime_properties candidate_nodes mapping
       base_properties
   in
+  (* Owner references are node ids inside property values, so remapping only
+     their table keys would leave sources pointing at discarded candidates. *)
+  Hashtbl.iter (fun node properties ->
+    match Property_map.find_opt VirtualOwnerNode properties with
+    | Some (IntValue owner) -> Hashtbl.replace desired_properties node
+        (Property_map.add VirtualOwnerNode (IntValue (map_node mapping owner)) properties)
+    | _ -> ()) desired_properties;
+  let remap_virtual current saved =
+    let base = snapshot_hashtbl saved in
+    remove_node_keys base old_nodes;
+    remap_node_values current candidate_nodes mapping base in
+  let desired_virtual_sources = remap_virtual application.runtime_virtual_sources
+    saved.checkpoint_virtual_sources in
+  let desired_virtual_owners = remap_virtual application.runtime_virtual_owners
+    saved.checkpoint_virtual_owners in
   let base_echo = Hashtbl.copy saved.checkpoint_echo in
   remove_node_keys base_echo old_nodes;
   let desired_echo =
@@ -1475,6 +1519,10 @@ let reconcile_subtree application saved parent old_root candidate_root =
   replace application.mounted_nodes desired_standard;
   replace application.runtime_extension_nodes desired_extensions;
   replace application.runtime_properties desired_properties;
+  Hashtbl.reset application.runtime_virtual_sources;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_sources) desired_virtual_sources;
+  Hashtbl.reset application.runtime_virtual_owners;
+  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_owners) desired_virtual_owners;
   replace application.runtime_echo desired_echo;
   replace application.runtime_extension_properties
     desired_extension_properties;
@@ -1522,6 +1570,8 @@ let reconcile_subtree application saved parent old_root candidate_root =
        if candidate <> node then
          set_alias application candidate node)
     mapping;
+  Hashtbl.iter (fun _ owner -> Lui_virtual.Internal.remap owner (map_node mapping))
+    application.runtime_virtual_owners;
   desired_root
 
 (* target is a descendant-or-self of root iff walking the parent chain
@@ -1763,6 +1813,8 @@ and unmount_node application node =
   Hashtbl.remove application.mounted_nodes node;
   Hashtbl.remove application.runtime_extension_nodes node;
   Hashtbl.remove application.runtime_properties node;
+  Hashtbl.remove application.runtime_virtual_sources node;
+  Hashtbl.remove application.runtime_virtual_owners node;
   Hashtbl.remove application.runtime_extension_properties node;
   Hashtbl.remove application.runtime_children node;
   Hashtbl.remove application.runtime_parents node;
@@ -2018,6 +2070,38 @@ let recorded_parent application node =
   | Some parent -> Some (canonical_node application parent)
   | None -> None
 
+(* Check the proposed edge before mutating ownership. Standalone-only trees
+   retain their existing nesting behavior. Shared rows contain ordinary content. *)
+let validate_flat_virtual_insertion application parent child =
+  if application.runtime_virtual_capabilities <> [] then begin
+    let property node property =
+      match Hashtbl.find_opt application.runtime_properties node with
+      | Some properties -> Property_map.mem property properties
+      | None -> false in
+    let is_virtual node =
+      Hashtbl.find_opt application.mounted_nodes node = Some VirtualList in
+    let rec ancestors node =
+      let virtual_row = is_virtual node in
+      let shared_row = virtual_row && property node VirtualOwnerNode in
+      let shared_owner = property node VirtualViewportEpoch in
+      match Hashtbl.find_opt application.runtime_parents node with
+      | None -> virtual_row, shared_row, shared_owner
+      | Some parent ->
+        let outer_virtual, outer_shared, outer_owner = ancestors parent in
+        virtual_row || outer_virtual, shared_row || outer_shared,
+        shared_owner || outer_owner in
+    let under_virtual, under_shared, under_owner = ancestors parent in
+    if under_virtual || under_owner then begin
+      let rec validate node =
+        if (under_virtual && is_virtual node
+            && (under_shared || property node VirtualOwnerNode))
+           || property node VirtualViewportEpoch then
+          invalid_arg "shared virtual owners must be independent and their rows flat";
+        List.iter validate (children application node) in
+      validate child
+    end
+  end
+
 let insert_child application parent child index =
   let parent = canonical_node application parent in
   let child = canonical_node application child in
@@ -2066,6 +2150,7 @@ let insert_child application parent child index =
     invalid_arg "child index is out of bounds";
   if descendant application child parent then
     invalid_arg "child insertion would create a cycle";
+  validate_flat_virtual_insertion application parent child;
   Hashtbl.replace application.runtime_children parent
     (Lui_sequence.insert current index child);
   Hashtbl.replace application.runtime_parents child parent;
@@ -2247,7 +2332,8 @@ let validate_extension_nodes application =
     application.runtime_extension_nodes
 
 let virtual_source_property = function
-  | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex -> true
+  | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex
+  | VirtualOwnerNode | VirtualOwnerEpoch | VirtualRowKeys -> true
   | _ -> false
 
 let validate_virtual_list application node =
@@ -2298,6 +2384,94 @@ let validate_virtual_list_operations application operations =
       Hashtbl.replace parents parent ()
     | _ -> ()) operations;
   Hashtbl.iter (fun parent () -> validate_virtual_list application parent) parents
+
+let validate_shared_virtual application operations =
+  let shared_property = function
+    | VirtualViewportEpoch | VirtualRetentions | VirtualRetentionReleases
+    | VirtualOwnerNode | VirtualOwnerEpoch | VirtualRowKeys -> true
+    | _ -> false in
+  if application.runtime_virtual_capabilities = [] then
+    (* Standalone updates must stay proportional to their dirty scope. *)
+    List.iter (function
+      | SetProp (_, property, _) when shared_property property ->
+        invalid_arg "shared virtual viewport capability was not negotiated"
+      | _ -> ()) operations
+  else begin
+  let open Lui_virtual_json in
+  let values node = Option.value
+    (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
+  let integer properties property = match Property_map.find_opt property properties with
+    | Some (IntValue value) when value > 0 -> value
+    | _ -> invalid_arg "incomplete shared virtual binding" in
+  let encoded properties property = match Property_map.find_opt property properties with
+    | Some (StringValue value) -> value
+    | _ -> invalid_arg "incomplete shared virtual metadata" in
+  let rec descendant node ancestor =
+    node = ancestor || match Hashtbl.find_opt application.runtime_parents node with
+      | Some parent -> descendant parent ancestor
+      | None -> false in
+  let sources = Hashtbl.create 8 in
+  let enabled () =
+    if not (List.mem Lui_virtual.Shared_viewport_retention_v1 application.runtime_virtual_capabilities) then
+      invalid_arg "shared virtual viewport capability was not negotiated" in
+  Hashtbl.iter (fun node properties ->
+    if List.exists (fun property -> Property_map.mem property properties)
+        [VirtualViewportEpoch; VirtualRetentions; VirtualRetentionReleases] then begin
+      enabled ();
+      Option.iter (fun parent -> validate_flat_virtual_insertion application parent node)
+        (Hashtbl.find_opt application.runtime_parents node);
+      ignore (integer properties VirtualViewportEpoch);
+      let tickets = Hashtbl.create 8 in
+      List.iter (fun record ->
+        let fields = object_ ["ticket"; "key"] record in
+        let ticket = positive (List.assoc "ticket" fields) in
+        if Hashtbl.mem tickets ticket then fail ();
+        Hashtbl.add tickets ticket ();
+        ignore (nonempty (string (List.assoc "key" fields))))
+        (array (decode (encoded properties VirtualRetentions)));
+      let releases = Hashtbl.create 8 in
+      List.iter (fun record ->
+        let fields = object_ ["ticket"; "receipt"] record in
+        let ticket = positive (List.assoc "ticket" fields) in
+        if not (Hashtbl.mem tickets ticket) || Hashtbl.mem releases ticket then fail ();
+        Hashtbl.add releases ticket ();
+        let receipt = object_ ["version"; "status"; "owner"; "epoch"; "ticket";
+          "proof"; "rows"; "geometry"; "pins"; "requirements"]
+          (decode (string (List.assoc "receipt" fields))) in
+        if List.assoc "owner" receipt <> Int node
+           || List.assoc "ticket" receipt <> Int ticket
+           || List.assoc "epoch" receipt <> Int (integer properties VirtualViewportEpoch)
+        then fail ();
+        (match array (List.assoc "rows" receipt) with
+         | [_] -> ()
+         | _ -> fail ())) (array (decode (encoded properties VirtualRetentionReleases)))
+    end;
+    if List.exists (fun property -> Property_map.mem property properties)
+        [VirtualOwnerNode; VirtualOwnerEpoch; VirtualRowKeys] then begin
+      enabled ();
+      let owner = integer properties VirtualOwnerNode in
+      let epoch = integer properties VirtualOwnerEpoch in
+      if Hashtbl.find_opt application.mounted_nodes owner <> Some Scroll
+         || integer (values owner) VirtualViewportEpoch <> epoch
+         || not (descendant node owner) then
+        invalid_arg "shared virtual source is outside its bound owner";
+      if Hashtbl.find_opt application.mounted_nodes node <> Some VirtualList then
+        invalid_arg "shared virtual source must bind a virtual-list";
+      if Hashtbl.mem sources owner then
+        invalid_arg "shared virtual owner permits only one source list";
+      Hashtbl.add sources owner node;
+      Option.iter (fun parent -> validate_flat_virtual_insertion application parent node)
+        (Hashtbl.find_opt application.runtime_parents node);
+      let keys = vector (encoded properties VirtualRowKeys) in
+      if List.length keys <> List.length (children application node)
+         || not (Property_map.mem VirtualGeneration properties) then
+        invalid_arg "shared virtual row keys do not match sparse children";
+      validate_virtual_list application node
+    end) application.runtime_properties;
+  Hashtbl.iter (fun _ source ->
+    List.iter (fun child -> validate_flat_virtual_insertion application source child)
+      (children application source)) sources
+  end
 
 let handler_count application = !(application.runtime_handler_count)
 
@@ -2364,6 +2538,36 @@ let apply_pending_batch application batch operation_count next_generation =
     invalid_arg "backend rejected patch batch"
   end
 
+(* Receipt observers can synchronously cancel, release or dispose scopes.
+   Publish only after signal-driven transactions have committed or rolled back,
+   then settle any work the observers queued before serializing the batch. *)
+let publish_virtual_receipts application =
+  let pending = Hashtbl.fold (fun node owner pending -> (node, owner) :: pending)
+    application.runtime_virtual_receipts [] in
+  Hashtbl.clear application.runtime_virtual_receipts;
+  let rec publish = function
+    | [] -> ()
+    | (_, owner) :: rest as pending ->
+      (try Lui_virtual.Internal.flush_receipts owner with failure ->
+        List.iter (fun (node, owner) ->
+          Hashtbl.replace application.runtime_virtual_receipts node owner) pending;
+        raise failure);
+      publish rest in
+  publish pending
+
+let rec stabilize application =
+  match Signal.stabilize application.runtime_scheduler with
+  | () ->
+    if Hashtbl.length application.runtime_virtual_receipts > 0 then begin
+      publish_virtual_receipts application;
+      stabilize application
+    end
+  | exception failure ->
+    (* A retirement callback may fail after structural ownership committed.
+       Its committed source snapshot still revokes old native proofs. *)
+    publish_virtual_receipts application;
+    raise failure
+
 let rec flush application =
   if !(application.runtime_flushing) then begin
     application.runtime_flush_dirty := true;
@@ -2373,7 +2577,7 @@ let rec flush application =
     application.runtime_flushing := true;
     let flushed =
       try
-        Signal.stabilize application.runtime_scheduler;
+        stabilize application;
         if !(application.runtime_extension_dirty) then begin
           validate_extension_nodes application;
           application.runtime_extension_dirty := false
@@ -2384,6 +2588,7 @@ let rec flush application =
           else elide_pending_ops application
         in
         validate_virtual_list_operations application operations;
+        validate_shared_virtual application operations;
         (* detach before apply: ops queued while the backend applies
            this batch (emits re-entering through event dispatch) land
            in the next batch instead of being re-sent under a stale

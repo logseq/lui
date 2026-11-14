@@ -38,6 +38,7 @@ val prune_state_scopes :
     pass its negotiated capability before the view is mounted. *)
 val create_with_extensions :
   ?virtual_rows:bool ->
+  ?virtual_capabilities:Lui_virtual.capability list ->
   Lui_protocol.backend ->
   Lui_extension.extension_registry ->
   'a ->
@@ -46,6 +47,7 @@ val create_with_extensions :
   ('a, 'b) reducer_app
 val create :
   ?virtual_rows:bool ->
+  ?virtual_capabilities:Lui_virtual.capability list ->
   Lui_protocol.backend ->
   'a ->
   ('a -> 'b -> 'a) ->
@@ -53,6 +55,7 @@ val create :
   ('a, 'b) reducer_app
 val create_reloadable_with_extensions :
   ?virtual_rows:bool ->
+  ?virtual_capabilities:Lui_virtual.capability list ->
   Lui_protocol.backend ->
   Lui_extension.extension_registry ->
   string ->
@@ -63,6 +66,7 @@ val create_reloadable_with_extensions :
   ('a, 'b) reducer_app
 val create_reloadable :
   ?virtual_rows:bool ->
+  ?virtual_capabilities:Lui_virtual.capability list ->
   Lui_protocol.backend ->
   string ->
   string ->
