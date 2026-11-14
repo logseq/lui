@@ -445,9 +445,10 @@ final class LUISharedVirtualViewport {
         let yAxis = anchor.convert(CGPoint(x: 0, y: 1), to: scroll)
         let expectedY: CGFloat = 1
         #endif
-        guard abs(xAxis.y - basis.y) < 0.01, abs(yAxis.x - basis.x) < 0.01,
-              abs(xAxis.x - basis.x - 1) < 0.01,
-              abs(yAxis.y - basis.y - expectedY) < 0.01 else { return nil }
+        let roundoff: CGFloat = 0.000001
+        guard abs(xAxis.y - basis.y) < roundoff, abs(yAxis.x - basis.x) < roundoff,
+              abs(xAxis.x - basis.x - 1) < roundoff,
+              abs(yAxis.y - basis.y - expectedY) < roundoff else { return nil }
         guard origin.isFinite else { return nil }
         return .init(offset: offset, height: height, documentHeight: total, origin: origin)
     }
