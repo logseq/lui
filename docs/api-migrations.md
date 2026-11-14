@@ -11,6 +11,10 @@ and hosted Escape consume only the current model/host/attachment/mode lease and
 emit the existing Dismiss once; programmatic teardown does not emit another.
 Deferred delivery rechecks the consumed lease before calling the application,
 so a replacement model that reuses the numeric node ID cannot receive that close.
+Destructive host/menu removal retires this authority as soon as its patch is
+accepted, including same-ID recreation while observable commits coalesce.
+An old close arriving before the quiet-timer flush, or queued across that patch,
+is discarded; unrelated unguarded events keep their existing delivery behavior.
 
 To reopen, retire the mounted dropdown declaration, commit its removal, then
 create a fresh declaration from a later independent activation after release.

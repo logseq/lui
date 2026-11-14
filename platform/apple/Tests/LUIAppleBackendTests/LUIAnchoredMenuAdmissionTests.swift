@@ -94,6 +94,69 @@ struct LUIAnchoredMenuAdmissionTests {
         store.detach(replacement)
     }
 
+    @Test("Accepted coalesced replacements retire immediate and queued close authority")
+    func coalescedCloseOwnership() throws {
+        _ = NSApplication.shared
+        for replaceHost in [false, true] {
+            for queued in [false, true] {
+                let backend = LUIAppleBackend()
+                let window = NSWindow(
+                    contentRect: CGRect(x: 0, y: 0, width: 100, height: 100),
+                    styleMask: .borderless, backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                defer { window.close() }
+                let view = NSView(frame: .zero)
+                window.contentView!.addSubview(view)
+                let initial = """
+                {"generation":1,"ops":[
+                  {"op":"create-node","id":1,"kind":"stack"},
+                  {"op":"create-node","id":2,"kind":"dropdown-menu"},
+                  {"op":"set-prop","id":2,"property":"anchor","value":"below"},
+                  {"op":"insert-child","parent":1,"child":2,"index":0}
+                ]}
+                """
+                let replacement = try LUIAppleBackend.decode("""
+                {"generation":2,"ops":[
+                  {"op":"detach-subtree","id":\(replaceHost ? 1 : 2)},
+                  \(replaceHost ? "{\"op\":\"create-node\",\"id\":1,\"kind\":\"stack\"}," : "")
+                  {"op":"create-node","id":2,"kind":"dropdown-menu"},
+                  {"op":"set-prop","id":2,"property":"anchor","value":"below"},
+                  {"op":"insert-child","parent":1,"child":2,"index":0}
+                ]}
+                """)
+                try backend.apply(json: initial)
+                let host = try #require(backend.model(id: 1))
+                let menu = try #require(backend.model(id: 2))
+                backend.anchoredMenus.attach(
+                    LUIAnchoredMenuAttachment(host: host, view: view), held: false)
+                let lease = try #require(backend.anchoredMenuPresentation(host: host))
+                var dismissed: [Int] = []
+                backend.onEvent = { if case .dismiss(let node) = $0 { dismissed.append(node) } }
+                backend.coalescesCommits = true
+                var replacementError: Error?
+                backend.withDeferredEventDelivery {
+                    if queued { backend.dismissAnchoredMenu(lease) }
+                    do { try backend.apply(decoded: replacement) }
+                    catch { replacementError = error }
+                    // Prove the accepted replacement is still waiting for model commit.
+                    #expect(backend.model(id: 1) === host)
+                    #expect(backend.model(id: 2) === menu)
+                    if !queued { backend.dismissAnchoredMenu(lease) }
+                }
+                if let replacementError { throw replacementError }
+                #expect(dismissed.isEmpty)
+                backend.flushPendingCommit()
+                #expect(backend.model(id: 2) !== menu)
+                let currentHost = try #require(backend.model(id: 1))
+                backend.anchoredMenus.attach(
+                    LUIAnchoredMenuAttachment(host: currentHost, view: view), held: false)
+                let current = try #require(backend.anchoredMenuPresentation(host: currentHost))
+                backend.dismissAnchoredMenu(current)
+                #expect(dismissed == [2])
+            }
+        }
+    }
+
     @Test("Queued close cannot target a replacement model with the same node ID")
     func deferredCloseOwnership() throws {
         let backend = LUIAppleBackend()
