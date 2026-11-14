@@ -1,5 +1,23 @@
 # LUI API migration guide
 
+## Unreleased: Apple frame snapshots retire dropped owners
+
+Destructive `detach-subtree` and `drop-node` commits now revoke each removed
+node's frame before clearing native query registrations, including inline Text
+runs that have no separate SwiftUI view. Delayed geometry and disappearance
+callbacks belong to their original model and mounted producer; they cannot
+restore a dropped frame or overwrite or erase a replacement owner's frame.
+A replacement model can publish at the same coordinates without waiting for a
+later rectangle change, including when geometry precedes its mount callback.
+
+`onFramesReport` and `emitFramesSnapshot()` keep their `[Int: CGRect]` API and
+batched frame-table behavior. For example, after detaching a Text subtree,
+the next snapshot omits its inline run IDs even before native teardown; if an
+ID is recreated, its frame comes from the replacement layout. Downstream hosts
+can continue replacing their cached table with each report. No wire change or
+host-side coordinate workaround is required. A snapshot remains a table of
+reported geometry, not a synchronous layout barrier for newly created nodes.
+
 ## Unreleased: Apple atomic subtree recreation
 
 An accepted batch that destructively detaches a subtree and recreates its IDs

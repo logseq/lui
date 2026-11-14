@@ -57,6 +57,7 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
     private var drawnSize = CGSize.zero
     private var sourceText = ""
     private var runs: [Int: LUIInlineTextRun] = [:]
+    private let frameSource = UUID()
 
     init() {
         super.init(frame: .zero)
@@ -78,7 +79,9 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
         for id in self.runs.keys where updated[id] == nil {
             if backend.hostQueries.textViews[id]?.value === self {
                 backend.hostQueries.textViews[id] = nil
-                if id != model.id { backend.removeNodeFrame(id) }
+            }
+            if let run = self.runs[id] {
+                backend.removeNodeFrame(id, owner: frameOwner(for: run))
             }
         }
         self.runs = updated
@@ -143,12 +146,20 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
     }
 
     func reportInlineFrames() {
-        guard let backend, backend.frameReportingEnabled else { return }
+        guard let backend, backend.frameReportingEnabled,
+              !backend.frameCollectionSuspended else { return }
         for id in runs.keys where id != model?.id {
-            if let geometry = committedGeometry(nodeID: id) {
-                backend.reportNodeFrame(id, geometry.frame)
+            if backend.hostQueries.textViews[id]?.value === self,
+               let run = runs[id], let geometry = committedGeometry(nodeID: id) {
+                let owner = frameOwner(for: run)
+                backend.registerNodeFrame(owner)
+                backend.reportNodeFrame(id, geometry.frame, owner: owner)
             }
         }
+    }
+
+    private func frameOwner(for run: LUIInlineTextRun) -> LUIFrameOwner {
+        LUIFrameOwner(nodeID: run.model.id, model: .node(run.model), source: frameSource)
     }
 
     func unregister() {
@@ -156,7 +167,11 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
         for id in Array(runs.keys) + (model.map { [$0.id] } ?? []) {
             if backend.hostQueries.textViews[id]?.value === self {
                 backend.hostQueries.textViews[id] = nil
-                if id != model?.id { backend.removeNodeFrame(id) }
+            }
+            if let run = runs[id] {
+                // The commit may have cleared textViews already. Frame ownership
+                // is independent and must not erase a replacement native view.
+                backend.removeNodeFrame(id, owner: frameOwner(for: run))
             }
         }
     }
