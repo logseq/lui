@@ -187,6 +187,12 @@ import UIKit
       hosting.view.layoutIfNeeded()
       return native.convert(native.bounds, to: list).minY < 1000 && native.isFirstResponder
     }
+    func scrollGeometry() -> LUIRuntimeScrollHandoff.Geometry {
+      let inset = list.adjustedContentInset
+      return .init(generation: source.epoch, contentHeight: list.contentSize.height,
+                   bounds: list.bounds.size, insetTop: inset.top, insetBottom: inset.bottom)
+    }
+    var preparedHandoff: LUIRuntimeScrollHandoff?
     var readiness = LUIRuntimeScrollReadiness(expectedGeneration: source.epoch)
     var lastGeometry: LUIRuntimeScrollReadiness.Sample?
     try await wait("post-reorder native and virtual geometry settle") {
@@ -209,11 +215,32 @@ import UIKit
       guard let bottom = readiness.bottomOffset(sample) else { return false }
       nativePresentationCheckpoint(
         "BOUNDED_FAR_SCROLL_READY generation=\(sample.generation) virtual=\(sample.virtualContentHeight) native=\(sample.nativeContentHeight) bounds=\(sample.boundsHeight) insets=\(inset) offset=\(sample.offset) bottom=\(bottom)")
+      preparedHandoff = LUIRuntimeScrollHandoff(initial: scrollGeometry())
       list.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
       return true
     }
+    guard var handoff = preparedHandoff else {
+      throw NSError(domain: "BoundedVirtualRows", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "far scroll must prepare its handoff"])
+    }
+    // This fixture is the only explicit scroll writer during this handoff. UIKit may
+    // reveal the retained composing editor before the sparse window task resumes.
+    await Task.yield()
+    let ownsEditor = source.mounted[2] == rowID && native.isFirstResponder
+      && native.markedTextRange != nil
+      && !list.isTracking && !list.isDragging && !list.isDecelerating
+    let editorFrame = native.convert(native.bounds, to: list)
+    let viewport = list.bounds.inset(by: list.adjustedContentInset)
+    let outcome = handoff.finish(
+      geometry: scrollGeometry(), offset: list.contentOffset.y,
+      ownsComposingEditor: ownsEditor, revealsEditor: viewport.intersects(editorFrame))
+    nativePresentationCheckpoint("BOUNDED_FAR_SCROLL_HANDOFF \(outcome) offset=\(list.contentOffset.y)")
+    if case .restore(let bottom) = outcome {
+      list.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+    }
     try await wait("true native far scroll") {
       source.lastFirst > 99000 && source.mounted[99999] != nil
+        && list.contentOffset.y + list.adjustedContentInset.top > 3_000_000
     }
     try require(
       source.lastLast - source.lastFirst < 80, "focus pins must not inflate the requested viewport")
