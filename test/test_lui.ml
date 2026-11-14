@@ -4826,10 +4826,25 @@ let test_shared_retention_handoff () =
     Alcotest.(check bool) "retaining after publication reports missing immediately" true
       (status late_absent = Some Lui_virtual.Missing_target);
     let removed = Lui_virtual.retain root_source ~key:"50" in
+    let previous_generation = int_prop runtime (bound root_source).node "virtual-generation" in
+    let missing_calls = ref 0 in
+    let missing_observer = Signal.subscribe ~emit_initial:false (Lui_virtual.receipt removed)
+      (function Some receipt when Lui_virtual.receipt_status receipt = Lui_virtual.Missing_target ->
+        incr missing_calls; Lui_virtual.cancel_retention removed | _ -> ()) in
     ignore (Lui_app.send app (Replace (List.filter
       (fun row -> row.identity <> 50 && row.identity <> 91) (Lui_app.model app)))); flush ();
-    Alcotest.(check bool) "removed retained target has a missing verdict" true
-      (status removed = Some Lui_virtual.Missing_target);
+    Signal.dispose_subscription missing_observer;
+    Alcotest.(check int) "missing observer receives the committed refusal once" 1 !missing_calls;
+    Alcotest.(check bool) "missing observer cancels against the committed generation" true
+      (status removed = None &&
+       int_prop runtime (bound root_source).node "virtual-generation" > previous_generation);
+    Alcotest.(check int) "observer cannot restore the previous dataset" 98
+      (int_prop runtime (bound root_source).node "virtual-total-count");
+    ignore (Lui_app.dispatch_event app (VirtualWindow
+      ((bound root_source).node, int_prop runtime (bound root_source).node "virtual-generation", 10, 11, [])));
+    flush ();
+    Alcotest.(check bool) "current native window still works after observer cancellation" true
+      (Option.is_some (row root_source "10") && Option.is_none (row root_source "0"));
     Alcotest.(check bool) "missing ancestor fails even an unbound descendant" true
       (status cold = Some Lui_virtual.Missing_target);
     List.iter Lui_virtual.cancel_retention [absent; late_absent; removed; cold];
@@ -4864,7 +4879,30 @@ let test_shared_retention_handoff () =
     Alcotest.(check bool) "valid receipt requests transfer" true
       (Lui_virtual.request_release retention proof = Ok ());
     window root_source []; window child_source []; flush (); check_retained ();
+    let stale_retained = Lui_virtual.retain root_source ~key:"40" in
+    flush ();
+    let node = (bound root_source).node in
+    let focused = Printf.sprintf
+      "{\"version\":1,\"status\":\"focused\",\"owner\":%d,\"epoch\":%d,\"ticket\":%d,\"proof\":1,\"rows\":[{\"source\":%d,\"generation\":%d,\"row\":%d,\"incarnation\":1}],\"geometry\":1,\"pins\":1,\"requirements\":[\"attached\",\"focus\"]}"
+      (owner_node ()) (int_prop runtime (owner_node ()) "virtual-viewport-epoch")
+      (Lui_virtual.ticket stale_retained) node (int_prop runtime node "virtual-generation")
+      (Option.get (row root_source "40")) in
+    ignore (Lui_app.dispatch_event app (VirtualRetention
+      (owner_node (), Lui_virtual.ticket stale_retained, focused))); flush ();
+    Alcotest.(check bool) "observer starts with an accepted native proof" true
+      (status stale_retained = Some Lui_virtual.Focused);
+    let stale_observer = Signal.subscribe ~emit_initial:false (Lui_virtual.receipt stale_retained)
+      (function Some receipt when Lui_virtual.receipt_status receipt = Lui_virtual.Stale ->
+        Lui_virtual.cancel_retention stale_retained | _ -> ()) in
+    let previous_generation = int_prop runtime node "virtual-generation" in
     ignore (Lui_app.send app (Replace (List.rev (Lui_app.model app)))); flush ();
+    Signal.dispose_subscription stale_observer;
+    Alcotest.(check bool) "stale observer cannot restore an old source generation" true
+      (status stale_retained = None && int_prop runtime node "virtual-generation" > previous_generation);
+    ignore (Lui_app.dispatch_event app (VirtualWindow
+      (node, int_prop runtime node "virtual-generation", 0, 1, []))); flush ();
+    Alcotest.(check bool) "current native window still works after stale cancellation" true
+      (Option.is_some (row root_source "99") && Option.is_none (row root_source "0"));
     Alcotest.(check bool) "source publication revokes the observable native proof" true
       (status retention = Some Lui_virtual.Stale);
     Alcotest.(check bool) "source revocation clears pending native release" true
@@ -4907,6 +4945,7 @@ let test_shared_retention_handoff () =
     let handles selector = if selector mod 2 = 0 then owner_a, source_a, retained_a
       else owner_b, source_b, retained_b in
     let mounted_owner = ref 0 and mounted_source = ref 0 in
+    let reject_retirement = ref false in
     let view context selector _send =
       let open Lui_elements in
       let items = Signal.constant context.Lui_ui.ui_scheduler (rows 100) in
@@ -4922,6 +4961,8 @@ let test_shared_retention_handoff () =
         Lui_dynamic.switch context parent selector Int.equal (fun context value ->
           if value = 3 then Signal.on_mount context.Lui_ui.ui_scope
             (fun () -> failwith "shared candidate rejected");
+          Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
+            if value = 0 && !reject_retirement then failwith "shared retirement failed");
           make value context None)) in
       column [if mode = `Source_only then
         capture_node mounted_owner (scroll ~virtual_owner:owner_a [
@@ -4974,10 +5015,18 @@ let test_shared_retention_handoff () =
       List.iter (fun selector -> ignore (Lui_app.send app selector); flush (); ignore (check selector)) [1; 0; 1; 0];
       let before = Option.get (Signal.sample (Lui_virtual.binding source_a)) in
       let proof = Option.get (Signal.sample (Lui_virtual.receipt retained_a)) in
+      let refusals = ref 0 in
+      let observers = List.map (fun retained -> Signal.subscribe ~emit_initial:false
+        (Lui_virtual.receipt retained) (function
+          | Some receipt when List.mem (Lui_virtual.receipt_status receipt)
+              [Lui_virtual.Missing_target; Lui_virtual.Stale] -> incr refusals
+          | _ -> ())) (if retained_a == retained_b then [retained_a] else [retained_a; retained_b]) in
       ignore (Lui_app.send app 3);
       (match flush () with
        | exception Failure message when message = "shared candidate rejected" -> ()
        | _ -> Alcotest.fail "candidate mount should fail");
+      List.iter Signal.dispose_subscription observers;
+      Alcotest.(check int) "rejected candidate publishes no missing or stale receipts" 0 !refusals;
       Alcotest.(check bool) "rollback restores the previous source lease" true
         (Signal.sample (Lui_virtual.binding source_a) = Some before);
       Alcotest.(check bool) "rollback preserves the previous pending proof" true
@@ -4986,7 +5035,14 @@ let test_shared_retention_handoff () =
       Alcotest.(check bool) "rollback restores the authoritative key snapshot" true
         (Signal.sample (Lui_virtual.receipt after_rollback) = None);
       Lui_virtual.cancel_retention after_rollback;
-      ignore (Lui_app.send app 4); flush ();
+      reject_retirement := true;
+      ignore (Lui_app.send app 4);
+      (match flush () with
+       | exception Failure message when message = "shared retirement failed" -> ()
+       | _ -> Alcotest.fail "retirement should fail after commit");
+      Alcotest.(check bool) "committed proof revocation survives retirement failure" true
+        (status retained_a = Some Lui_virtual.Stale);
+      flush ();
       let binding, _, envelope = check 4 in
       let owner_node = int_prop runtime binding.node "virtual-owner-node" in
       let released = match Yojson.Basic.from_string envelope with

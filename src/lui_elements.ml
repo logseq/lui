@@ -939,7 +939,10 @@ let scroll ?virtual_owner ?key ?gap ?main ?cross ?grow ?columns ?padding ?paddin
     let application = context.Lui_ui.ui_application in
     if not (List.mem Lui_virtual.Shared_viewport_retention_v1 application.Lui_runtime.runtime_virtual_capabilities) then
       invalid_arg "shared virtual viewport capability was not negotiated";
-    let binding = Lui_virtual.Internal.bind_owner owner ~node ~publish:(fun epoch retentions releases ->
+    let binding = Lui_virtual.Internal.bind_owner owner ~node
+      ~schedule_receipts:(fun () ->
+        Hashtbl.replace application.Lui_runtime.runtime_virtual_receipts node owner)
+      ~publish:(fun epoch retentions releases ->
       Lui_runtime.set_prop application node VirtualViewportEpoch (IntValue epoch);
       Lui_runtime.set_prop application node VirtualRetentions (StringValue retentions);
       Lui_runtime.set_prop application node VirtualRetentionReleases (StringValue releases)) in

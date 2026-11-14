@@ -61,9 +61,11 @@ val request_release : retention -> receipt -> (unit, release_error) result
 val cancel_retention : retention -> unit
 
 (** Runtime integration, below the DSL dependency layer. All unbind functions
-    are lease-fenced. Publishers run synchronously before reconciliation. *)
+    are lease-fenced. Obligation publishers run synchronously before
+    reconciliation; source receipt refreshes are scheduled after transactions. *)
 module Internal : sig
-  val bind_owner : owner -> node:int -> publish:(int -> string -> string -> unit) -> binding
+  val bind_owner : owner -> node:int -> publish:(int -> string -> string -> unit) -> schedule_receipts:(unit -> unit) -> binding
+  val flush_receipts : owner -> unit
   val unbind_owner : owner -> binding -> bool
   val bind_source : source -> node:int -> owner_node:int -> binding
   val unbind_source : source -> binding -> bool
