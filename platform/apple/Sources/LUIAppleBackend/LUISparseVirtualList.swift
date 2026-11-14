@@ -123,6 +123,7 @@ final class LUISparseVirtualState {
   @ObservationIgnored private var pendingToken: Int?
   @ObservationIgnored private var targetIndex: Int?
   @ObservationIgnored private var pendingKey: String?
+  @ObservationIgnored private var pendingAnimated = false
   @ObservationIgnored private var attempt = UUID()
   @ObservationIgnored private var mutation: UInt64 = 0
   @ObservationIgnored private var configuration: UInt64 = 0
@@ -493,10 +494,11 @@ final class LUISparseVirtualState {
     }
     pendingToken = token
     pendingKey = target
+    pendingAnimated = model.scrollAnimated
     attempt = UUID()
     lastCorrection = nil
     targetIndex = index
-    setOffset(targetOffset(index), animated: model.scrollAnimated)
+    setOffset(targetOffset(index), animated: pendingAnimated)
   }
   private func targetOffset(_ index: Int, height: CGFloat? = nil) -> CGFloat {
     let viewport = height ?? viewportHeight
@@ -517,7 +519,7 @@ final class LUISparseVirtualState {
       let target = clampedOffset(targetOffset(index))
       if let last = unmeasuredWrite, last.0 == mutation, abs(last.1 - target) <= 1 { return }
       unmeasuredWrite = (mutation, target)
-      if setOffset(target, animated: false) { schedule() }
+      if setOffset(target, animated: pendingAnimated) { schedule() }
       return
     }
     guard
@@ -529,7 +531,7 @@ final class LUISparseVirtualState {
       lastCorrection = (fence, sample, desired)
       // A writer may produce no notification (including an accepted no-op).
       // One reevaluation is allowed; unchanged failed evidence cannot spin.
-      if setOffset(desired, animated: false, geometry: sample.geometry) { schedule() }
+      if setOffset(desired, animated: pendingAnimated, geometry: sample.geometry) { schedule() }
       return
     }
     guard anchorReady(sample, row: row) else { return }
@@ -597,6 +599,7 @@ final class LUISparseVirtualState {
     let source = model
     pendingToken = nil
     pendingKey = nil
+    pendingAnimated = false
     targetIndex = nil
     desiredOffset = nil
     lastCorrection = nil
