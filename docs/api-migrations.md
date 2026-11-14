@@ -1,5 +1,33 @@
 # LUI API migration guide
 
+## Unreleased: Apple hosted menus keep retained declaration admission
+
+Apple anchored dropdowns presented by the stack/panel/card menu host no longer
+reopen when an interactively dismissed retained menu receives another revision.
+On macOS, a declaration first encountered, rebound to a different host, or
+attached to a new native host while a mouse button is held stays suppressed
+after release. Already admitted menus keep working during a hold. Native close
+and hosted Escape consume only the current model/host/attachment/mode lease and
+emit the existing Dismiss once; programmatic teardown does not emit another.
+Deferred delivery rechecks the consumed lease before calling the application,
+so a replacement model that reuses the numeric node ID cannot receive that close.
+
+To reopen, retire the mounted dropdown declaration, commit its removal, then
+create a fresh declaration from a later independent activation after release.
+For example, on_dismiss sets the selector's open signal false and lets the
+conditional dropdown removal commit; the next ordinary activation sets it true.
+Changing a label/revision, or a false-to-true toggle coalesced before removal is
+observed, no longer reopens the same declaration. iOS uses the same dismissal
+lifetime with physical-held=false; popover/dialog migration revokes the old
+close lease while preserving an admitted declaration.
+
+No public API, wire field, event name, anchor coordinate or selected-value
+handler changes. This covers the existing anchored menu host only, not all
+dropdown factories: row/column inline dropdowns, native Menu/submenus,
+comboboxes and tooltips keep their own presenters. A new declaration first
+delivered after release has no causal input receipt and is not classified as a
+stale drag by this guard.
+
 ## Unreleased: Apple sparse scroll completion observes native placement
 
 Apple sparse lists now keep requested/planning offsets separate from native
