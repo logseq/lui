@@ -42,6 +42,11 @@ final class LUIModalPresentationStore {
     // present-after-dismiss idiom.
     private var deferredPresentation: LUIModalPresentation?
     private var deferScheduled = false
+    @ObservationIgnored private var synchronizationClearDepth = 0
+
+    fileprivate var isSynchronizingActiveClear: Bool {
+        synchronizationClearDepth > 0
+    }
 
     func synchronize(with item: LUIModalPresentation?) {
         if let pendingDismissalID, item?.id == pendingDismissalID { return }
@@ -59,7 +64,7 @@ final class LUIModalPresentationStore {
         if self.item != nil {
             deferredPresentation = item
             deferScheduled = true
-            self.item = nil
+            clearActiveItemForSynchronization()
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 deferScheduled = false
@@ -70,6 +75,12 @@ final class LUIModalPresentationStore {
             return
         }
         self.item = item
+    }
+
+    private func clearActiveItemForSynchronization() {
+        synchronizationClearDepth += 1
+        defer { synchronizationClearDepth -= 1 }
+        self.item = nil
     }
 
     func updateFromPresentation(_ item: LUIModalPresentation?) {
@@ -356,6 +367,7 @@ private struct LUIDialogPresentationModifier: ViewModifier {
         Binding(
             get: {
                 guard let presentation = dialogPresentation,
+                      !backend.modalPresentation.isSynchronizingActiveClear,
                       !usesCustomSurface else { return false }
                 return LUIDialogContentPolicy.presentationStyle(
                     styleClass: presentation.model.derived.styleClass

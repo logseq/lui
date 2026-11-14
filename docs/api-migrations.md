@@ -1,5 +1,21 @@
 # LUI API migration guide
 
+## Unreleased: Apple native dialogs during synchronized teardown
+
+Apple native alert and confirmation-dialog bindings now return false while
+the modal store synchronously clears its active item during synchronization.
+The binding keeps its observed item dependency, then skips rich-content and
+presentation-style evaluation during that clear. A retiring rich dialog is
+therefore not asserted as a native alert by a re-entrant getter in that window.
+
+For example, a Core batch that removes a rich dialog's children and detaches
+the dialog remains one atomic batch. Hosts need no split batches, forced
+refreshes or presentation workaround. Outside the synchronous clear, live
+dialog classification and normal alert presentation remain dynamic. Existing
+deferred modal replacement, binding setters and semantic event APIs are
+unchanged; this does not add identity checks for late setters or reused IDs.
+No public API, wire field, default or downstream opt-in changes.
+
 ## Unreleased: Apple transparent container presses
 
 Rows, columns and boxes with `press-enabled` now retain their native semantic
