@@ -7,7 +7,7 @@ type receipt_status = Pinned | Focused | Released | Stale | Missing_target | Ret
 type row = { source_node : int; generation : int; row_node : int; incarnation : int }
 type native_receipt = {
   envelope : string; owner_node : int; epoch : int;
-  ticket_id : int; proof : int; rows : row list; geometry : int; pins : int;
+  ticket_id : int; proof : int; row : row; geometry : int; pins : int;
   requirements : string list;
 }
 (* SDK refusals carry no invented native proof or wire envelope. *)
@@ -20,12 +20,12 @@ type owner = {
   mutable publisher : (int -> string -> string -> unit) option;
   mutable schedule_receipts : (unit -> unit) option;
   mutable receipts_dirty : bool;
-  mutable replacing_owner : bool;
-  sources : (string list, source) Hashtbl.t;
+  mutable replacing_owner : int option;
+  mutable root : source option;
   tickets : (int, retention) Hashtbl.t;
 }
 and source = {
-  owner : owner; path : string list;
+  owner : owner; root_key : string;
   binding_state : binding option Signal.state;
   mutable bound : binding option;
   mutable owner_epoch : int;
@@ -34,7 +34,7 @@ and source = {
   mutable contains : (string -> bool) option;
   mutable listeners : (int * (unit -> unit)) list;
   mutable adopt : int list -> unit;
-  mutable replacing_source : bool;
+  mutable replacing_source : int option;
 }
 and retention = {
   source : source; key : string; id : int;
@@ -54,8 +54,8 @@ let live owner = if owner.retired then invalid_arg "shared virtual owner retired
 let create_owner () = {
   scheduler = Signal.scheduler (); retired = false; serial = 0;
   owner_binding = None; publisher = None; schedule_receipts = None;
-  receipts_dirty = false; sources = Hashtbl.create 8;
-  replacing_owner = false;
+  receipts_dirty = false; root = None;
+  replacing_owner = None;
   tickets = Hashtbl.create 8;
 }
 let publish_state owner state value =
@@ -71,7 +71,6 @@ let publish owner =
   Option.iter (fun publish ->
     let retained = List.map (fun retention -> Json.Object [
       "ticket", Json.Int retention.id;
-      "path", Json.Array (List.map (fun value -> Json.String value) retention.source.path);
       "key", Json.String retention.key]) (tickets owner) in
     let releases = List.filter_map (fun retention -> Option.map (fun receipt ->
       Json.Object ["ticket", Json.Int retention.id; "receipt", Json.String (Option.get receipt.native).envelope])
@@ -82,22 +81,20 @@ let publish owner =
         (Json.encode (Json.Array releases))) owner.publisher
 let notify owner =
   publish owner;
-  let listeners = Hashtbl.fold (fun _ source result ->
-    List.rev_append source.listeners result) owner.sources [] in
-  List.iter (fun (_, notify) -> notify ()) listeners
-let source owner path =
+  Option.iter (fun source ->
+    List.iter (fun (_, notify) -> notify ()) source.listeners) owner.root
+let root_source owner ~key =
   live owner;
-  match Hashtbl.find_opt owner.sources path with
-  | Some source -> source
+  let key = Json.nonempty key in
+  match owner.root with
+  | Some source when source.root_key = key -> source
+  | Some _ -> invalid_arg "shared virtual owner permits only one root source"
   | None ->
-    let source = { owner; path; binding_state = Signal.state owner.scheduler None;
+    let source = { owner; root_key = key; binding_state = Signal.state owner.scheduler None;
       bound = None; owner_epoch = 0; generation = 0; rows = []; contains = None;
       listeners = []; adopt = (fun _ -> ());
-      replacing_source = false } in
-    Hashtbl.add owner.sources path source; source
-let root_source owner ~key = source owner [Json.nonempty key]
-let child_source ~parent ~row_key ~key =
-  source parent.owner (parent.path @ [Json.nonempty row_key; Json.nonempty key])
+      replacing_source = None } in
+    owner.root <- Some source; source
 let binding source = Signal.value source.binding_state
 let ticket retention = retention.id
 let receipt retention = Signal.value retention.receipt_state
@@ -120,48 +117,36 @@ let dispose_owner owner =
     (* Clear native obligations while the owner publisher is still bound. *)
     notify owner;
     owner.owner_binding <- None; owner.publisher <- None; owner.schedule_receipts <- None;
-    Hashtbl.iter (fun _ source ->
+    Option.iter (fun source ->
       source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
       publish_state owner source.binding_state None;
       Signal.dispose_signal (binding source);
-      source.listeners <- []; source.adopt <- (fun _ -> ())) owner.sources
+      source.listeners <- []; source.adopt <- (fun _ -> ())) owner.root
   end
 
-let chain path key = match path with
-  | [] -> []
-  | name :: rest ->
-    let rec loop prefix = function
-      | [] -> [prefix, key]
-      | parent_key :: child :: rest -> (prefix, parent_key) :: loop (prefix @ [parent_key; child]) rest
-      | _ -> invalid_arg "invalid shared virtual source path"
-    in loop [name] rest
-let current_rows retention =
-  let owner = retention.source.owner in
-  List.map (fun (path, key) ->
-    let source = Hashtbl.find owner.sources path in
-    let bound = Option.get source.bound in
-    if source.owner_epoch <> (Option.get owner.owner_binding).lease then raise Not_found;
-    bound.node, source.generation, List.assoc key source.rows)
-    (chain retention.source.path retention.key)
+let current_row retention =
+  let source = retention.source in
+  let bound = Option.get source.bound in
+  if source.owner_epoch <> (Option.get source.owner.owner_binding).lease then raise Not_found;
+  bound.node, source.generation, List.assoc retention.key source.rows
 let current retention receipt =
   let owner = retention.source.owner in
   match owner.owner_binding with
   | Some bound when retention.active && not owner.retired
       && bound.node = receipt.owner_node && bound.lease = receipt.epoch
       && retention.id = receipt.ticket_id ->
-    (try List.map (fun row -> row.source_node, row.generation, row.row_node) receipt.rows
-       = current_rows retention && List.for_all (fun row -> row.incarnation > 0) receipt.rows
+    (try (receipt.row.source_node, receipt.row.generation, receipt.row.row_node)
+       = current_row retention && receipt.row.incarnation > 0
      with Not_found | Invalid_argument _ -> false)
   | _ -> false
 let refresh_receipts owner =
   let changed = ref false in
   List.iter (fun retention ->
-    let missing = List.exists (fun (path, key) ->
-      match Hashtbl.find_opt owner.sources path, owner.owner_binding with
-      | Some source, Some owner when source.bound <> None && source.generation > 0
-          && source.owner_epoch = owner.lease ->
-        Option.fold ~none:false ~some:(fun contains -> not (contains key)) source.contains
-      | _ -> false) (chain retention.source.path retention.key) in
+    let source = retention.source in
+    let missing = match source.bound, owner.owner_binding with
+      | Some _, Some owner when source.generation > 0 && source.owner_epoch = owner.lease ->
+        Option.fold ~none:false ~some:(fun contains -> not (contains retention.key)) source.contains
+      | _ -> false in
     let refused = if missing then Some Missing_target else
       match retention.latest with
       | Some { status = (Pinned | Focused); native = Some proof } when not (current retention proof) -> Some Stale
@@ -210,17 +195,19 @@ let decode_receipt envelope =
     | "pinned" -> Pinned | "focused" -> Focused | "released" -> Released
     | "stale" -> Stale | "missing-target" -> Missing_target | "owner-retired" -> Retired
     | _ -> invalid_arg "invalid virtual receipt status" in
-  let rows = List.map (fun row ->
+  let row = match Json.array (field "rows") with
+  | [row] ->
     let fields = Json.object_ ["source"; "generation"; "row"; "incarnation"] row in
     let positive name = Json.positive (List.assoc name fields) in
     {source_node = positive "source"; generation = positive "generation";
-      row_node = positive "row"; incarnation = positive "incarnation"}) (Json.array (field "rows")) in
+      row_node = positive "row"; incarnation = positive "incarnation"}
+  | _ -> invalid_arg "flat virtual receipt requires exactly one row" in
   let requirements = Json.strings (field "requirements") in
   if List.sort_uniq String.compare requirements <> List.sort String.compare requirements
      || List.exists (fun requirement -> not (List.mem requirement ["attached"; "visible"; "focus"])) requirements
   then invalid_arg "invalid virtual receipt requirements";
   {status; native = Some {envelope; owner_node = Json.positive (field "owner"); epoch = Json.positive (field "epoch");
-   ticket_id = Json.positive (field "ticket"); proof = Json.positive (field "proof"); rows;
+   ticket_id = Json.positive (field "ticket"); proof = Json.positive (field "proof"); row;
    geometry = Json.positive (field "geometry"); pins = Json.positive (field "pins"); requirements}}
 
 module Internal = struct
@@ -236,7 +223,8 @@ module Internal = struct
     end
   let bind_owner owner ~node ~publish ~schedule_receipts =
     live owner;
-    if owner.owner_binding <> None && not owner.replacing_owner then invalid_arg "shared virtual owner already bound";
+    if Option.fold ~none:false ~some:(fun bound -> owner.replacing_owner <> Some bound.lease)
+      owner.owner_binding then invalid_arg "shared virtual owner already bound";
     let binding = {node; lease = fresh owner} in
     owner.owner_binding <- Some binding; owner.publisher <- Some publish;
     owner.schedule_receipts <- Some schedule_receipts;
@@ -247,15 +235,16 @@ module Internal = struct
       owner.owner_binding <- None; owner.publisher <- None;
       stage_receipts owner;
       owner.schedule_receipts <- None;
-      Hashtbl.iter (fun _ source ->
+      Option.iter (fun source ->
         source.bound <- None; source.generation <- 0; source.rows <- []; source.contains <- None;
         source.adopt <- (fun _ -> ());
-        publish_state owner source.binding_state None) owner.sources;
+        publish_state owner source.binding_state None) owner.root;
       true
     end else false
   let bind_source source ~node ~owner_node =
     live source.owner;
-    if source.bound <> None && not source.replacing_source then invalid_arg "shared virtual source already bound";
+    if Option.fold ~none:false ~some:(fun bound -> source.replacing_source <> Some bound.lease)
+      source.bound then invalid_arg "shared virtual source already bound";
     (match source.owner.owner_binding with
      | Some owner when owner.node = owner_node -> source.owner_epoch <- owner.lease
      | _ -> invalid_arg "shared virtual source requires its bound owner");
@@ -273,11 +262,8 @@ module Internal = struct
       true
     end else false
   let owner_binding source = source.owner.owner_binding
-  let source_path source = Json.encode_strings source.path
   let retained_keys source =
-    List.concat_map (fun retention ->
-      List.filter_map (fun (path, key) -> if path = source.path then Some key else None)
-        (chain retention.source.path retention.key)) (tickets source.owner)
+    List.map (fun retention -> retention.key) (tickets source.owner)
     |> List.sort_uniq String.compare
   let on_change source notify =
     let id = fresh source.owner in
@@ -302,41 +288,39 @@ module Internal = struct
     let binding current = Option.map
       (fun bound -> {bound with node = node bound.node}) current in
     owner.owner_binding <- binding owner.owner_binding;
-    let changed = Hashtbl.fold (fun _ source changed ->
+    Option.iter (fun source ->
       let previous = source.bound in
       source.bound <- binding source.bound;
       source.rows <- List.map (fun (key, row) -> key, node row) source.rows;
-      if source.bound = previous then changed else source :: changed) owner.sources [] in
-    (* Every ancestor row is canonical before observers see a binding change. *)
-    List.iter (fun source -> publish_state owner source.binding_state source.bound) changed
+      if source.bound <> previous then publish_state owner source.binding_state source.bound) owner.root
   let replacing_owner owner =
     let previous = owner.replacing_owner in
-    owner.replacing_owner <- true;
+    owner.replacing_owner <- Option.map (fun bound -> bound.lease) owner.owner_binding;
     fun () -> owner.replacing_owner <- previous
   let replacing_source source =
     let previous = source.replacing_source in
-    source.replacing_source <- true;
+    source.replacing_source <- Option.map (fun bound -> bound.lease) source.bound;
     fun () -> source.replacing_source <- previous
   let checkpoint owner =
     let binding = owner.owner_binding and publisher = owner.publisher in
     let schedule_receipts = owner.schedule_receipts and receipts_dirty = owner.receipts_dirty in
-    let sources = Hashtbl.fold (fun _ source saved ->
+    let root = Option.map (fun source ->
       (source, source.bound, source.owner_epoch, source.generation, source.rows,
-        source.contains, source.listeners, source.adopt) :: saved)
-      owner.sources [] in
+        source.contains, source.listeners, source.adopt)) owner.root in
     let receipts = Hashtbl.fold (fun _ retention saved ->
       (retention, retention.latest, retention.releasing) :: saved) owner.tickets [] in
     fun () ->
       owner.owner_binding <- binding; owner.publisher <- publisher;
       owner.schedule_receipts <- schedule_receipts; owner.receipts_dirty <- receipts_dirty;
-      List.iter (fun (source, bound, owner_epoch, generation, rows, contains, listeners, adopt) ->
+      Option.iter (fun (source, bound, owner_epoch, generation, rows, contains, listeners, adopt) ->
         source.bound <- bound; source.owner_epoch <- owner_epoch;
         source.generation <- generation; source.rows <- rows; source.contains <- contains;
-        source.listeners <- listeners; source.adopt <- adopt) sources;
+        source.listeners <- listeners; source.adopt <- adopt) root;
       List.iter (fun (retention, latest, releasing) ->
-        retention.releasing <- releasing; set_receipt retention latest) receipts;
-      List.iter (fun (source, bound, _, _, _, _, _, _) ->
-        publish_state owner source.binding_state bound) sources
+        retention.releasing <- releasing;
+        if retention.latest != latest then set_receipt retention latest) receipts;
+      Option.iter (fun (source, bound, _, _, _, _, _, _) ->
+        publish_state owner source.binding_state bound) root
   let accept_receipt owner ~node ~ticket envelope =
     let receipt = decode_receipt envelope in
     let native = Option.get receipt.native in
@@ -351,13 +335,10 @@ module Internal = struct
       if receipt.status = Released then begin
         match Option.bind retention.releasing (fun receipt -> receipt.native) with
         | Some proof when current retention native && proof.proof = native.proof
-            && proof.rows = native.rows && proof.geometry = native.geometry
+            && proof.row = native.row && proof.geometry = native.geometry
             && proof.requirements = native.requirements && native.pins >= proof.pins ->
-          (* Adopt the complete path before publishing cold-key removal. *)
-          List.iter (fun row -> Hashtbl.iter (fun _ source ->
-            match source.bound with
-            | Some bound when bound.node = row.source_node -> source.adopt [row.row_node]
-            | _ -> ()) owner.sources) native.rows;
+          (* Adopt the physical row before publishing cold-key removal. *)
+          retention.source.adopt [native.row.row_node];
           retention.active <- false; retention.releasing <- None;
           Hashtbl.remove owner.tickets ticket;
           set_receipt retention (Some receipt);
