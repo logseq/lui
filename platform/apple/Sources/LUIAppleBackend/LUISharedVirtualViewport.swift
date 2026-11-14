@@ -438,14 +438,16 @@ final class LUISharedVirtualViewport {
         let basis = anchor.convert(CGPoint.zero, to: document)
         let xAxis = anchor.convert(CGPoint(x: 1, y: 0), to: document)
         let yAxis = anchor.convert(CGPoint(x: 0, y: 1), to: document)
+        let expectedY: CGFloat = anchor.isFlipped == document.isFlipped ? 1 : -1
         #else
         let basis = anchor.convert(CGPoint.zero, to: scroll)
         let xAxis = anchor.convert(CGPoint(x: 1, y: 0), to: scroll)
         let yAxis = anchor.convert(CGPoint(x: 0, y: 1), to: scroll)
+        let expectedY: CGFloat = 1
         #endif
         guard abs(xAxis.y - basis.y) < 0.01, abs(yAxis.x - basis.x) < 0.01,
-              abs(abs(xAxis.x - basis.x) - 1) < 0.01,
-              abs(abs(yAxis.y - basis.y) - 1) < 0.01 else { return nil }
+              abs(xAxis.x - basis.x - 1) < 0.01,
+              abs(yAxis.y - basis.y - expectedY) < 0.01 else { return nil }
         guard origin.isFinite else { return nil }
         return .init(offset: offset, height: height, documentHeight: total, origin: origin)
     }

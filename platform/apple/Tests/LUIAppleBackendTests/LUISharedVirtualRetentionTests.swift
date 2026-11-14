@@ -48,8 +48,8 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         let rowAnchor = LUISharedRowMarker(frame: CGRect(x: 0, y: 640, width: 400, height: 32))
         sourceAnchor.addSubview(rowAnchor)
         rowAnchor.configure(state, row: .init(id: 3, index: 20), generation: 1, backend: backend)
-        let field = NSTextField(frame: CGRect(x: 10, y: 1140, width: 200, height: 24))
-        document.addSubview(field)
+        let field = NSTextField(frame: CGRect(x: 10, y: 0, width: 200, height: 24))
+        rowAnchor.addSubview(field)
         scroll.contentView.scroll(to: CGPoint(x: 0, y: 1000))
         scroll.reflectScrolledClipView(scroll.contentView)
         backend.sharedVirtualViewport.owner(model: owner, scroll: scroll)
@@ -84,7 +84,6 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
         XCTAssertEqual(receipts().last?.0, "stale")
         XCTAssertFalse(receipts().contains { $0.0 == "released" })
         rowAnchor.setFrameOrigin(CGPoint(x: 0, y: 672))
-        field.setFrameOrigin(CGPoint(x: 10, y: 1172))
         backend.sharedVirtualViewport.refresh()
         events.removeAll()
         XCTAssertTrue(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
@@ -105,6 +104,11 @@ final class LUISharedVirtualRetentionTests: XCTestCase {
             if case let .virtualWindow(_, generation, _, _, pins) = $0 { return generation == 2 && pins.contains(3) }
             return false
         }, "Current-generation physical pin feedback must precede release")
+        sourceAnchor.frameRotation = 180
+        backend.sharedVirtualViewport.refresh()
+        XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
+            view: field, requirements: .attached), "Rotated sources cannot attest document geometry")
+        sourceAnchor.frameRotation = 0
         field.removeFromSuperview()
         XCTAssertFalse(try backend.acknowledgeVirtualRetention(ownerNode: 1, ticket: 9,
             view: field, requirements: .attached))
