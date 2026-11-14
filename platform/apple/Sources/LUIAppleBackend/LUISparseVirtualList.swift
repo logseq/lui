@@ -152,7 +152,7 @@ final class LUISparseVirtualState {
       extents = next
       emitted = nil
       emittedVisible = nil
-      if !isNew, let oldFirst, let relative, let moved = rows.first(where: { $0.id == oldFirst.id })
+      if sharedBinding == nil, !isNew, let oldFirst, let relative, let moved = rows.first(where: { $0.id == oldFirst.id })
       {
         setOffset(extents.origin(moved.index) - relative, animated: false)
       }
@@ -204,7 +204,7 @@ final class LUISparseVirtualState {
     heights[row.id] = height
     extents.measure(row.index, height: height)
     let difference = extents.origin(first) - before
-    if abs(difference) > 0.1 { setOffset(offset + difference, animated: false) }
+    if sharedBinding == nil, abs(difference) > 0.1 { setOffset(offset + difference, animated: false) }
     schedule()
     if sharedBinding != nil { backend?.sharedVirtualViewport.schedule() }
   }
