@@ -4845,7 +4845,110 @@ let test_shared_retention_handoff () =
     window child_source []; window root_source []; flush ();
     Alcotest.(check bool) "physical unpin permits eviction after release" true
       (Option.is_none (row root_source "90")))
-    ~finally:(fun () -> ignore (Lui_app.dispose app); Lui_virtual.dispose_owner owner)
+    ~finally:(fun () -> ignore (Lui_app.dispose app); Lui_virtual.dispose_owner owner);
+  (* Exercise the same lifetime invariant through the switch used by reactive
+     branches, including canonical native-id reuse and candidate rollback. *)
+  List.iter (fun mode ->
+    let owner_a = Lui_virtual.create_owner () in
+    let owner_b = if mode = `Distinct then Lui_virtual.create_owner () else owner_a in
+    let source_a = Lui_virtual.root_source owner_a ~key:"rows" in
+    let source_b = Lui_virtual.root_source owner_b ~key:"rows" in
+    let retained_a = Lui_virtual.retain source_a ~key:"80" in
+    let retained_b = if mode = `Distinct then Lui_virtual.retain source_b ~key:"80" else retained_a in
+    let handles selector = if selector mod 2 = 0 then owner_a, source_a, retained_a
+      else owner_b, source_b, retained_b in
+    let mounted_owner = ref 0 and mounted_source = ref 0 in
+    let view context selector _send =
+      let open Lui_elements in
+      let items = Signal.constant context.Lui_ui.ui_scheduler (rows 100) in
+      let shared_list source = capture_node mounted_source
+        (virtual_list ~viewport:source ~height:20 ~overscan:0 [
+          virtual_rows ~source:items ~key:(fun row -> row.identity) ~cmp:Int.compare
+            ~scroll_key:(fun row -> string_of_int row.identity)
+            ~mount:(fun row -> text_field ~text:(Signal.sample row).text []) ()]) in
+      let branch make = dynamic (fun context parent ->
+        Lui_dynamic.switch context parent selector Int.equal (fun context value ->
+          if value = 3 then Signal.on_mount context.Lui_ui.ui_scope
+            (fun () -> failwith "shared candidate rejected");
+          make value context None)) in
+      column [if mode = `Source_only then
+        capture_node mounted_owner (scroll ~virtual_owner:owner_a [
+          branch (fun _ -> shared_list source_a)])
+        else branch (fun value ->
+          let owner, source, _ = handles value in
+          capture_node mounted_owner (scroll ~virtual_owner:owner [shared_list source]))] in
+    let app = Lui_app.create ~virtual_capabilities:[Lui_virtual.Shared_viewport_retention_v1]
+      backend 0 (fun _ value -> value) view in
+    Fun.protect (fun () ->
+      ignore (Lui_app.start app);
+      let runtime = Lui_app.runtime app in
+      let flush () = ignore (Lui_app.flush app) in
+      let proof_serial = ref 0 in
+      let check selector =
+        let owner, source, retained = handles selector in
+        let binding = Option.get (Signal.sample (Lui_virtual.binding source)) in
+        let owner_node = int_prop runtime binding.node "virtual-owner-node" in
+        Alcotest.(check int) "source binding is the reused native id"
+          (Lui_runtime.canonical_node runtime !mounted_source) binding.node;
+        Alcotest.(check int) "owner property is the reused native id"
+          (Lui_runtime.canonical_node runtime !mounted_owner) owner_node;
+        Alcotest.(check bool) "source registry follows canonical ids" true
+          (Option.fold ~none:false ~some:(fun current -> current == source)
+            (Hashtbl.find_opt runtime.Lui_runtime.runtime_virtual_sources binding.node));
+        Alcotest.(check bool) "owner registry follows canonical ids" true
+          (Option.fold ~none:false ~some:(fun current -> current == owner)
+            (Hashtbl.find_opt runtime.Lui_runtime.runtime_virtual_owners owner_node));
+        Alcotest.(check int) "source registry stays bounded" 1
+          (Hashtbl.length runtime.Lui_runtime.runtime_virtual_sources);
+        let keys = match prop runtime binding.node "virtual-row-keys" with
+          | Some (StringValue text) -> Yojson.Basic.Util.(to_list (Yojson.Basic.from_string text) |> List.map to_string)
+          | _ -> failwith "missing switched semantic keys" in
+        let row = List.assoc "80" (List.combine keys (direct_rows runtime binding.node)) in
+        incr proof_serial;
+        let envelope = Printf.sprintf
+          "{\"version\":1,\"status\":\"focused\",\"owner\":%d,\"epoch\":%d,\"ticket\":%d,\"proof\":%d,\"rows\":[{\"source\":%d,\"generation\":%d,\"row\":%d,\"incarnation\":1}],\"geometry\":1,\"pins\":1,\"requirements\":[\"attached\",\"focus\"]}"
+          owner_node (int_prop runtime owner_node "virtual-viewport-epoch")
+          (Lui_virtual.ticket retained) !proof_serial binding.node
+          (int_prop runtime binding.node "virtual-generation") row in
+        ignore (Lui_app.dispatch_event app (VirtualRetention (owner_node, Lui_virtual.ticket retained, envelope)));
+        flush ();
+        let proof = Option.get (Signal.sample (Lui_virtual.receipt retained)) in
+        Alcotest.(check bool) "native canonical row ids satisfy the proof" true
+          (Lui_virtual.request_release retained proof = Ok ());
+        binding, proof, envelope in
+      ignore (check 0);
+      List.iter (fun selector -> ignore (Lui_app.send app selector); flush (); ignore (check selector)) [1; 0; 1; 0];
+      let before = Option.get (Signal.sample (Lui_virtual.binding source_a)) in
+      let proof = Option.get (Signal.sample (Lui_virtual.receipt retained_a)) in
+      ignore (Lui_app.send app 3);
+      (match flush () with
+       | exception Failure message when message = "shared candidate rejected" -> ()
+       | _ -> Alcotest.fail "candidate mount should fail");
+      Alcotest.(check bool) "rollback restores the previous source lease" true
+        (Signal.sample (Lui_virtual.binding source_a) = Some before);
+      Alcotest.(check bool) "rollback preserves the previous pending proof" true
+        (Lui_virtual.request_release retained_a proof = Ok ());
+      ignore (Lui_app.send app 4); flush ();
+      let binding, _, envelope = check 4 in
+      let owner_node = int_prop runtime binding.node "virtual-owner-node" in
+      let released = match Yojson.Basic.from_string envelope with
+        | `Assoc fields -> Yojson.Basic.to_string (`Assoc
+            (List.map (fun (key, value) -> key, if key = "status" then `String "released" else value) fields))
+        | _ -> failwith "invalid test receipt" in
+      ignore (Lui_app.dispatch_event app
+        (VirtualRetention (owner_node, Lui_virtual.ticket retained_a, released)));
+      flush ();
+      let cold_index () = match prop runtime binding.node "virtual-indices" with
+        | Some (StringValue text) -> List.mem 80 (Option.get (virtual_indices_of_string text))
+        | _ -> false in
+      Alcotest.(check bool) "canonical row pins survive cold-key release" true (cold_index ());
+      ignore (Lui_app.dispatch_event app (VirtualWindow
+        (binding.node, int_prop runtime binding.node "virtual-generation", 0, 1, [])));
+      flush ();
+      Alcotest.(check bool) "canonical row unpins after release" false (cold_index ()))
+      ~finally:(fun () -> ignore (Lui_app.dispose app);
+        Lui_virtual.dispose_owner owner_a; Lui_virtual.dispose_owner owner_b))
+    [`Same; `Source_only; `Distinct]
 
 let tests = [
   "nested cold retention uses proof-backed two-phase handoff", test_shared_retention_handoff;

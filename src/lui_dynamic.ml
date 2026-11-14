@@ -81,6 +81,18 @@ let segment_disposer application segment dispose_reactive () =
   Fun.protect dispose_reactive
     ~finally:(fun () -> Lui_runtime.unregister_dynamic_segment application segment)
 
+let replacing_virtual_nodes application nodes =
+  let replacements = List.filter_map (fun node ->
+    match Hashtbl.find_opt application.Lui_runtime.runtime_virtual_sources node with
+    | Some source -> Some (Lui_virtual.Internal.replacing_source source)
+    | None -> Option.map Lui_virtual.Internal.replacing_owner
+        (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_owners node)) nodes in
+  let finished = ref false in
+  fun () -> if not !finished then begin
+    finished := true;
+    List.iter (fun finish -> finish ()) replacements
+  end
+
 let switch context parent source equal mount =
   let application = context.Lui_ui.ui_application in
   let segment = Lui_runtime.register_dynamic_segment application parent in
@@ -131,6 +143,9 @@ let switch context parent source equal mount =
           | Some old_node ->
             let old_scope = !current_scope in
             let saved = Lui_runtime.checkpoint_subtree application parent old_node in
+            let finish_replacements = replacing_virtual_nodes application
+              (Lui_runtime.collect_subtree_nodes application.Lui_runtime.runtime_children
+                (Lui_runtime.canonical_node application old_node)) in
             let candidate = ref None in
             let committed = ref false in
             (try
@@ -151,6 +166,7 @@ let switch context parent source equal mount =
                   throwing mount hook rolls back to an old scope whose
                   subscriptions were never disposed. *)
                Signal.mount branch_context.Lui_ui.ui_scope;
+               finish_replacements ();
                !current_retired := true;
                Lui_runtime.retire_checkpoint_dynamic_segments saved old_node;
                current_key := next_key;
@@ -160,6 +176,7 @@ let switch context parent source equal mount =
                committed := true;
                Signal.dispose_scope old_scope
              with failure ->
+               finish_replacements ();
                (* A mount or reconcile failure can leave tables half rebuilt;
                   restore the checkpoint and discard the candidate branch so
                   the old branch stays mounted. *)
@@ -353,12 +370,7 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
       let saved = Lui_runtime.checkpoint ~nodes application in
       let retiring = List.filter (fun node ->
         node <> Lui_runtime.canonical_node application parent) nodes in
-      let replacements = List.filter_map (fun node ->
-        match Hashtbl.find_opt application.Lui_runtime.runtime_virtual_sources node with
-        | Some source -> Some (Lui_virtual.Internal.replacing_source source)
-        | None -> Option.map Lui_virtual.Internal.replacing_owner
-            (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_owners node)) retiring in
-      let finish_replacements () = List.iter (fun finish -> finish ()) replacements in
+      let finish_replacements = replacing_virtual_nodes application retiring in
       let previous_entries = !entries in
       let previous_ordered = !ordered and previous_nodes = !nodes_ref in
       let mounted = ref [] in
@@ -564,7 +576,8 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
             Lui_protocol.String_map.find_opt key targets)
             (Lui_virtual.Internal.retained_keys viewport) in
       let physical = List.filter_map (fun entry ->
-        if List.mem entry.ui_node !adopted_pins then Keys.find_opt entry.ui_key indices else None)
+        if List.mem (Lui_runtime.canonical_node application entry.ui_node) !adopted_pins
+        then Keys.find_opt entry.ui_key indices else None)
         !(keyed.key_nodes) in
       let selected = List.sort_uniq Int.compare
         (List.rev_append physical (List.rev_append retained selected)) in
@@ -611,9 +624,9 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
           raise failure)
       end in
     update_source (Signal.sample source);
-    Option.iter (fun viewport ->
+    let clear_adopted_pins = Option.map (fun viewport ->
       Lui_virtual.Internal.adopt_pins viewport ~node:parent (fun pins ->
-        adopted_pins := List.sort_uniq Int.compare (List.rev_append pins !adopted_pins))) viewport;
+        adopted_pins := List.sort_uniq Int.compare (List.rev_append pins !adopted_pins))) viewport in
     let unsubscribe_retention = Option.map (fun viewport ->
       Lui_virtual.Internal.on_change viewport (fun () ->
         if not !stopped && Lui_runtime.node_live application parent then begin
@@ -658,7 +671,7 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         stopped := true;
         Signal.dispose_subscription subscription;
         Option.iter (fun unsubscribe -> unsubscribe ()) unsubscribe_retention;
-        Option.iter (fun viewport -> Lui_virtual.Internal.adopt_pins viewport ~node:parent (fun _ -> ())) viewport;
+        Option.iter (fun clear -> clear ()) clear_adopted_pins;
         segment.Lui_runtime.dynamic_segment_on_property := None;
         dataset := [||]; positions := Keys.empty;
         scroll_positions := Lui_protocol.String_map.empty;
