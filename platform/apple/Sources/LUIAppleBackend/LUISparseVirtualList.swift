@@ -524,14 +524,29 @@ final class LUISparseVirtualState {
     }
     guard
           let sample = acquireObservation(row), let fence = completionFence(row) else { return }
-    let desired = sample.geometry.target(targetOffset(index, height: sample.geometry.height)) - sample.geometry.origin
+    // Shared sources scroll inside an owner document, so desired/observed
+    // offsets are source-local. A standalone list is the whole document and
+    // its writer/observer agree on the absolute adjusted offset domain; using
+    // the local domain there would miss by the native origin (inset+sourceTop).
+    let desired: CGFloat
+    let observed: CGFloat
+    let correctionGeometry: LUISharedViewportGeometry?
+    if sharedBinding == nil {
+      desired = clampedOffset(targetOffset(index, height: sample.geometry.height))
+      observed = sample.geometry.offset
+      correctionGeometry = nil
+    } else {
+      desired = sample.geometry.target(targetOffset(index, height: sample.geometry.height)) - sample.geometry.origin
+      observed = sample.geometry.localOffset
+      correctionGeometry = sample.geometry
+    }
     desiredOffset = desired
-    if abs(sample.geometry.localOffset - desired) > 1 {
+    if abs(observed - desired) > 1 {
       if let last = lastCorrection, last.0 == fence, last.1.matches(sample), abs(last.2 - desired) <= 1 { return }
       lastCorrection = (fence, sample, desired)
       // A writer may produce no notification (including an accepted no-op).
       // One reevaluation is allowed; unchanged failed evidence cannot spin.
-      if setOffset(desired, animated: pendingAnimated, geometry: sample.geometry) { schedule() }
+      if setOffset(desired, animated: pendingAnimated, geometry: correctionGeometry) { schedule() }
       return
     }
     guard anchorReady(sample, row: row) else { return }
@@ -551,8 +566,11 @@ final class LUISparseVirtualState {
             let fresh = acquireObservation(row), observationSerial > serial,
             completionID == id, completionFence(row) == fence,
             sample.matches(fresh), anchorReady(fresh, row: row),
-            abs(fresh.geometry.localOffset - (fresh.geometry.target(
-              targetOffset(row.index, height: fresh.geometry.height)) - fresh.geometry.origin)) <= 1
+            abs((sharedBinding == nil ? fresh.geometry.offset : fresh.geometry.localOffset)
+              - (sharedBinding == nil
+                ? clampedOffset(targetOffset(row.index, height: fresh.geometry.height))
+                : fresh.geometry.target(targetOffset(row.index, height: fresh.geometry.height))
+                  - fresh.geometry.origin)) <= 1
       else {
         if completionID == id { completion = nil; completionID = nil }
         return
