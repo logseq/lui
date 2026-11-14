@@ -1997,7 +1997,7 @@ public final class LUIAppleBackend {
 
     private func syncAnchoredPopovers() {
         guard !popoverNodeIDs.isEmpty else {
-            anchoredPopovers.synchronize([:])
+            anchoredPopovers.synchronize([:], retained: [], held: false)
             return
         }
         var anchors: [String: (Int, ObjectIdentifier)] = [:]
@@ -2044,7 +2044,15 @@ public final class LUIAppleBackend {
                 model: model, anchorID: anchorID, anchorIdentity: identity,
                 anchorRect: model.popoverAnchorRect)
         }
-        anchoredPopovers.synchronize(items)
+        let retained = Set(popoverNodeIDs.compactMap { id in
+            models[id].map { ObjectIdentifier($0) }
+        })
+        #if os(macOS)
+        let held = NSEvent.pressedMouseButtons != 0
+        #else
+        let held = false
+        #endif
+        anchoredPopovers.synchronize(items, retained: retained, held: held)
     }
 
     private func syncModalPresentation() {
