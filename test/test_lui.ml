@@ -4835,6 +4835,27 @@ let test_shared_retention_handoff () =
     List.iter Lui_virtual.cancel_retention [absent; late_absent; removed; cold];
     check_retained ();
     window root_source []; window child_source []; flush (); check_retained ();
+    let pin_retained = Lui_virtual.retain child_source ~key:"60" in
+    flush ();
+    let native_pin = Option.get (row child_source "60") in
+    window child_source [native_pin]; flush ();
+    Lui_virtual.cancel_retention pin_retained; flush ();
+    Alcotest.(check bool) "native pin alone survives cold cancellation" true
+      (row child_source "60" = Some native_pin);
+    List.iter (fun key ->
+      let temporary = Lui_virtual.retain child_source ~key in
+      flush ();
+      Alcotest.(check bool) "offscreen cold row mounts without window feedback" true
+        (Option.is_some (row child_source key));
+      Lui_virtual.cancel_retention temporary;
+      flush ();
+      Alcotest.(check bool) "cancelled row unmounts without another window" true
+        (Option.is_none (row child_source key));
+      Alcotest.(check bool) "another ticket and native pin keep their row" true
+        (Option.is_some (row child_source "80") && row child_source "60" = Some native_pin))
+      ["70"; "71"; "72"];
+    let pinned = Lui_virtual.retain child_source ~key:"80" in
+    Lui_virtual.cancel_retention pinned; flush (); check_retained ();
     Lui_virtual.cancel_retention other;
     window root_source []; window child_source []; flush (); check_retained ();
     let old_release = envelope "released" 1 in
@@ -4866,6 +4887,10 @@ let test_shared_retention_handoff () =
     Alcotest.(check bool) "handoff publishes released receipt" true
       (Option.map Lui_virtual.receipt_status (Signal.sample (Lui_virtual.receipt retention))
        = Some Lui_virtual.Released);
+    let unrelated = Lui_virtual.retain child_source ~key:"70" in
+    Lui_virtual.cancel_retention unrelated; flush ();
+    Alcotest.(check bool) "adopted native rows survive unrelated cancellation" true
+      (row root_source "90" = Some root_pin && row child_source "80" = Some child_pin);
     window child_source []; window root_source []; flush ();
     Alcotest.(check bool) "physical unpin permits eviction after release" true
       (Option.is_none (row root_source "90")))

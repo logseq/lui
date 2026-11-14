@@ -568,8 +568,10 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
             invalid_arg "virtual_rows contains a duplicate scroll_key";
           targets := Lui_protocol.String_map.add key index !targets) scroll_key) items;
       items, !indices, !targets in
-    let adopted_pins = ref [] in
-    let reconcile_indices items indices targets epoch selected =
+    let window_keys = ref [] and native_pins = ref [] and adopted_pins = ref [] in
+    let visible_indices indices = List.filter_map (fun key -> Keys.find_opt key indices) !window_keys in
+    let reconcile_indices ?window_pins items indices targets epoch selected =
+      let visible_keys = List.map (fun index -> key_fn items.(index)) selected in
       (* Cold semantic keys are unioned before every reconciliation, including
          bootstrap and source publications, before any row has a native id. *)
       let retained = match viewport with
@@ -577,8 +579,12 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         | Some viewport -> List.filter_map (fun key ->
             Lui_protocol.String_map.find_opt key targets)
             (Lui_virtual.Internal.retained_keys viewport) in
+      let pins = match window_pins with
+        | Some pins -> pins
+        | None -> List.rev_append !native_pins !adopted_pins in
+      let pins = List.map (Lui_runtime.canonical_node application) pins in
       let physical = List.filter_map (fun entry ->
-        if List.mem (Lui_runtime.canonical_node application entry.ui_node) !adopted_pins
+        if List.mem (Lui_runtime.canonical_node application entry.ui_node) pins
         then Keys.find_opt entry.ui_key indices else None)
         !(keyed.key_nodes) in
       let selected = List.sort_uniq Int.compare
@@ -603,6 +609,8 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
             (List.combine keys children)) viewport;
         Lui_runtime.validate_virtual_list application parent;
         dataset := items; positions := indices; scroll_positions := targets;
+        window_keys := visible_keys;
+        Option.iter (fun pins -> native_pins := pins; adopted_pins := []) window_pins;
         revision := epoch) in
     let update_source items =
       if not !stopped && Lui_runtime.node_live application parent then begin
@@ -610,8 +618,10 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         (* Keep matched mounted keys through the generation handshake. A new
            bootstrap is needed only if no old row remains, avoiding growth
            across repeated source revisions before the host responds. *)
-        let selected = List.filter_map (fun entry -> Keys.find_opt entry.ui_key indices)
-          !(keyed.key_nodes) |> List.sort_uniq Int.compare in
+        let selected = (match viewport with
+          | Some _ -> visible_indices indices
+          | None -> List.filter_map (fun entry -> Keys.find_opt entry.ui_key indices)
+              !(keyed.key_nodes)) |> List.sort_uniq Int.compare in
         let selected = if selected = [] then bootstrap (Array.length items) else selected in
         let saved = Lui_runtime.checkpoint
           ~nodes:[Lui_runtime.canonical_node application parent] application in
@@ -633,8 +643,7 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
     let unsubscribe_retention = Option.map (fun viewport ->
       Lui_virtual.Internal.on_change viewport (fun () ->
         if not !stopped && Lui_runtime.node_live application parent then begin
-          let selected = List.filter_map (fun entry ->
-            Keys.find_opt entry.ui_key !positions) !(keyed.key_nodes) in
+          let selected = visible_indices !positions in
           reconcile_indices !dataset !positions !scroll_positions !revision selected
         end)) viewport in
     segment.Lui_runtime.dynamic_segment_on_property := Some (fun name value ->
@@ -649,25 +658,12 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         if first < 0 || last < first then invalid_arg "invalid virtual row window";
         let count = Array.length !dataset in
         let first = min count first and last = min count last in
-        let selected = ref Lui_protocol.Int_map.empty in
-        for index = first to last - 1 do
-          selected := Lui_protocol.Int_map.add index () !selected
-        done;
         (* Native emits its current pin snapshot before a released receipt.
            The receipt's adopted snapshot also covers the immediate cold-key
            removal, until the next current-generation window replaces it. *)
-        adopted_pins := [];
-        List.iter (fun node ->
-          match List.find_opt (fun entry ->
-            Lui_runtime.canonical_node application entry.ui_node
-              = Lui_runtime.canonical_node application node
-            && Lui_runtime.node_live application node) !(keyed.key_nodes) with
-          | None -> ()
-          | Some entry -> Option.iter (fun index ->
-              selected := Lui_protocol.Int_map.add index () !selected)
-              (Keys.find_opt entry.ui_key !positions)) pins;
-        let selected = Lui_protocol.Int_map.bindings !selected |> List.map fst in
-        reconcile_indices !dataset !positions !scroll_positions !revision selected
+        let pins = List.filter (Lui_runtime.node_live application) pins in
+        let selected = List.init (last - first) (fun index -> first + index) in
+        reconcile_indices ~window_pins:pins !dataset !positions !scroll_positions !revision selected
       | _ -> ());
     let dispose () =
       if not !stopped then begin
@@ -677,6 +673,7 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         Option.iter (fun clear -> clear ()) clear_adopted_pins;
         segment.Lui_runtime.dynamic_segment_on_property := None;
         dataset := [||]; positions := Keys.empty;
+        window_keys := []; native_pins := []; adopted_pins := [];
         scroll_positions := Lui_protocol.String_map.empty;
         keyed.dispose_dynamic_keyed ()
       end in
