@@ -90,11 +90,12 @@ final class LUISparseVirtualState {
   }
   var rows: [Row] = []
   fileprivate var extents = LUISparseRowExtents()
+  var contentHeight: CGFloat { extents.height }
   private(set) var offset: CGFloat = 0
   private(set) var viewportHeight: CGFloat = 0
   @ObservationIgnored private weak var backend: LUIAppleBackend?
   @ObservationIgnored private weak var model: LUINodeModel?
-  @ObservationIgnored private var generation = 0
+  @ObservationIgnored private(set) var generation = 0
   @ObservationIgnored private var emitted: Request?
   @ObservationIgnored private var emittedVisible: [Int]?
   @ObservationIgnored private var task: Task<Void, Never>?
@@ -354,7 +355,7 @@ struct LUISparseVirtualListView: View {
   var body: some View {
     ScrollView {
       ZStack(alignment: .topLeading) {
-        Color.clear.frame(height: state.extents.height).accessibilityHidden(true)
+        Color.clear.frame(height: state.contentHeight).accessibilityHidden(true)
         ForEach(state.rows) { row in
           LUIAnyNodeView(nodeID: row.id, backend: backend).equatable()
             .environment(\.luiVirtualRowOwner, LUIVirtualRowOwner(state: state, row: row.id))

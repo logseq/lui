@@ -67,6 +67,17 @@ from the requested viewport. The application driver answers real maintenance
 events through the public backend; the separate OCaml integration test exercises
 the shared native runtime boundary.
 
+After reordering the focused editor back, the single native bottom scroll waits
+for the current virtual generation and matching native/virtual content heights
+(within one point), with identical bounds, insets and offset across two polls.
+Editor position alone does not establish that UIKit has adopted the new extent.
+The Foundation-only readiness helper is shared with a deterministic unit test
+covering stale generations/heights and geometry changes. This is a preparation
+barrier, not a scroll retry: the six-second waits, far-tail and bounded-row
+assertions, focus/composition checks, and launch hang guard remain unchanged.
+`BOUNDED_FAR_SCROLL_READY` records the accepted geometry before the native write.
+Unit tests and source reasoning do not constitute iOS runtime validation.
+
 `drawer-vertical-bars` repeatedly opens and closes a compact drawer while a native
 journal stays scrolled. On iPhone Duo's outer display, the page frame, toolbar
 axis and toolbar position must remain fixed throughout each transition. Ordinary
