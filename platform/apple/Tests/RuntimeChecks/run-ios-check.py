@@ -72,8 +72,10 @@ def main():
         source = directory / "Check.swift"
         check = Path(__file__).with_name(filename).read_text().replace("@main", "", 1)
         if args.check == "bounded-virtual-rows":
-            helper = Path(__file__).parent.parent / "LUIAppleBackendTests" / "LUIRuntimeScrollHandoff.swift"
-            check = helper.read_text() + "\n" + check
+            helpers = ROOT / "Tests/LUIAppleBackendTests"
+            check = "\n".join((helpers / name).read_text() for name in (
+                "LUIRuntimeScrollReadiness.swift", "LUIRuntimeScrollHandoff.swift",
+            )) + "\n" + check
         source.write_text(check + r"""
 @MainActor func nativePresentationCheckpoint(_ message: String) {
     setbuf(stdout, nil)

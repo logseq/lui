@@ -192,8 +192,37 @@ import UIKit
       return .init(generation: source.epoch, contentHeight: list.contentSize.height,
                    bounds: list.bounds.size, insetTop: inset.top, insetBottom: inset.bottom)
     }
-    var handoff = LUIRuntimeScrollHandoff(initial: scrollGeometry())
-    list.setContentOffset(CGPoint(x: 0, y: handoff.initial.bottom), animated: false)
+    var preparedHandoff: LUIRuntimeScrollHandoff?
+    var readiness = LUIRuntimeScrollReadiness(expectedGeneration: source.epoch)
+    var lastGeometry: LUIRuntimeScrollReadiness.Sample?
+    try await wait("post-reorder native and virtual geometry settle") {
+      hosting.view.layoutIfNeeded()
+      guard let state = descendants(LUISparseScrollProbe.Probe.self, list)
+        .compactMap(\.state).first(where: { $0.contains(rowID) })
+      else {
+        readiness = LUIRuntimeScrollReadiness(expectedGeneration: source.epoch)
+        return false
+      }
+      let inset = list.adjustedContentInset
+      let sample = LUIRuntimeScrollReadiness.Sample(
+        generation: state.generation, virtualContentHeight: state.contentHeight,
+        nativeContentHeight: list.contentSize.height, boundsHeight: list.bounds.height,
+        insetTop: inset.top, insetBottom: inset.bottom, offset: list.contentOffset.y)
+      if sample != lastGeometry {
+        nativePresentationCheckpoint("BOUNDED_FAR_SCROLL_GEOMETRY \(sample)")
+        lastGeometry = sample
+      }
+      guard let bottom = readiness.bottomOffset(sample) else { return false }
+      nativePresentationCheckpoint(
+        "BOUNDED_FAR_SCROLL_READY generation=\(sample.generation) virtual=\(sample.virtualContentHeight) native=\(sample.nativeContentHeight) bounds=\(sample.boundsHeight) insets=\(inset) offset=\(sample.offset) bottom=\(bottom)")
+      preparedHandoff = LUIRuntimeScrollHandoff(initial: scrollGeometry())
+      list.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+      return true
+    }
+    guard var handoff = preparedHandoff else {
+      throw NSError(domain: "BoundedVirtualRows", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "far scroll must prepare its handoff"])
+    }
     // This fixture is the only explicit scroll writer during this handoff. UIKit may
     // reveal the retained composing editor before the sparse window task resumes.
     await Task.yield()
