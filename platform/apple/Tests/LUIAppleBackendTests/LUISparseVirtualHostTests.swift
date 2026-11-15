@@ -379,13 +379,19 @@
       try await h.wait("missing target settles once") { outcomes(2) == ["missing-target"] }
       #expect(outcomes(1) == ["succeeded"])
       h.responses = false
+      let thirdRequestStart = h.events.count
       try target(0, token: 3, animated: true)
       try await h.wait("third request is pending native row materialization") {
-        h.events.contains {
+        guard let scroll = h.nativeScroll() else { return false }
+        // Supersede while row zero is visible but deliberately unmaterialized;
+        // an unfinished animation need not land on an exact pixel boundary.
+        return h.events.dropFirst(thirdRequestStart).contains {
           if case .virtualWindow(_, _, let first, _, _) = $0 { return first == 0 }
           return false
-        } && (h.nativeScroll()?.contentView.bounds.minY ?? 1) < 1
+        } && (0..<CGFloat(h.rowHeight)).contains(scroll.contentView.bounds.minY)
       }
+      #expect(!h.indices.contains(0))
+      #expect(outcomes(3).isEmpty)
       h.responses = true
       try target(50000, token: 4)
       try await h.wait("superseded and current tokens") {
