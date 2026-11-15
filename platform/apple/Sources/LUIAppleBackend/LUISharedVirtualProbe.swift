@@ -30,6 +30,134 @@ final class LUIWeakSharedRowAnchor {
     init(_ value: LUISharedRowMarker) { self.value = value }
 }
 
+/// A point-in-time native acquisition, never a requested scroll position.
+/// Weak identities cannot keep a retired owner, window or row alive.
+@MainActor
+struct LUISparseNativeObservation {
+    weak var scroll: LUIHostNativeScroll?
+    weak var source: LUIVirtualNativeView?
+    weak var marker: LUISharedRowMarker?
+    weak var window: AnyObject?
+    let geometry: LUISharedViewportGeometry
+    let anchorRect: CGRect
+    let sourceBounds: CGRect
+    let viewportBounds: CGRect
+    let insets: [CGFloat]
+    let intersectsViewport: Bool
+
+    func matches(_ other: Self) -> Bool {
+        guard let scroll, let source, let marker, let window,
+              scroll === other.scroll, source === other.source,
+              marker === other.marker, window === other.window,
+              intersectsViewport == other.intersectsViewport else { return false }
+        let left = [geometry.offset, geometry.height, geometry.documentHeight, geometry.origin]
+            + components(anchorRect) + components(sourceBounds) + components(viewportBounds) + insets
+        let right = [other.geometry.offset, other.geometry.height, other.geometry.documentHeight, other.geometry.origin]
+            + components(other.anchorRect) + components(other.sourceBounds) + components(other.viewportBounds) + other.insets
+        return zip(left, right).allSatisfy { abs($0 - $1) <= 1 }
+    }
+
+    private func components(_ rect: CGRect) -> [CGFloat] {
+        [rect.minX, rect.minY, rect.width, rect.height]
+    }
+
+    static func geometry(scroll: LUIHostNativeScroll, source: LUIVirtualNativeView) -> LUISharedViewportGeometry? {
+        guard let window = scroll.window, source.window === window else { return nil }
+        #if os(macOS)
+        guard let document = scroll.documentView, source.isDescendant(of: document) else { return nil }
+        let clip = document.convert(scroll.contentView.bounds, from: scroll.contentView)
+        let frame = source.convert(source.bounds, to: document)
+        let offset = document.isFlipped ? clip.minY - document.bounds.minY : document.bounds.maxY - clip.maxY
+        let origin = document.isFlipped ? frame.minY - document.bounds.minY : document.bounds.maxY - frame.maxY
+        let height = clip.height
+        let total = document.bounds.height
+        let basis = source.convert(CGPoint.zero, to: document)
+        let xAxis = source.convert(CGPoint(x: 1, y: 0), to: document)
+        let yAxis = source.convert(CGPoint(x: 0, y: 1), to: document)
+        let expectedY: CGFloat = source.isFlipped == document.isFlipped ? 1 : -1
+        #else
+        guard source.isDescendant(of: scroll) else { return nil }
+        let inset = scroll.adjustedContentInset
+        let offset = scroll.contentOffset.y + inset.top
+        let height = scroll.bounds.height - inset.top - inset.bottom
+        let total = scroll.contentSize.height
+        let origin = source.convert(source.bounds, to: scroll).minY + inset.top
+        let basis = source.convert(CGPoint.zero, to: scroll)
+        let xAxis = source.convert(CGPoint(x: 1, y: 0), to: scroll)
+        let yAxis = source.convert(CGPoint(x: 0, y: 1), to: scroll)
+        let expectedY: CGFloat = 1
+        #endif
+        var ancestor = source.superview
+        while let current = ancestor {
+            if let candidate = current as? LUIHostNativeScroll {
+                guard candidate === scroll else { return nil }
+                break
+            }
+            ancestor = current.superview
+        }
+        let epsilon: CGFloat = 0.000001
+        guard [offset, height, total, origin].allSatisfy(\.isFinite), height > 0, total >= 0,
+              abs(xAxis.y - basis.y) < epsilon, abs(yAxis.x - basis.x) < epsilon,
+              abs(xAxis.x - basis.x - 1) < epsilon,
+              abs(yAxis.y - basis.y - expectedY) < epsilon else { return nil }
+        return .init(offset: offset, height: height, documentHeight: total, origin: origin)
+    }
+
+    static func anchorFrame(_ marker: LUISharedRowMarker, source: LUIVirtualNativeView,
+        geometry: LUISharedViewportGeometry) -> CGRect? {
+        guard marker.window != nil, marker.window === source.window,
+              let owner = nearestScroller(source), nearestScroller(marker) === owner else { return nil }
+        let frame = marker.convert(marker.bounds, to: source)
+        #if os(macOS)
+        let top = source.isFlipped ? frame.minY - source.bounds.minY : source.bounds.maxY - frame.maxY
+        #else
+        let top = frame.minY - source.bounds.minY
+        #endif
+        let rect = CGRect(x: frame.minX - source.bounds.minX, y: geometry.origin + top,
+            width: frame.width, height: frame.height)
+        guard [rect.minX, rect.minY, rect.width, rect.height].allSatisfy(\.isFinite),
+              rect.width > 0, rect.height > 0 else { return nil }
+        return rect
+    }
+
+    // SwiftUI backgrounds are sibling native leaves. Source membership comes
+    // from the state/row registry; both leaves must occupy the exact same native
+    // scroller, rather than pretending the source marker contains the row view.
+    private static func nearestScroller(_ view: LUIVirtualNativeView) -> LUIHostNativeScroll? {
+        var ancestor = view.superview
+        while let current = ancestor {
+            if let scroll = current as? LUIHostNativeScroll { return scroll }
+            ancestor = current.superview
+        }
+        return nil
+    }
+
+    static func read(scroll: LUIHostNativeScroll, source: LUIVirtualNativeView,
+        marker: LUISharedRowMarker, geometry: LUISharedViewportGeometry? = nil,
+        anchorRect: CGRect? = nil) -> Self? {
+        guard let geometry = geometry ?? Self.geometry(scroll: scroll, source: source),
+              let rect = anchorRect ?? anchorFrame(marker, source: source, geometry: geometry),
+              let window = scroll.window, marker.window === window else { return nil }
+        #if os(macOS)
+        let viewport = scroll.contentView.bounds
+        let visible = marker.convert(marker.bounds, to: scroll.contentView).intersection(viewport)
+        let nativeInsets = scroll.contentInsets
+        #else
+        let viewport = scroll.bounds.inset(by: scroll.adjustedContentInset)
+        let visible = marker.convert(marker.bounds, to: scroll).intersection(viewport)
+        let nativeInsets = scroll.adjustedContentInset
+        #endif
+        let values = [source.bounds.minX, source.bounds.minY, source.bounds.width, source.bounds.height,
+            viewport.minX, viewport.minY, viewport.width, viewport.height,
+            nativeInsets.top, nativeInsets.left, nativeInsets.bottom, nativeInsets.right]
+        guard values.allSatisfy(\.isFinite), source.bounds.width > 0, viewport.width > 0 else { return nil }
+        return Self(scroll: scroll, source: source, marker: marker, window: window,
+            geometry: geometry, anchorRect: rect, sourceBounds: source.bounds, viewportBounds: viewport,
+            insets: [nativeInsets.top, nativeInsets.left, nativeInsets.bottom, nativeInsets.right],
+            intersectsViewport: !visible.isNull && visible.width > 0 && visible.height > 0)
+    }
+}
+
 #if os(macOS)
 extension LUISharedOwnerProbe: NSViewRepresentable {
     func makeNSView(context: Context) -> LUISharedOwnerMarker { LUISharedOwnerMarker() }
@@ -74,6 +202,7 @@ final class LUISharedRowMarker: LUIHostNativeView {
     private weak var backend: LUIAppleBackend?
     private(set) var row = LUISparseVirtualState.Row(id: 0, index: 0)
     private(set) var generation = 0
+    private(set) weak var retainedModel: AnyObject?
     func configure(_ state: LUISparseVirtualState, row: LUISparseVirtualState.Row,
         generation: Int, backend: LUIAppleBackend) {
         if self.state !== state || self.row.id != row.id { disconnect() }
@@ -81,15 +210,17 @@ final class LUISharedRowMarker: LUIHostNativeView {
         self.row = row
         self.generation = generation
         self.backend = backend
+        retainedModel = backend.model(id: row.id) as AnyObject? ?? backend.extensionModel(id: row.id)
         changed()
     }
     private func changed() {
-        if let state { backend?.sharedVirtualViewport.rowAnchor(state: state, row: row.id, view: self, attached: window != nil) }
+        state?.nativeRowAnchor(self, attached: window != nil)
     }
     func disconnect() {
-        if let state { backend?.sharedVirtualViewport.rowAnchor(state: state, row: row.id, view: self, attached: false) }
+        state?.nativeRowAnchor(self, attached: false)
         state = nil
         backend = nil
+        retainedModel = nil
     }
     #if os(macOS)
     override var isFlipped: Bool { true }
@@ -116,10 +247,10 @@ final class LUISharedSourceMarker: LUIHostNativeView {
         changed()
     }
     private func changed() {
-        if let state { backend?.sharedVirtualViewport.sourceAnchor(state: state, view: window == nil ? nil : self) }
+        state?.nativeSourceAnchor(self, attached: window != nil)
     }
     func disconnect() {
-        if let state { backend?.sharedVirtualViewport.sourceAnchor(state: state, view: nil) }
+        state?.nativeSourceAnchor(self, attached: false)
         state = nil
         backend = nil
     }

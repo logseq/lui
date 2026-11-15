@@ -88,6 +88,20 @@ final class LUISparseVirtualState {
     let last: Int
     let pins: [Int]
   }
+  private struct CompletionFence: Equatable {
+    let attempt: UUID
+    let token: Int
+    let key: String
+    let generation: Int
+    let source: ObjectIdentifier
+    let row: Row
+    let rowModel: ObjectIdentifier
+    let owner: ObjectIdentifier?
+    let ownerNode: Int?
+    let ownerEpoch: Int?
+    let mutation: UInt64
+    let anchor: String?
+  }
   var rows: [Row] = []
   fileprivate var extents = LUISparseRowExtents()
   var contentHeight: CGFloat { extents.height }
@@ -108,10 +122,28 @@ final class LUISparseVirtualState {
   @ObservationIgnored private var handledToken: Int?
   @ObservationIgnored private var pendingToken: Int?
   @ObservationIgnored private var targetIndex: Int?
+  @ObservationIgnored private var pendingKey: String?
+  @ObservationIgnored private var pendingAnimated = false
+  @ObservationIgnored private var attempt = UUID()
+  @ObservationIgnored private var mutation: UInt64 = 0
+  @ObservationIgnored private var configuration: UInt64 = 0
+  @ObservationIgnored private var completionID: UUID?
+  @ObservationIgnored private var observationSerial: UInt64 = 0
+  @ObservationIgnored private var observed: LUISparseNativeObservation?
+  @ObservationIgnored private(set) var desiredOffset: CGFloat?
+  @ObservationIgnored private(set) var observedOffset: CGFloat?
+  @ObservationIgnored private weak var sourceAnchor: LUISharedSourceMarker?
+  @ObservationIgnored private var rowAnchors: [Int: LUIWeakSharedRowAnchor] = [:]
+  @ObservationIgnored private weak var nativeProbe: AnyObject?
+  @ObservationIgnored private var observeNative: ((LUISharedSourceMarker, LUISharedRowMarker) -> LUISparseNativeObservation?)?
+  @ObservationIgnored private var lastCorrection: (CompletionFence, LUISparseNativeObservation, CGFloat)?
+  @ObservationIgnored private var configuredAnchor: String?
+  @ObservationIgnored private var nativeViewport: CGSize?
+  @ObservationIgnored private var unmeasuredWrite: (UInt64, CGFloat)?
   @ObservationIgnored private(set) var sharedBinding: LUISharedSourceBinding?
   @ObservationIgnored private var sharedGeometry: LUISharedViewportGeometry?
   @ObservationIgnored private var sharedPins: Set<Int> = []
-  @ObservationIgnored var scroll: ((CGFloat, Bool) -> Void)?
+  @ObservationIgnored var scroll: ((CGFloat, Bool) -> Bool)?
   @ObservationIgnored var refreshOwners: (() -> Void)?
 
   func configure(model: LUINodeModel, backend: LUIAppleBackend) {
@@ -119,27 +151,53 @@ final class LUISparseVirtualState {
       let metadata = try? LUISparseVirtualMetadata(
         properties: model.properties, children: model.children)
     else { return }
+    configuration += 1
+    let configuring = configuration
     let isNew = self.model !== model
+    let nextBinding = try? LUISharedSourceBinding(properties: model.properties, children: model.children)
+    let nextRows = zip(model.children, metadata.indices).map { Row(id: $0.0, index: $0.1) }
+    let ownerChanged = sharedBinding?.owner != nextBinding?.owner || sharedBinding?.epoch != nextBinding?.epoch
+    if isNew || ownerChanged || pendingKey != nil && pendingKey != model.scrollTarget {
+      retireTarget(outcome: "cancelled")
+    }
+    guard configuration == configuring else { return }
+    if isNew || ownerChanged || generation != metadata.generation || rows != nextRows
+        || sharedBinding != nextBinding || configuredAnchor != model.scrollAnchor {
+      invalidateCompletion()
+      lastCorrection = nil
+    }
     let oldFirst = rows.first { $0.index == extents.index(at: offset) }
     let relative = oldFirst.map { extents.origin($0.index) - offset }
     let changed = isNew || generation != metadata.generation
     self.model = model
     self.backend = backend
     let wasShared = sharedBinding != nil
-    sharedBinding = try? LUISharedSourceBinding(properties: model.properties, children: model.children)
+    sharedBinding = nextBinding
+    configuredAnchor = model.scrollAnchor
     if let sharedBinding {
+      nativeProbe = nil
+      observeNative = nil
+      refreshOwners = nil
       backend.sharedVirtualViewport.source(state: self, model: model, binding: sharedBinding)
+      if let sourceAnchor { backend.sharedVirtualViewport.sourceAnchor(state: self, view: sourceAnchor) }
+      for anchor in rowAnchors.values {
+        if let marker = anchor.value {
+          backend.sharedVirtualViewport.rowAnchor(state: self, row: marker.row.id,
+            view: marker, attached: marker.window != nil)
+        }
+      }
       scroll = { [weak self, weak backend] offset, animated in
-        guard let self else { return }
-        backend?.sharedVirtualViewport.setOffset(offset, state: self, animated: animated)
+        guard let self else { return false }
+        return backend?.sharedVirtualViewport.setOffset(offset, state: self, animated: animated) ?? false
       }
     } else if wasShared {
       backend.sharedVirtualViewport.removeSource(self)
       sharedGeometry = nil
       sharedPins.removeAll()
+      scroll = nil
     }
     active = true
-    rows = zip(model.children, metadata.indices).map { Row(id: $0.0, index: $0.1) }
+    rows = nextRows
     let extent = model.property(.itemExtent)?.doubleValue ?? 32
     let gap = CGFloat(model.property(.gap)?.intValue ?? 0)
     if changed || extents.count != metadata.count || extents.estimate != extent
@@ -160,6 +218,7 @@ final class LUISparseVirtualState {
     generation = metadata.generation
     let live = Set(rows.map(\.id))
     heights = heights.filter { live.contains($0.key) }
+    rowAnchors = rowAnchors.filter { live.contains($0.key) && $0.value.value != nil }
     if let focused, !live.contains(focused) { self.focused = nil }
     if let pressed, !live.contains(pressed) { self.pressed = nil }
     popups = popups.filter { live.contains($0.key) }
@@ -168,19 +227,15 @@ final class LUISparseVirtualState {
       pendingToken = nil
     }
     handleTarget(metadata.scrollIndex)
-    if let token = pendingToken {
+    guard configuration == configuring else { return }
+    if pendingToken != nil {
       if let index = metadata.scrollIndex, index >= 0 {
         if targetIndex != index {
-          completion?.cancel()
-          completion = nil
+          invalidateCompletion()
           targetIndex = index
         }
       } else {
-        completion?.cancel()
-        completion = nil
-        pendingToken = nil
-        targetIndex = nil
-        backend.performScrollCompleted(node: model.id, token: token, outcome: "missing-target")
+        retireTarget(outcome: "missing-target")
       }
     }
     refreshOwners?()
@@ -190,10 +245,14 @@ final class LUISparseVirtualState {
     guard offset.isFinite, height.isFinite else { return }
     let nextOffset = max(0, offset)
     let nextHeight = max(0, height)
+    let evidence = CGSize(width: nextOffset, height: nextHeight)
+    if nativeViewport != evidence { nativeViewport = evidence; invalidateCompletion() }
+    let changed = self.offset != nextOffset || viewportHeight != nextHeight
     if self.offset != nextOffset { self.offset = nextOffset }
     if viewportHeight != nextHeight { viewportHeight = nextHeight }
     refreshOwners?()
-    schedule()
+    nativeGeometryChanged()
+    if changed { schedule() }
   }
   func measured(_ row: Row, height: CGFloat) {
     guard rows.contains(row), height.isFinite, height > 0,
@@ -202,6 +261,8 @@ final class LUISparseVirtualState {
     let first = extents.index(at: offset)
     let before = extents.origin(first)
     heights[row.id] = height
+    invalidateCompletion()
+    lastCorrection = nil
     extents.measure(row.index, height: height)
     let difference = extents.origin(first) - before
     if sharedBinding == nil, abs(difference) > 0.1 { setOffset(offset + difference, animated: false) }
@@ -234,13 +295,108 @@ final class LUISparseVirtualState {
     let changed = geometry != sharedGeometry || pins != sharedPins
     sharedGeometry = geometry
     sharedPins = pins
-    guard let geometry else { return }
+    guard let geometry else {
+      updateObservation(nil)
+      if changed { schedule() }
+      return
+    }
     offset = geometry.localOffset
     viewportHeight = geometry.height
     if changed { schedule() }
   }
   func flushOwnership() { deliver() }
   func presentationsChanged() { schedule() }
+
+  private func invalidateCompletion() {
+    mutation += 1
+    completion?.cancel()
+    completion = nil
+    completionID = nil
+  }
+
+  func hasNativeProbe(_ probe: AnyObject) -> Bool { nativeProbe === probe && observeNative != nil }
+
+  func connectNative(_ probe: AnyObject,
+      observe: @escaping (LUISharedSourceMarker, LUISharedRowMarker) -> LUISparseNativeObservation?,
+      scroll: @escaping (CGFloat, Bool) -> Bool, owners: @escaping () -> Void) {
+    guard sharedBinding == nil else { return }
+    if nativeProbe !== probe { invalidateCompletion(); updateObservation(nil) }
+    nativeProbe = probe
+    observeNative = observe
+    self.scroll = scroll
+    refreshOwners = owners
+    nativeGeometryChanged()
+    schedule()
+  }
+
+  func disconnectNative(_ probe: AnyObject) {
+    guard nativeProbe === probe else { return }
+    nativeProbe = nil
+    observeNative = nil
+    scroll = nil
+    refreshOwners = nil
+    updateObservation(nil)
+    invalidateCompletion()
+  }
+
+  func nativeSourceAnchor(_ marker: LUISharedSourceMarker, attached: Bool) {
+    if attached {
+      if sourceAnchor !== marker { invalidateCompletion() }
+      sourceAnchor = marker
+    } else {
+      guard sourceAnchor === marker else { return }
+      sourceAnchor = nil
+      invalidateCompletion()
+    }
+    if sharedBinding != nil { backend?.sharedVirtualViewport.sourceAnchor(state: self, view: sourceAnchor) }
+    nativeGeometryChanged()
+    schedule()
+  }
+
+  func nativeRowAnchor(_ marker: LUISharedRowMarker, attached: Bool) {
+    if attached {
+      if rowAnchors[marker.row.id]?.value !== marker { invalidateCompletion() }
+      rowAnchors[marker.row.id] = LUIWeakSharedRowAnchor(marker)
+    } else {
+      guard rowAnchors[marker.row.id]?.value === marker else { return }
+      rowAnchors[marker.row.id] = nil
+      invalidateCompletion()
+    }
+    if sharedBinding != nil {
+      backend?.sharedVirtualViewport.rowAnchor(state: self, row: marker.row.id, view: marker, attached: attached)
+    }
+    nativeGeometryChanged()
+    schedule()
+  }
+
+  func nativeGeometryChanged() {
+    guard active, let index = targetIndex, let row = rows.first(where: { $0.index == index }) else { return }
+    _ = acquireObservation(row)
+  }
+
+  private func updateObservation(_ sample: LUISparseNativeObservation?) {
+    let changed: Bool
+    if let sample, let observed { changed = !sample.matches(observed) }
+    else { changed = (sample != nil) != (observed != nil) }
+    observed = sample
+    observedOffset = sample?.geometry.localOffset
+    if changed { invalidateCompletion(); schedule() }
+  }
+
+  private func acquireObservation(_ row: Row) -> LUISparseNativeObservation? {
+    guard let sourceAnchor, let marker = rowAnchors[row.id]?.value,
+          marker.row == row, marker.generation == generation else {
+      updateObservation(nil)
+      return nil
+    }
+    let sample: LUISparseNativeObservation?
+    if sharedBinding != nil, let pendingKey {
+      sample = backend?.sharedVirtualViewport.completionObservation(state: self, row: row, key: pendingKey)
+    } else { sample = observeNative?(sourceAnchor, marker) }
+    observationSerial += 1
+    updateObservation(sample)
+    return sample
+  }
   private func presentedRows() -> Set<Int> {
     guard let backend, let model else { return [] }
     let direct = Set(rows.map(\.id))
@@ -312,10 +468,14 @@ final class LUISparseVirtualState {
     }
     finishTargetIfReady()
   }
-  private func setOffset(_ value: CGFloat, animated: Bool) {
-    let next = clampedOffset(value)
+  @discardableResult
+  private func setOffset(_ value: CGFloat, animated: Bool,
+      geometry: LUISharedViewportGeometry? = nil) -> Bool {
+    let next = geometry.map { $0.target(value) - $0.origin } ?? clampedOffset(value)
+    // Preserve bounded window prediction without calling a request an observation.
+    desiredOffset = next
     offset = next
-    scroll?(next, animated)
+    return scroll?(next, animated) ?? false
   }
   private func clampedOffset(_ value: CGFloat) -> CGFloat {
     if let geometry = sharedGeometry { return geometry.target(value) - geometry.origin }
@@ -323,13 +483,9 @@ final class LUISparseVirtualState {
   }
   private func handleTarget(_ index: Int?) {
     guard let model, let token = model.scrollToken, handledToken != token else { return }
-    if let pendingToken {
-      backend?.performScrollCompleted(node: model.id, token: pendingToken, outcome: "cancelled")
-    }
-    completion?.cancel()
-    completion = nil
-    pendingToken = nil
-    targetIndex = nil
+    retireTarget(outcome: "cancelled")
+    guard self.model === model, model.scrollToken == token, handledToken != token,
+          pendingToken == nil else { return }
     handledToken = token
     guard let target = model.scrollTarget, !target.isEmpty else { return }
     guard let index, index >= 0 else {
@@ -337,48 +493,155 @@ final class LUISparseVirtualState {
       return
     }
     pendingToken = token
+    pendingKey = target
+    pendingAnimated = model.scrollAnimated
+    attempt = UUID()
+    lastCorrection = nil
     targetIndex = index
-    setOffset(targetOffset(index), animated: model.scrollAnimated)
+    setOffset(targetOffset(index), animated: pendingAnimated)
   }
-  private func targetOffset(_ index: Int) -> CGFloat {
+  private func targetOffset(_ index: Int, height: CGFloat? = nil) -> CGFloat {
+    let viewport = height ?? viewportHeight
     let adjustment: CGFloat
     switch model?.property(.scrollAnchor)?.stringValue {
-    case "center": adjustment = (viewportHeight - extents.height(index)) / 2
-    case "bottom": adjustment = viewportHeight - extents.height(index)
+    case "center": adjustment = (viewport - extents.height(index)) / 2
+    case "bottom": adjustment = viewport - extents.height(index)
     default: adjustment = 0
     }
     return extents.origin(index) - adjustment
   }
   private func finishTargetIfReady() {
-    guard let token = pendingToken, let index = targetIndex, completion == nil else { return }
-    let desired = clampedOffset(targetOffset(index))
-    if abs(offset - desired) > 1 {
-      setOffset(desired, animated: false)
-      schedule()
+    guard completion == nil, let index = targetIndex, let model,
+          model.scrollToken == pendingToken, model.scrollTarget == pendingKey,
+          model.property(.virtualGeneration)?.intValue == generation,
+          model.property(.virtualScrollIndex)?.intValue == index else { return }
+    guard let row = rows.first(where: { $0.index == index }), heights[row.id] != nil else {
+      let target = clampedOffset(targetOffset(index))
+      if let last = unmeasuredWrite, last.0 == mutation, abs(last.1 - target) <= 1 { return }
+      unmeasuredWrite = (mutation, target)
+      if setOffset(target, animated: pendingAnimated) { schedule() }
       return
     }
-    guard let row = rows.first(where: { $0.index == index }), heights[row.id] != nil else { return }
-    completion = Task { @MainActor [weak self] in
+    guard
+          let sample = acquireObservation(row), let fence = completionFence(row) else { return }
+    // Shared sources scroll inside an owner document, so desired/observed
+    // offsets are source-local. A standalone list is the whole document and
+    // its writer/observer agree on the absolute adjusted offset domain; using
+    // the local domain there would miss by the native origin (inset+sourceTop).
+    let desired: CGFloat
+    let observed: CGFloat
+    let correctionGeometry: LUISharedViewportGeometry?
+    if sharedBinding == nil {
+      desired = clampedOffset(targetOffset(index, height: sample.geometry.height))
+      observed = sample.geometry.offset
+      correctionGeometry = nil
+    } else {
+      desired = sample.geometry.target(targetOffset(index, height: sample.geometry.height)) - sample.geometry.origin
+      observed = sample.geometry.localOffset
+      correctionGeometry = sample.geometry
+    }
+    desiredOffset = desired
+    if abs(observed - desired) > 1 {
+      if let last = lastCorrection, last.0 == fence, last.1.matches(sample), abs(last.2 - desired) <= 1 { return }
+      lastCorrection = (fence, sample, desired)
+      // A writer may produce no notification (including an accepted no-op).
+      // One reevaluation is allowed; unchanged failed evidence cannot spin.
+      if setOffset(desired, animated: pendingAnimated, geometry: correctionGeometry) { schedule() }
+      return
+    }
+    guard anchorReady(sample, row: row) else { return }
+    let serial = observationSerial
+    let id = UUID()
+    completionID = id
+    let sourceModel = model
+    let rowModel = backend?.model(id: row.id) as AnyObject? ?? backend?.extensionModel(id: row.id)
+    let ownerModel = sharedBinding.flatMap { backend?.model(id: $0.owner) }
+    completion = Task { @MainActor [weak self, weak sourceModel, weak rowModel, weak ownerModel] in
       await Task.yield()
-      guard let self, !Task.isCancelled, active, pendingToken == token, let backend, let model,
-        backend.model(id: model.id) === model
-      else { return }
-      pendingToken = nil
-      targetIndex = nil
-      completion = nil
-      backend.performScrollCompleted(node: model.id, token: token, outcome: "succeeded")
+      guard let self, !Task.isCancelled, completionID == id else { return }
+      guard let sourceModel, sourceModel === model, let rowModel,
+            (backend?.model(id: row.id) as AnyObject? ?? backend?.extensionModel(id: row.id)) === rowModel,
+            fence.ownerNode.map({ ownerModel != nil && backend?.model(id: $0) === ownerModel }) ?? true,
+            completionFence(row) == fence,
+            let fresh = acquireObservation(row), observationSerial > serial,
+            completionID == id, completionFence(row) == fence,
+            sample.matches(fresh), anchorReady(fresh, row: row),
+            abs((sharedBinding == nil ? fresh.geometry.offset : fresh.geometry.localOffset)
+              - (sharedBinding == nil
+                ? clampedOffset(targetOffset(row.index, height: fresh.geometry.height))
+                : fresh.geometry.target(targetOffset(row.index, height: fresh.geometry.height))
+                  - fresh.geometry.origin)) <= 1
+      else {
+        if completionID == id { completion = nil; completionID = nil }
+        return
+      }
+      retireTarget(outcome: "succeeded")
     }
   }
+
+  private func completionFence(_ row: Row) -> CompletionFence? {
+    guard active, let backend, let model, backend.model(id: model.id) === model,
+          let token = pendingToken, model.scrollToken == token,
+          let key = pendingKey, model.scrollTarget == key, !key.isEmpty,
+          model.property(.virtualGeneration)?.intValue == generation,
+          model.property(.virtualScrollIndex)?.intValue == row.index,
+          targetIndex == row.index, rows.contains(row),
+          let metadata = try? LUISparseVirtualMetadata(properties: model.properties, children: model.children),
+          metadata.generation == generation,
+          zip(model.children, metadata.indices).contains(where: { $0.0 == row.id && $0.1 == row.index }),
+          let marker = rowAnchors[row.id]?.value, marker.row == row, marker.generation == generation,
+          let rowModel = backend.model(id: row.id) as AnyObject? ?? backend.extensionModel(id: row.id),
+          marker.retainedModel === rowModel else { return nil }
+    let owner: ObjectIdentifier?
+    if let binding = sharedBinding {
+      guard let current = try? LUISharedSourceBinding(properties: model.properties, children: model.children),
+            current == binding, let position = model.children.firstIndex(of: row.id),
+            current.keys[position] == key,
+            let ownerModel = backend.model(id: binding.owner),
+            ownerModel.property(.virtualViewportEpoch)?.intValue == binding.epoch else { return nil }
+      owner = ObjectIdentifier(ownerModel)
+    } else { owner = nil }
+    return CompletionFence(attempt: attempt, token: token, key: key, generation: generation,
+      source: ObjectIdentifier(model), row: row, rowModel: ObjectIdentifier(rowModel), owner: owner,
+      ownerNode: sharedBinding?.owner, ownerEpoch: sharedBinding?.epoch, mutation: mutation, anchor: model.scrollAnchor)
+  }
+
+  private func anchorReady(_ sample: LUISparseNativeObservation, row: Row) -> Bool {
+    sample.intersectsViewport && heights[row.id] != nil
+      && abs(sample.anchorRect.minY - sample.geometry.origin - extents.origin(row.index)) <= 1
+      && abs(sample.anchorRect.height - extents.height(row.index)) <= 1
+  }
+
+  private func takeTarget() -> (model: LUINodeModel, token: Int)? {
+    let token = pendingToken
+    let source = model
+    pendingToken = nil
+    pendingKey = nil
+    pendingAnimated = false
+    targetIndex = nil
+    desiredOffset = nil
+    lastCorrection = nil
+    attempt = UUID()
+    invalidateCompletion()
+    guard let token, let source else { return nil }
+    return (source, token)
+  }
+  private func retireTarget(outcome: String) {
+    guard let retired = takeTarget(), backend?.model(id: retired.model.id) === retired.model else { return }
+    backend?.performScrollCompleted(node: retired.model.id, token: retired.token, outcome: outcome)
+  }
   func dispose() {
+    configuration += 1
     active = false
     task?.cancel()
     task = nil
-    completion?.cancel()
-    completion = nil
-    if let token = pendingToken, let model {
-      backend?.performScrollCompleted(node: model.id, token: token, outcome: "cancelled")
-    }
-    pendingToken = nil
+    let retired = takeTarget()
+    observed = nil
+    observedOffset = nil
+    nativeProbe = nil
+    observeNative = nil
+    sourceAnchor = nil
+    rowAnchors.removeAll()
     emitted = nil
     emittedVisible = nil
     refreshOwners = nil
@@ -387,6 +650,9 @@ final class LUISparseVirtualState {
     sharedBinding = nil
     sharedGeometry = nil
     sharedPins.removeAll()
+    if let retired, backend?.model(id: retired.model.id) === retired.model {
+      backend?.performScrollCompleted(node: retired.model.id, token: retired.token, outcome: "cancelled")
+    }
   }
 }
 
@@ -400,7 +666,8 @@ struct LUISparseVirtualListView: View {
         rowsContent.background { LUISharedSourceProbe(state: state, backend: backend) }
       } else {
         ScrollView {
-          rowsContent.background { LUISparseScrollProbe(state: state).frame(width: 0, height: 0) }
+          rowsContent.background { LUISharedSourceProbe(state: state, backend: backend) }
+            .background { LUISparseScrollProbe(state: state).frame(width: 0, height: 0) }
         }
       }
     }
@@ -423,10 +690,8 @@ struct LUISparseVirtualListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .background {
-              if model.property(.virtualOwnerNode) != nil {
-                LUISharedRowProbe(state: state, row: row,
-                    generation: model.property(.virtualGeneration)?.intValue ?? 0, backend: backend)
-              }
+              LUISharedRowProbe(state: state, row: row,
+                  generation: model.property(.virtualGeneration)?.intValue ?? 0, backend: backend)
             }
             .onGeometryChange(for: CGFloat.self) {
               $0.size.height

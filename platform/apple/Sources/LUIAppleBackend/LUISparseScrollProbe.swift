@@ -41,14 +41,15 @@ import SwiftUI
       func connect() {
         var ancestor = superview
         while let view = ancestor, !(view is NSScrollView) { ancestor = view.superview }
-        guard let scroll = ancestor as? NSScrollView else { return }
-        if scrollView !== scroll {
+        guard window != nil, let scroll = ancestor as? NSScrollView else { disconnect(); return }
+        if scrollView !== scroll || state?.hasNativeProbe(self) != true {
           disconnect()
           scrollView = scroll
           scroll.contentView.postsBoundsChangedNotifications = true
           let center = NotificationCenter.default
           for (name, object) in [
             (NSView.boundsDidChangeNotification, scroll.contentView as AnyObject),
+            (NSView.frameDidChangeNotification, scroll.documentView as AnyObject?),
             (NSControl.textDidBeginEditingNotification, nil),
             (NSControl.textDidEndEditingNotification, nil),
             (NSText.didChangeNotification, nil),
@@ -69,10 +70,14 @@ import SwiftUI
             MainActor.assumeIsolated { self?.pointer(event) }
             return event
           }
-          state?.scroll = { [weak self] offset, animated in
-            self?.scroll(to: offset, animated: animated)
-          }
-          state?.refreshOwners = { [weak self] in self?.owners() }
+          scroll.documentView?.postsFrameChangedNotifications = true
+          state?.connectNative(self,
+            observe: { [weak self] source, marker in
+              guard let self, let scroll = scrollView, window === scroll.window else { return nil }
+              return LUISparseNativeObservation.read(scroll: scroll, source: source, marker: marker)
+            }, scroll: { [weak self] offset, animated in
+              self?.scroll(to: offset, animated: animated) ?? false
+            }, owners: { [weak self] in self?.owners() })
         }
         changed()
       }
@@ -91,8 +96,7 @@ import SwiftUI
         if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
         pointerMonitor = nil
         scrollView = nil
-        state?.scroll = nil
-        state?.refreshOwners = nil
+        state?.disconnectNative(self)
       }
 
       private func changed() {
@@ -189,9 +193,11 @@ import SwiftUI
         state?.flushOwnership()
       }
 
-      private func scroll(to offset: CGFloat, animated: Bool) {
-        guard let scroll = scrollView else { return }
-        let point = NSPoint(x: scroll.contentView.bounds.minX, y: offset)
+      private func scroll(to offset: CGFloat, animated: Bool) -> Bool {
+        guard let scroll = scrollView, let document = scroll.documentView, scroll.window != nil else { return false }
+        let y = document.isFlipped ? document.bounds.minY + offset
+          : document.bounds.maxY - scroll.contentView.bounds.height - offset
+        let point = NSPoint(x: scroll.contentView.bounds.minX, y: y)
         if animated {
           NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.25
@@ -202,6 +208,7 @@ import SwiftUI
         }
         scroll.reflectScrolledClipView(scroll.contentView)
         changed()
+        return true
       }
     }
   }
@@ -217,7 +224,7 @@ import SwiftUI
     final class Probe: UIView {
       private(set) weak var state: LUISparseVirtualState?
       private weak var scrollView: UIScrollView?
-      private var observation: NSKeyValueObservation?
+      private var observations: [NSKeyValueObservation] = []
       private var notifications: [NSObjectProtocol] = []
       private var touch: TouchObserver?
       private weak var focusedView: UIView?
@@ -244,13 +251,22 @@ import SwiftUI
       func connect() {
         var ancestor = superview
         while let view = ancestor, !(view is UIScrollView) { ancestor = view.superview }
-        guard let scroll = ancestor as? UIScrollView else { return }
-        if scrollView !== scroll {
+        guard window != nil, let scroll = ancestor as? UIScrollView else { disconnect(); return }
+        if scrollView !== scroll || state?.hasNativeProbe(self) != true {
           disconnect()
           scrollView = scroll
-          observation = scroll.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+          observations.append(scroll.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.changed() }
-          }
+          })
+          observations.append(scroll.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.changed() }
+          })
+          observations.append(scroll.observe(\.bounds, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.changed() }
+          })
+          observations.append(scroll.observe(\.adjustedContentInset, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.changed() }
+          })
           for name in [
             UITextField.textDidBeginEditingNotification, UITextField.textDidEndEditingNotification,
             UITextField.textDidChangeNotification, UITextView.textDidChangeNotification,
@@ -269,25 +285,28 @@ import SwiftUI
           }
           scroll.addGestureRecognizer(touch)
           self.touch = touch
-          state?.scroll = { [weak self] offset, animated in
-            guard let self, let scrollView else { return }
+          state?.connectNative(self,
+            observe: { [weak self] source, marker in
+              guard let self, let scrollView, window === scrollView.window else { return nil }
+              return LUISparseNativeObservation.read(scroll: scrollView, source: source, marker: marker)
+            }, scroll: { [weak self] offset, animated in
+              guard let self, let scrollView, scrollView.window != nil else { return false }
               scrollView.setContentOffset(
                 CGPoint(x: scrollView.contentOffset.x, y: offset - scrollView.adjustedContentInset.top), animated: animated)
-            changed()
-          }
-          state?.refreshOwners = { [weak self] in self?.owners() }
+              changed()
+              return true
+            }, owners: { [weak self] in self?.owners() })
         }
         changed()
       }
       func disconnect() {
-        observation = nil
+        observations.removeAll()
         for token in notifications { NotificationCenter.default.removeObserver(token) }
         notifications.removeAll()
         if let touch { scrollView?.removeGestureRecognizer(touch) }
         touch = nil
         scrollView = nil
-        state?.scroll = nil
-        state?.refreshOwners = nil
+        state?.disconnectNative(self)
       }
       private func changed() {
         guard let scrollView else { return }

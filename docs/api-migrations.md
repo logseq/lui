@@ -1,5 +1,25 @@
 # LUI API migration guide
 
+## Unreleased: Apple sparse scroll completion observes native placement
+
+Apple sparse lists now keep requested/planning offsets separate from native
+observations. An accepted scroll write or a mounted, measured target alone no
+longer emits `ScrollCompleted(..., "succeeded")`. Completion rechecks the current
+token, source generation, semantic target/index/row, owner and native connection,
+offset, clamp and target rect after its asynchronous boundary. Changed evidence
+discards that queued success and reevaluates a still-current request; unavailable
+native geometry remains pending until fresh evidence or existing cancellation /
+missing-target handling. Both shared-owner and standalone sparse lists use this
+gate. Existing shared-owner writes continue ignoring `scroll-animated`.
+
+No API signatures, wire fields, event names/outcomes, anchor meanings or token
+deduplication rules change. Continue matching the current token and application
+intent: for example, a consumer awaiting token 7 must ignore completion for token
+6, and must still perform its own current-intent and exact-control checks after
+token 7 completes. Scroll success proves the scroll stage only; it does not
+register an editor, claim focus/IME readiness, acknowledge retention or release
+an opaque Core receipt. There is no new timeout or wire-version migration.
+
 ## Unreleased: Apple anchored popover declaration ownership
 
 Native anchored popover dismissals now remain suppressed for the lifetime of
