@@ -23,7 +23,7 @@ test-ocaml:
 
 test-apple:
 	# AppKit focus and field editors are process-global; .serialized only isolates one suite.
-	swift test --no-parallel
+	python3 tooling/test/run_apple_tests.py --no-parallel
 
 platform/web/node_modules/.package-lock.json: platform/web/package.json platform/web/package-lock.json
 	npm --prefix platform/web ci

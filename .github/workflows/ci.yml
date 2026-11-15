@@ -178,7 +178,7 @@ jobs:
       - name: Actual OCaml and SwiftUI bounded-row lifecycle
         env:
           LUI_APPLE_BOUNDED_LIBRARY: ${{ runner.temp }}/lui-bounded-native-fixture/liblui_bounded_virtual.dylib
-        run: swift test --filter LUISparseVirtualNativeTests
+        run: python3 tooling/test/run_apple_tests.py --filter LUISparseVirtualNativeTests
       - name: Compile iOS backend and tests
         run: >-
           xcodebuild -scheme LUI-Package

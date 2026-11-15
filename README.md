@@ -139,6 +139,21 @@ Per-platform backend builds and test recipes are documented under each
 `platform/` directory (the Gradle wrapper under `platform/android` for
 Android).
 
+Apple test acceptance on macOS requires both a normal Swift Testing helper
+exit of 0 and this invocation's nonempty terminal successful Testing summary.
+`make test-apple` enforces this; a bare `swift test` exit code is insufficient.
+For a filtered run or the nested package, use the same gate:
+
+```sh
+python3 tooling/test/run_apple_tests.py --no-parallel --filter LUISparseVirtualNativeTests
+python3 tooling/test/run_apple_tests.py --package-path platform/apple --no-parallel
+```
+
+Arguments, environment and current package selection pass through to SwiftPM.
+The initial gate supports one normal helper/run and rejects missing child
+status, no tests, XCTest-only/list-only runs and unsupported summary formats.
+It does not change native runtime behavior. See the [Apple testing guide](platform/apple/README.md).
+
 ### Native Drive testing
 
 [Drive](https://github.com/logseq/drive) keeps fast semantic/headless tests
