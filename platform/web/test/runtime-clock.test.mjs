@@ -19,7 +19,7 @@ test('drive_clock fires view timers from browser timeouts',async()=>{
     Ui.every(context,1000,()=>{})
     return Ui.column(context)
   }
-  const app=App.create(undefined,backend,0,(model,step)=>model+step,view)
+  const app=App.create(undefined,undefined,backend,0,(model,step)=>model+step,view)
   try{
   assert.ok(App.start(app))
   App.flush(app)

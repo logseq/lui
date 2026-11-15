@@ -127,6 +127,13 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
       const match = /^(\??)(\w+):(.*)$/.exec(argument);
       if (!match) { children.push(argument); continue; }
       const [, optional, label, type] = match;
+      // Shared viewport handles carry lifetimes and cannot be constructed by
+      // the data-only typed view decoder. Admit them only through the DSL.
+      if (!extension && ((wire === 'scroll' && label === 'virtual_owner' && type === 'Lui_virtual.owner')
+        || (wire === 'virtual-list' && label === 'viewport' && type === 'Lui_virtual.source'))) {
+        if (!optional) throw new Error(`shared viewport binding must be optional: ${wire}`);
+        continue;
+      }
       if (extension && label === 'key') {
         if (type !== 'string' || !optional) throw new Error(`unknown extension key type: ${wire}`);
         continue;

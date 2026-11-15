@@ -17,7 +17,18 @@ extension LUIAppleBackend {
     public func setScrollTop(nodeID: Int, top: CGFloat) -> Bool {
         guard top.isFinite, let marker = scrollMarker(nodeID: nodeID, container: true),
               let scroll = marker.scroll, let metrics = marker.metrics else { return false }
-        let offset = min(max(top, 0), max(0, metrics.contentSize.height - metrics.viewportSize.height))
+        sharedVirtualViewport.explicitScroll(scroll)
+        return setNativeScrollTop(scroll, top: top, documentHeight: metrics.contentSize.height,
+            viewportHeight: metrics.viewportSize.height)
+    }
+
+    // Shared owners already hold their exact native scroller. They use this
+    // same write path without enabling the optional node-query marker.
+    @discardableResult
+    func setNativeScrollTop(_ scroll: LUIHostNativeScroll, top: CGFloat,
+        documentHeight: CGFloat, viewportHeight: CGFloat) -> Bool {
+        guard top.isFinite, documentHeight.isFinite, viewportHeight.isFinite else { return false }
+        let offset = min(max(top, 0), max(0, documentHeight - viewportHeight))
         #if os(macOS)
         guard let document = scroll.documentView else { return false }
         let clip = scroll.contentView
@@ -46,6 +57,9 @@ extension LUIAppleBackend {
               let scroll = LUIHostScrollMarker.enclosingScroll(of: target) else { return false }
         #if os(macOS)
         guard scroll.documentView != nil else { return false }
+        #endif
+        sharedVirtualViewport.explicitScroll(scroll)
+        #if os(macOS)
         _ = target.scrollToVisible(target.bounds)
         #else
         scroll.scrollRectToVisible(target.convert(target.bounds, to: scroll), animated: false)
@@ -216,6 +230,10 @@ struct LUIHostedScrollView: View {
                    minHeight: horizontal ? viewportSize.height : nil, alignment: .topLeading)
             .environment(\.luiInsideScroll, true)
             .background {
+                if model.property(.virtualViewportEpoch) != nil {
+                    LUISharedOwnerProbe(model: model, backend: backend)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
                 if backend.hostQueries.scrollQueries.contains(model.id) {
                     LUIHostScrollProbe(model: model, backend: backend, ownsScroll: true)
                         .allowsHitTesting(false).accessibilityHidden(true)

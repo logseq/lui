@@ -18,6 +18,7 @@ public enum LUIEvent: Equatable, Sendable {
     case scrollCompleted(node: Int, token: Int, outcome: String)
     case visibleRange(node: Int, first: Int, last: Int)
     case virtualWindow(node: Int, generation: Int, first: Int, last: Int, pins: [Int])
+    case virtualRetention(owner: Int, ticket: Int, receipt: String)
     case picked(node: Int, payload: String)
     // Pointer-detail payloads share one record across the wire. On SwiftUI
     // gestures that expose no hit position the host emits zero coordinates —
@@ -155,6 +156,10 @@ enum LUIWireValue: Decodable, Equatable {
             return intValue.map { $0 >= -1 } ?? false
         case .virtualIndices:
             return stringValue.flatMap(LUISparseVirtualMetadata.canonicalIndices) != nil
+        case .virtualViewportEpoch, .virtualOwnerNode, .virtualOwnerEpoch:
+            return intValue.map { $0 > 0 } ?? false
+        case .virtualRowKeys, .virtualRetentions, .virtualRetentionReleases:
+            return stringValue != nil
         case .headingLevel:
             guard let value = intValue else { return false }
             return (1...6).contains(value)
@@ -632,8 +637,25 @@ struct LUIRetainedTree {
         var oldNodes: [Int: LUINodeState] = [:]
         var oldExtensions: [Int: LUIExtensionNodeState] = [:]
         let oldRootIDs = rootIDs
+        var sharedTopologyChanged = false
         do {
             for operation in operations {
+                // Topology is global, but ordinary text/editor updates cannot
+                // change it and must retain the scoped validation path.
+                switch operation {
+                case let .setProp(_, property, _), let .removeProp(_, property):
+                    switch property {
+                    case .virtualViewportEpoch, .virtualOwnerNode, .virtualOwnerEpoch,
+                         .virtualRowKeys, .virtualTotalCount:
+                        sharedTopologyChanged = true
+                    default:
+                        break
+                    }
+                case .setExtensionProp, .removeExtensionProp:
+                    break
+                default:
+                    sharedTopologyChanged = true
+                }
                 for id in Self.affectedIDs(of: operation) where !snapshotted.contains(id) {
                     snapshotted.insert(id)
                     oldNodes[id] = nodes[id]
@@ -744,7 +766,8 @@ struct LUIRetainedTree {
             effects.validationScope = scope
             try validateNodeProperties(
                 extensionRegistry: extensionRegistry,
-                scope: scope
+                scope: scope,
+                sharedTopologyChanged: sharedTopologyChanged
             )
         } catch {
             for id in snapshotted {
@@ -1165,15 +1188,17 @@ struct LUIRetainedTree {
 
     private func validateNodeProperties(
         extensionRegistry: LUIAppleExtensionRegistry,
-        scope: Set<Int>? = nil
+        scope: Set<Int>? = nil,
+        sharedTopologyChanged: Bool
     ) throws {
+        if sharedTopologyChanged { try validateSharedVirtualTopology() }
         // Iterate the scope directly: filtering `nodes`/`extensionNodes`
         // walks every node in the tree per batch even when the scope names
         // a handful of ids.
         if let scope {
             for id in scope {
                 if let node = nodes[id] {
-                    try validateNode(node)
+                    try validateNode(node, id: id)
                 }
                 if let node = extensionNodes[id] {
                     try validateExtensionNode(
@@ -1184,8 +1209,8 @@ struct LUIRetainedTree {
             }
             return
         }
-        for (_, node) in nodes {
-            try validateNode(node)
+        for (id, node) in nodes {
+            try validateNode(node, id: id)
         }
         for (_, node) in extensionNodes {
             try validateExtensionNode(
@@ -1195,9 +1220,65 @@ struct LUIRetainedTree {
         }
     }
 
-    private func validateNode(_ node: LUINodeState) throws {
+    // Validate the final topology together: duplicate owners can involve a
+    // source outside the batch's ordinary property-validation scope.
+    private func validateSharedVirtualTopology() throws {
+        var bindings: [Int: LUISharedSourceBinding] = [:]
+        var ownerSources: [Int: Int] = [:]
+        for (id, node) in nodes where node.kind == .virtualList {
+            guard let binding = try LUISharedSourceBinding(properties: node.properties, children: node.children)
+            else { continue }
+            guard let owner = nodes[binding.owner], owner.kind == .scroll,
+                  owner.properties[.virtualViewportEpoch]?.intValue == binding.epoch else {
+                throw invalid("shared virtual source has no matching owner epoch")
+            }
+            guard ownerSources.updateValue(id, forKey: binding.owner) == nil else {
+                throw invalid("shared virtual owner permits only one flat source")
+            }
+            bindings[id] = binding
+        }
+        for (id, node) in nodes {
+            let isOwner = node.kind == .scroll && node.properties[.virtualViewportEpoch] != nil
+            guard node.kind == .virtualList || isOwner else { continue }
+            let binding = bindings[id]
+            var foundOwner = false
+            var current = node.parent
+            var visited = Set<Int>()
+            while let ancestorID = current, visited.insert(ancestorID).inserted {
+                if let ancestor = nodes[ancestorID] {
+                    if ancestor.kind == .virtualList, binding != nil || bindings[ancestorID] != nil || isOwner {
+                        throw invalid("shared virtual participation cannot nest virtual lists or owners")
+                    }
+                    if ancestor.kind == .scroll, ancestor.properties[.virtualViewportEpoch] != nil {
+                        guard !isOwner, binding == nil || binding?.owner == ancestorID else {
+                            throw invalid("shared virtual owners must be independent")
+                        }
+                    }
+                }
+                if ancestorID == binding?.owner { foundOwner = true }
+                current = nodes[ancestorID]?.parent ?? extensionNodes[ancestorID]?.parent
+            }
+            if binding != nil, !foundOwner {
+                throw invalid("shared virtual source is outside its declared owner")
+            }
+        }
+    }
+
+    private func validateNode(_ node: LUINodeState, id: Int) throws {
             if node.kind == .virtualList {
                 _ = try LUISparseVirtualMetadata(properties: node.properties, children: node.children)
+            }
+            if node.kind == .scroll {
+                _ = try LUISharedSourceBinding.retentions(node.properties)
+                _ = try LUISharedSourceBinding.releases(node.properties)
+                if let epoch = node.properties[.virtualViewportEpoch] {
+                    guard let epoch = epoch.intValue, epoch > 0,
+                          node.properties[.orientation]?.stringValue != "horizontal" else {
+                        throw invalid("shared virtual owner requires a positive epoch and vertical scrolling")
+                    }
+                } else if node.properties[.virtualRetentions] != nil || node.properties[.virtualRetentionReleases] != nil {
+                    throw invalid("virtual retention metadata requires an owner epoch")
+                }
             }
             if node.kind == .root {
                 guard node.parent == nil else {

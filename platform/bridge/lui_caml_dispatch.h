@@ -261,6 +261,25 @@ static inline int32_t lui_dispatch_virtual_window(
   CAMLreturnT(int32_t, accepted);
 }
 
+static inline int32_t lui_dispatch_virtual_retention(
+    const char *name, int64_t owner, int64_t ticket, const char *receipt,
+    int32_t length, lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal2(receipt_value, result);
+  CAMLlocalN(arguments, 3);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    receipt_value = caml_alloc_initialized_string(length, receipt);
+    arguments[0] = Val_long(owner);
+    arguments[1] = Val_long(ticket);
+    arguments[2] = receipt_value;
+    result = caml_callbackN_exn(*callback, 3, arguments);
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
 static int32_t lui_dispatch_scroll_completed(const char *name, int64_t node,
                                              int64_t token, const char *outcome,
                                              int32_t outcome_len,

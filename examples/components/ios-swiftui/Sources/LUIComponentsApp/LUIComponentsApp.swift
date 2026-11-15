@@ -2,6 +2,8 @@ import LUIAppleBackend
 import Foundation
 import Observation
 import SwiftUI
+@_silgen_name("lui_ocaml_virtual_retention_utf8")
+private func luiOCamlVirtualRetention(_ owner: Int64, _ ticket: Int64, _ receipt: UnsafePointer<CChar>?, _ length: Int32) -> Int32
 #if os(iOS)
 import UIKit
 #else
@@ -135,6 +137,9 @@ private final class GalleryHost {
                 ids.withUnsafeBufferPointer {
                     self.recovery.check(luiOCamlVirtualWindow(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count)))
                 }
+            case let .virtualRetention(owner, ticket, receipt):
+                guard let length = Int32(exactly: receipt.utf8.count) else { self.recovery.check(0); return }
+                receipt.withCString { self.recovery.check(luiOCamlVirtualRetention(Int64(owner), Int64(ticket), $0, length)) }
             case let .scrollCompleted(node, token, outcome):
                 outcome.withCString { self.recovery.check(luiOCamlScrollCompleted(Int64(node), Int64(token), $0)) }
             case let .visibleRange(node, first, last):

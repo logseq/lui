@@ -657,8 +657,10 @@ final class LUIFrameReporting {
 
 @MainActor
 public final class LUIAppleBackend {
+    public nonisolated static let sharedVirtualViewportVersion = 1
     let hostQueries = LUIHostQueries()
     let hostFocus = LUIHostFocusState()
+    lazy var sharedVirtualViewport = LUISharedVirtualViewport(backend: self)
     public private(set) var generation = 0
     /// Number of observable model commits, for diagnostics.
     public private(set) var commitSequence = 0
@@ -1206,6 +1208,7 @@ public final class LUIAppleBackend {
             var tD = tB
             let updatesVirtualWindow = effects.touched.contains { id in
                 tree.nodes[id]?.properties[.virtualTotalCount] != nil ||
+                tree.nodes[id]?.properties[.virtualViewportEpoch] != nil ||
                 tree.nodes[id]?.properties[.dataAttrs]?.stringValue?
                     .contains("data-virtual-count\u{1f}") == true
             }
@@ -1976,6 +1979,12 @@ public final class LUIAppleBackend {
         for event in events {
             onEvent?(event)
         }
+    }
+
+    func performVirtualRetention(owner: Int, ticket: Int, receipt: String) {
+        guard let model = model(id: owner), model.kind == .scroll,
+              model.property(.virtualViewportEpoch)?.intValue != nil else { return }
+        emit(.virtualRetention(owner: owner, ticket: ticket, receipt: receipt))
     }
 
     private func emit(_ event: LUIEvent) {

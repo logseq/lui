@@ -241,6 +241,7 @@ let event_name = function
   | P.VisibleRange _ -> "visible-range"
   | P.ScrollEdges _ -> "scroll-edges"
   | P.VirtualWindow _ -> "virtual-window"
+  | P.VirtualRetention _ -> "virtual-retention"
   | P.Picked _ -> "picked"
   | P.PressModifiers _ -> "press-modifiers"
   | P.PressDetail _ -> "press-detail"

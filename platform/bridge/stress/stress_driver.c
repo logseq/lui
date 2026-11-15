@@ -18,6 +18,9 @@ extern int32_t lui_ocaml_press_detail(int64_t node, double x, double y,
 extern int32_t lui_ocaml_virtual_window(int64_t node, int64_t generation,
                                         int64_t first, int64_t last,
                                         const int64_t *pins, int32_t count);
+extern int32_t lui_ocaml_virtual_retention_utf8(
+    int64_t owner, int64_t ticket, const char *receipt, int32_t length);
+extern int32_t lui_ocaml_virtual_viewport_version(void);
 
 value stress_press_detail(value count) {
   CAMLparam1(count);
@@ -60,5 +63,51 @@ value stress_virtual_window(value count) {
   }
   caml_leave_blocking_section();
   if (!accepted) caml_failwith("virtual window failed typed dispatch or input validation");
+  CAMLreturn(Val_unit);
+}
+
+value stress_virtual_retention(value count) {
+  CAMLparam1(count);
+  int iterations = Int_val(count);
+  int64_t owner = INT64_C(9007199254740993);
+  /* UTF-8, an embedded NUL, and a trailing byte outside the declared length. */
+  const char receipt[] = {'r', (char)0xe6, (char)0x96, (char)0x87, '\0', 'x', '!'};
+  struct {
+    int64_t owner;
+    int64_t ticket;
+    const char *receipt;
+    int32_t length;
+  } invalid[] = {
+    {0, 1, receipt, 6}, {-1, 1, receipt, 6},
+    {INT64_MAX, 1, receipt, 6}, {1, 0, receipt, 6},
+    {1, -1, receipt, 6}, {1, INT64_MAX, receipt, 6},
+    {1, 1, NULL, 0}, {1, 1, NULL, 6}, {1, 1, receipt, -1}
+  };
+  int accepted = 1;
+#if defined(__APPLE__)
+  const int32_t expected_version = 1;
+#else
+  const int32_t expected_version = 0;
+#endif
+  if (lui_ocaml_virtual_viewport_version() != expected_version)
+    caml_failwith("unexpected shared viewport capability version");
+  caml_enter_blocking_section();
+  if (iterations == 0) {
+    accepted = !lui_ocaml_virtual_retention_utf8(owner, Max_long, receipt, 6);
+  } else {
+    for (int index = 0; index < iterations && accepted; index++) {
+      accepted = lui_ocaml_virtual_retention_utf8(owner, Max_long, receipt, 6);
+    }
+    accepted = accepted && lui_ocaml_virtual_retention_utf8(owner, Max_long, "", 0);
+    accepted = accepted && !lui_ocaml_virtual_retention_utf8(owner, Max_long, "!", 1);
+  }
+  for (size_t index = 0; index < sizeof(invalid) / sizeof(invalid[0]); index++) {
+    accepted = accepted && !lui_ocaml_virtual_retention_utf8(
+        invalid[index].owner, invalid[index].ticket, invalid[index].receipt,
+        invalid[index].length);
+  }
+  caml_leave_blocking_section();
+  if (!accepted)
+    caml_failwith("virtual retention failed typed dispatch or input validation");
   CAMLreturn(Val_unit);
 }

@@ -104,10 +104,14 @@ function renderProtocolSignature(schema) {
     `type ${name} =\n${ctors.map((c) => `  | ${c}`).join('\n')}`;
   const nodeKinds = schema.nodeKinds.map(({ lg }) => lg);
   const properties = schema.properties.map(({ lg }) => lg);
-  const events = schema.events
-    .map(({ lg, fields }) =>
-      fields.length === 0 ? lg : `${lg} of ${fields.map(ocamlFieldType).join(' * ')}`)
+  const renderEvent = ({ lg, fields }) =>
+    fields.length === 0 ? lg : `${lg} of ${fields.map(ocamlFieldType).join(' * ')}`;
+  const events = schema.events.filter(event => !event.afterExtension)
+    .map(renderEvent)
     .join('\n  | ');
+  // Preserve the raw OCaml tag of the existing ExtensionEvent constructor.
+  const appendedEvents = schema.events.filter(event => event.afterExtension)
+    .map(event => `\n  | ${renderEvent(event)}`).join('');
   return `${'(* Generated from schema/components.json. Do not edit by hand. *)\n'}
 
 type node_kind =
@@ -162,7 +166,7 @@ type pointer_detail = {
 
 type event =
   | ${events}
-  | ExtensionEvent of int * string * string * wire_value String_map.t
+  | ExtensionEvent of int * string * string * wire_value String_map.t${appendedEvents}
 
 type patch_op =
   | CreateNode of int * node_kind

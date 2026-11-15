@@ -30,6 +30,15 @@ LUI_EXPORT int32_t lui_ocaml_virtual_rows_version(void) {
   return 1;
 }
 
+/* Shared viewport retention is initially implemented by the Apple host only. */
+LUI_EXPORT int32_t lui_ocaml_virtual_viewport_version(void) {
+#if defined(__APPLE__)
+  return 1;
+#else
+  return 0;
+#endif
+}
+
 static int runtime_started = 0;
 static lui_patch_callback patch_callback = NULL;
 
@@ -333,6 +342,21 @@ LUI_EXPORT int32_t lui_ocaml_virtual_window(int64_t node, int64_t generation,
   caml_leave_blocking_section();
   accepted = lui_dispatch_virtual_window("lui_ocaml_virtual_window", node,
       generation, first, last, pins, count, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_virtual_retention_utf8(
+    int64_t owner, int64_t ticket, const char *receipt, int32_t length) {
+  int32_t accepted;
+  if (owner <= 0 || owner > Max_long || ticket <= 0 || ticket > Max_long ||
+      receipt == NULL || length < 0) {
+    return 0;
+  }
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_virtual_retention(
+      "lui_ocaml_virtual_retention_utf8", owner, ticket, receipt, length,
+      deliver);
   caml_enter_blocking_section();
   return accepted;
 }

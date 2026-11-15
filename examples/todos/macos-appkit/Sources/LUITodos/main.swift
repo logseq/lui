@@ -9,6 +9,7 @@ private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 private typealias StartFunction = @convention(c) (PatchCallback?, Int32, Int32) -> Int32
 private typealias VirtualRowsVersionFunction = @convention(c) () -> Int32
 private typealias VirtualWindowFunction = @convention(c) (Int64, Int64, Int64, Int64, UnsafePointer<Int64>?, Int32) -> Int32
+private typealias VirtualRetentionFunction = @convention(c) (Int64, Int64, UnsafePointer<CChar>?, Int32) -> Int32
 private typealias VisibleRangeFunction = @convention(c) (Int64, Int64, Int64) -> Int32
 private typealias ScrollCompletedFunction = @convention(c) (Int64, Int64, UnsafePointer<CChar>?) -> Int32
 private typealias StopFunction = @convention(c) () -> Int32
@@ -43,6 +44,7 @@ private final class NativeTodosRuntime {
     let clock: LUIRuntimeClock
     private let nativeHostCode: Int32
     private let virtualWindowFunction: VirtualWindowFunction?
+    private let virtualRetentionFunction: VirtualRetentionFunction?
     private let visibleRangeFunction: VisibleRangeFunction?
     private let scrollCompletedFunction: ScrollCompletedFunction?
     private let startFunction: StartFunction
@@ -81,6 +83,7 @@ private final class NativeTodosRuntime {
             unsafeBitCast($0, to: VirtualWindowFunction.self)
         }
         nativeHostCode = version == 1 && virtualWindowFunction != nil ? 258 : 2
+        virtualRetentionFunction = try? Self.load("lui_ocaml_virtual_retention_utf8", from: handle)
         visibleRangeFunction = dlsym(handle, "lui_ocaml_visible_range").map {
             unsafeBitCast($0, to: VisibleRangeFunction.self)
         }
@@ -129,6 +132,13 @@ private final class NativeTodosRuntime {
         let ids = pins.map(Int64.init)
         ids.withUnsafeBufferPointer {
             recovery.check(virtualWindowFunction?(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count)))
+        }
+    }
+
+    func virtualRetention(owner: Int, ticket: Int, receipt: String) {
+        guard let length = Int32(exactly: receipt.utf8.count) else { recovery.check(0); return }
+        receipt.withCString {
+            recovery.check(virtualRetentionFunction?(Int64(owner), Int64(ticket), $0, length))
         }
     }
 
@@ -336,6 +346,8 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
                         name: name, values: values)
                 case let .virtualWindow(node, generation, first, last, pins):
                     self?.runtime?.virtualWindow(node: node, generation: generation, first: first, last: last, pins: pins)
+                case let .virtualRetention(owner, ticket, receipt):
+                    self?.runtime?.virtualRetention(owner: owner, ticket: ticket, receipt: receipt)
                 case let .scrollCompleted(node, token, outcome):
                     self?.runtime?.scrollCompleted(node: node, token: token, outcome: outcome)
                 case let .visibleRange(node, first, last):

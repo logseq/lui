@@ -105,6 +105,11 @@ private final class LUIAppleBridge {
                 guard let data = try? JSONSerialization.data(withJSONObject: payload),
                       let json = String(data: data, encoding: .utf8) else { return }
                 json.withCString { callback(20, 0, $0) }
+            case let .virtualRetention(owner, ticket, receipt):
+                let payload: [String: Any] = ["owner": owner, "ticket": ticket, "receipt": receipt]
+                guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                      let json = String(data: data, encoding: .utf8) else { return }
+                json.withCString { callback(21, 0, $0) }
             case let .visibleRange(node, first, last):
                 let payload: [String: Any] = [
                     "first": first,
