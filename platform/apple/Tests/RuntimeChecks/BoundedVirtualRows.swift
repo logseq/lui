@@ -122,23 +122,29 @@ import UIKit
       try require(false, label)
     }
     // Real UIKit geometry, independent of SwiftUI's current safe-area policy.
-    let geometry = LUISparseVirtualState()
-    let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
-    scroll.contentInsetAdjustmentBehavior = .never
-    scroll.contentInset = UIEdgeInsets(top: 17, left: 0, bottom: 23, right: 0)
-    scroll.contentSize = CGSize(width: 300, height: 10000)
-    scroll.contentOffset = CGPoint(x: 0, y: 100)
-    let probe = LUISparseScrollProbe.Probe(state: geometry)
-    scroll.addSubview(probe)
-    probe.connect()
-    try require(abs(geometry.offset - 117) < 0.1, "UIKit viewport must include adjusted top inset")
-    try require(
-      abs(geometry.viewportHeight - 260) < 0.1, "UIKit viewport must exclude obscured inset area")
-    probe.disconnect()
-
-    nativePresentationCheckpoint("BOUNDED_INSETS_PASS scenes=\(UIApplication.shared.connectedScenes.count)")
     let previous = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
       .flatMap(\.windows).first { $0.isKeyWindow }!
+    do {
+      let geometry = LUISparseVirtualState()
+      let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
+      previous.addSubview(scroll)
+      defer { scroll.removeFromSuperview() }
+      scroll.contentInsetAdjustmentBehavior = .never
+      scroll.contentInset = UIEdgeInsets(top: 17, left: 0, bottom: 23, right: 0)
+      scroll.contentSize = CGSize(width: 300, height: 10000)
+      scroll.contentOffset = CGPoint(x: 0, y: 100)
+      let probe = LUISparseScrollProbe.Probe(state: geometry)
+      defer { probe.disconnect() }
+      scroll.addSubview(probe)
+      probe.connect()
+      try require(scroll.window === previous && geometry.hasNativeProbe(probe),
+        "UIKit inset fixture must attach its native probe to a window")
+      try require(abs(geometry.offset - 117) < 0.1, "UIKit viewport must include adjusted top inset")
+      try require(
+        abs(geometry.viewportHeight - 260) < 0.1, "UIKit viewport must exclude obscured inset area")
+    }
+
+    nativePresentationCheckpoint("BOUNDED_INSETS_PASS scenes=\(UIApplication.shared.connectedScenes.count)")
     let window = UIWindow(windowScene: previous.windowScene!)
     let source = try BoundedSource()
     let hosting = UIHostingController(rootView: LUISwiftUIRoot(backend: source.backend, rootID: 1))
