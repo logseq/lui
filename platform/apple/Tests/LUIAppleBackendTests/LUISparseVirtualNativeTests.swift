@@ -147,8 +147,8 @@
       case timeout(String)
     }
 
-    func pump(until name: String, _ predicate: () -> Bool) async throws {
-      let deadline = ContinuousClock.now + .seconds(8)
+    func pump(until name: String, timeout: Duration = .seconds(8), _ predicate: () -> Bool) async throws {
+      let deadline = ContinuousClock.now + timeout
       repeat {
         hosting.layoutSubtreeIfNeeded()
         try checkErrors()
@@ -157,6 +157,7 @@
       } while ContinuousClock.now < deadline
       let diagnostic =
         "\(name)\n\(backend.debugModelCounts)\nindices=\(indices)\noffset=\(scroll?.contentView.bounds.minY ?? -1) height=\(documentHeight)\ntarget=\(String(describing: list?.property(.virtualScrollIndex))) token=\(String(describing: list?.scrollToken))\n\(events.suffix(20))"
+      print("Apple bounded rows timeout:\n\(diagnostic)")
       try? diagnostic.write(
         toFile: "/tmp/lui-apple-sparse-timeout.txt", atomically: true, encoding: .utf8)
       throw Failure.timeout(name)
@@ -322,9 +323,20 @@
         try h.scrollTo(0)
         try await h.pump(until: "native scroll returns to top") { h.indices.contains(0) }
         h.bounded()
+        let farEventStart = h.events.count
         try h.action("sparse-target-bottom")
-        try await h.pump(until: "far scroll target has actual geometry") {
+        let farList = try #require(h.list)
+        let farToken = try #require(farList.scrollToken)
+        // Variable-row measurement retargets the default native animation.
+        // Keep this wait bounded without weakening the native completion gate.
+        try await h.pump(until: "far scroll target has actual geometry", timeout: .seconds(30)) {
           h.indices.contains(99999) && (h.scroll?.contentView.bounds.minY ?? 0) > 1_000_000
+            && h.events.dropFirst(farEventStart).contains {
+              if case .scrollCompleted(let node, let token, let outcome) = $0 {
+                return node == farList.id && token == farToken && outcome == "succeeded"
+              }
+              return false
+            }
         }
         try await h.pump(until: "accepted native composition survives eviction and remount") {
           h.editor("dr你aft-2") != nil
