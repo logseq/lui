@@ -129,6 +129,23 @@ private final class PlatformCompletionFixture {
 @MainActor
 @Suite("Sparse completion platform coordinate domains", .serialized)
 struct LUISparsePlatformCompletionTests {
+    #if os(macOS)
+    @Test("AppKit completion geometry matches the native scroll writer under content insets")
+    func appKitInsetViewport() throws {
+        let fixture = try PlatformCompletionFixture(shared: false)
+        defer { fixture.close() }
+        fixture.scroll.contentInsets = NSEdgeInsets(top: 1, left: 0, bottom: 2, right: 0)
+        fixture.scroll.layoutSubtreeIfNeeded()
+        fixture.probe.connect()
+        let sample = try fixture.sample()
+        let viewport = fixture.scroll.documentVisibleRect.height
+        #expect(sample.geometry.height == viewport)
+        #expect(sample.geometry.documentHeight - sample.geometry.height
+            == fixture.document.bounds.height - viewport)
+    }
+
+    #endif
+
     @Test("shared completion uses nonzero source origins, outer clamping and current owner epochs")
     func sharedOwnerEvidence() async throws {
         for scenario in ["interior", "owner-bottom", "stale-owner"] {

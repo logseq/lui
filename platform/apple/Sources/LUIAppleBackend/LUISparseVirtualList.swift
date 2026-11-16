@@ -532,7 +532,10 @@ final class LUISparseVirtualState {
     let observed: CGFloat
     let correctionGeometry: LUISharedViewportGeometry?
     if sharedBinding == nil {
-      desired = clampedOffset(targetOffset(index, height: sample.geometry.height))
+      // Standalone observations and writers use the absolute offset domain,
+      // but the native document can differ slightly from estimated extents.
+      // Clamp against witnessed native geometry so an edge target can settle.
+      desired = sample.geometry.target(targetOffset(index, height: sample.geometry.height))
       observed = sample.geometry.offset
       correctionGeometry = nil
     } else {
@@ -541,7 +544,7 @@ final class LUISparseVirtualState {
       correctionGeometry = sample.geometry
     }
     desiredOffset = desired
-    if abs(observed - desired) > 1 {
+    if abs(observed - desired) > 1 && !targetAlignmentAccepted(sample, row: row) {
       if let last = lastCorrection, last.0 == fence, last.1.matches(sample), abs(last.2 - desired) <= 1 { return }
       lastCorrection = (fence, sample, desired)
       // A writer may produce no notification (including an accepted no-op).
@@ -566,11 +569,7 @@ final class LUISparseVirtualState {
             let fresh = acquireObservation(row), observationSerial > serial,
             completionID == id, completionFence(row) == fence,
             sample.matches(fresh), anchorReady(fresh, row: row),
-            abs((sharedBinding == nil ? fresh.geometry.offset : fresh.geometry.localOffset)
-              - (sharedBinding == nil
-                ? clampedOffset(targetOffset(row.index, height: fresh.geometry.height))
-                : fresh.geometry.target(targetOffset(row.index, height: fresh.geometry.height))
-                  - fresh.geometry.origin)) <= 1
+            targetAlignmentAccepted(fresh, row: row)
       else {
         if completionID == id { completion = nil; completionID = nil }
         return
@@ -610,6 +609,26 @@ final class LUISparseVirtualState {
     sample.intersectsViewport && heights[row.id] != nil
       && abs(sample.anchorRect.minY - sample.geometry.origin - extents.origin(row.index)) <= 1
       && abs(sample.anchorRect.height - extents.height(row.index)) <= 1
+  }
+
+  private func targetAlignmentAccepted(_ sample: LUISparseNativeObservation, row: Row) -> Bool {
+    let expected: CGFloat
+    let actual: CGFloat
+    if sharedBinding == nil {
+      expected = sample.geometry.target(targetOffset(row.index, height: sample.geometry.height))
+      actual = sample.geometry.offset
+    } else {
+      expected = sample.geometry.target(targetOffset(row.index, height: sample.geometry.height))
+        - sample.geometry.origin
+      actual = sample.geometry.localOffset
+    }
+    if abs(actual - expected) <= 1 { return true }
+    // A standalone final row cannot always be top-aligned: AppKit clamps at
+    // the document edge, whose headless geometry may differ by a few points
+    // from SwiftUI's estimated extent. Stable, witnessed visibility is the
+    // only valid fallback; interior and shared targets remain exact.
+    return sharedBinding == nil && row.index == extents.count - 1
+      && actual < expected && sample.intersectsViewport
   }
 
   private func takeTarget() -> (model: LUINodeModel, token: Int)? {

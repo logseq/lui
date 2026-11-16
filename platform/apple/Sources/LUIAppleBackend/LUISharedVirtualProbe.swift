@@ -65,7 +65,10 @@ struct LUISparseNativeObservation {
         guard let window = scroll.window, source.window === window else { return nil }
         #if os(macOS)
         guard let document = scroll.documentView, source.isDescendant(of: document) else { return nil }
-        let clip = document.convert(scroll.contentView.bounds, from: scroll.contentView)
+        // AppKit owns clip constraints (including borders, magnification and
+        // scroller geometry); documentVisibleRect is their authoritative
+        // expression in document coordinates.
+        let clip = scroll.documentVisibleRect
         let frame = source.convert(source.bounds, to: document)
         let offset = document.isFlipped ? clip.minY - document.bounds.minY : document.bounds.maxY - clip.maxY
         let origin = document.isFlipped ? frame.minY - document.bounds.minY : document.bounds.maxY - frame.maxY
