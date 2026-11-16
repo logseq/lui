@@ -375,6 +375,16 @@ struct LUISwiftUIBackendTests {
         ) == nil)
     }
 
+    @Test("ordinary buttons omit dormant long-press gestures")
+    func buttonSupplementaryGesturePolicy() {
+        #expect(!LUIButtonSupplementaryGesturePolicy.installsLongPress(
+            supportsLongPress: false
+        ))
+        #expect(LUIButtonSupplementaryGesturePolicy.installsLongPress(
+            supportsLongPress: true
+        ))
+    }
+
     @Test("intrinsic columns do not append layout-only spacing")
     func intrinsicColumnsDoNotAppendLayoutOnlySpacing() {
         #expect(!LUIColumnLayoutPolicy.showsTrailingSpacer(
