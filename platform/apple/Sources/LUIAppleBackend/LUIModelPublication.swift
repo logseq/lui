@@ -29,3 +29,27 @@ final class LUIModelLookupObservation {
         withMutation(keyPath: \.[id]) {}
     }
 }
+
+/// Query activation changes the presentation of only the requested node.
+@Observable
+@MainActor
+final class LUIHostQueryMembership {
+    @ObservationIgnored private var members: Set<Int> = []
+
+    private subscript(id: Int) -> Bool {
+        access(keyPath: \.[id])
+        return members.contains(id)
+    }
+
+    func contains(_ id: Int) -> Bool { self[id] }
+
+    func insert(_ id: Int) {
+        guard !members.contains(id) else { return }
+        withMutation(keyPath: \.[id]) { _ = members.insert(id) }
+    }
+
+    func remove(_ id: Int) {
+        guard members.contains(id) else { return }
+        withMutation(keyPath: \.[id]) { _ = members.remove(id) }
+    }
+}

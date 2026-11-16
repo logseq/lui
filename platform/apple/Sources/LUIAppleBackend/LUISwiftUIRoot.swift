@@ -630,7 +630,13 @@ struct LUIAnyNodeView: View, Equatable {
     @ViewBuilder
     var body: some View {
         let _ = perfProbe()
-        if backend.model(id: nodeID)?.property(.display)?.stringValue != "none",
+        if let model = backend.model(id: nodeID), model.isUnmodifiedFragment {
+            // Reactive fragments carry no surface or input behavior. Forward
+            // their children so empty fragments create no native layout slot.
+            ForEach(model.visibleChildren, id: \.self) { childID in
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+            }
+        } else if backend.model(id: nodeID)?.property(.display)?.stringValue != "none",
            backend.extensionModel(id: nodeID)?.properties["display"]?.stringValue != "none" {
             nodeContent
                 .modifier(LUIFrameReportModifier(nodeID: nodeID, backend: backend))
@@ -743,45 +749,38 @@ private struct LUINodeView: View {
                 styleClass: model.derived.styleClass)
     }
 
-    @ViewBuilder
     var body: some View {
         let _ = LUIDirectRevisionObservationPolicy.requiresRevision(model.kind)
-            ? model.revision
-            : 0
-        Group {
-            if model.kind == .root || model.kind == .drawer {
-                content
-            } else if LUIUnmodifiedNodePolicy.bypassesSurface(kind: model.kind) {
-                content
-                    .modifier(LUIAccessibilityModifier(model: model, backend: backend))
-                    .modifier(LUIAppearModifier(model: model, backend: backend))
-            } else if model.kind.isModalSurface || model.kind == .filePreview {
-                content
-            } else if model.kind == .resizable {
-                content
-                    .modifier(LUIAccessibilityModifier(model: model, backend: backend))
-                    .modifier(LUIAppearModifier(model: model, backend: backend))
-            } else {
-                content
-                    .modifier(
-                        LUISurfaceModifier(model: model, backend: backend)
-                    )
-                    .modifier(LUIAccessibilityModifier(model: model, backend: backend))
-                    .modifier(LUIAppearModifier(model: model, backend: backend))
+            ? model.revision : 0
+        var view = content
+        if model.kind != .root && model.kind != .drawer && !model.kind.isModalSurface && model.kind != .filePreview {
+            if !LUIUnmodifiedNodePolicy.bypassesSurface(kind: model.kind) && model.kind != .resizable {
+                view = AnyView(view.modifier(LUISurfaceModifier(model: model, backend: backend)))
+            }
+            if model.accessibilityLabel(in: backend) != nil || model.accessibilityIdentifier(in: backend) != nil {
+                view = AnyView(view.modifier(LUIAccessibilityModifier(model: model, backend: backend)))
+            }
+            if model.supportsAppear {
+                view = AnyView(view.modifier(LUIAppearModifier(model: model, backend: backend)))
             }
         }
-        .zIndex(Double(model.derived.zIndex))
-        .modifier(
-            LUITreeItemModifier(
-                model: model,
-                backend: backend,
-                context: treeContext
-            )
-        )
-        .modifier(LUIContextMenuModifier(model: model, backend: backend))
-        .modifier(LUIRetainedPaneModifier(model: model))
-        .modifier(LUIThemeScopeModifier(model: model))
-        .modifier(LUIHostScrollTargetModifier(model: model, backend: backend))
+        view = AnyView(view.zIndex(Double(model.derived.zIndex)))
+        if model.isTreeItem {
+            view = AnyView(view.modifier(LUITreeItemModifier(model: model, backend: backend, context: treeContext)))
+        }
+        if model.kind != .button && model.kind != .toggleButton && model.childData.contextMenuID != nil {
+            view = AnyView(view.modifier(LUIContextMenuModifier(model: model, backend: backend)))
+        }
+        if model.derived.styleClassTokens.contains("retained-pane") {
+            view = AnyView(view.modifier(LUIRetainedPaneModifier(model: model)))
+        }
+        if model.derived.themeScope.applies {
+            view = AnyView(view.modifier(LUIThemeScopeModifier(model: model)))
+        }
+        if model.kind != .scroll && backend.hostQueries.scrollQueries.contains(model.id) {
+            view = AnyView(view.modifier(LUIHostScrollTargetModifier(model: model, backend: backend)))
+        }
+        return view
     }
 
     // Each wire node has a stable ID and one concrete control kind. Erase only
@@ -8394,7 +8393,7 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
 enum LUIPlainContainerSurfacePolicy {
     private static let decoratedProperties: Set<LUIProperty> = [
         .background, .foreground, .borderColor, .borderWidth, .cornerRadius,
-        .opacity, .tooltip, .minWidth, .maxWidth, .minHeight, .maxHeight,
+        .opacity, .tooltip,
         .margin, .marginHorizontal, .marginVertical, .marginTop, .marginRight,
         .marginBottom, .marginLeft, .containerRelativeFrame, .containerRelativeFrameInset
     ]
@@ -8426,6 +8425,21 @@ private struct LUIPlainContainerSurfaceModifier: ViewModifier {
             leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
             bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
             trailing: CGFloat(model.property(.paddingRight)?.intValue ?? horizontal)))
+        if model.surfaceMinWidth != nil || model.surfaceMaxWidth != nil || model.surfaceMinHeight != nil || model.surfaceMaxHeight != nil {
+            constrained(padded, fillsWidth: fillsWidth, fillsHeight: fillsHeight)
+                .frame(minWidth: model.surfaceMinWidth.map(CGFloat.init),
+                       maxWidth: model.surfaceMaxWidth.map(CGFloat.init),
+                       minHeight: model.surfaceMinHeight.map(CGFloat.init),
+                       maxHeight: model.surfaceMaxHeight.map(CGFloat.init))
+                .fixedSize(horizontal: false,
+                    vertical: LUISurfaceFramePolicy.rowIsIntrinsicHeight(model: model)
+                        || LUISurfaceFramePolicy.columnIsIntrinsicHeight(model: model))
+        } else {
+            constrained(padded, fillsWidth: fillsWidth, fillsHeight: fillsHeight)
+        }
+    }
+
+    @ViewBuilder private func constrained<C: View>(_ padded: C, fillsWidth: Bool, fillsHeight: Bool) -> some View {
         if model.surfaceWidth != nil || model.surfaceHeight != nil {
             padded.frame(maxWidth: fillsWidth ? .infinity : nil, maxHeight: fillsHeight ? .infinity : nil,
                          alignment: .leading)
