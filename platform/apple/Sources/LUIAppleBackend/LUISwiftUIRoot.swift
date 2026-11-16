@@ -5358,6 +5358,12 @@ enum LUIButtonIconPlacementPolicy {
     }
 }
 
+enum LUIButtonSupplementaryGesturePolicy {
+    static func installsLongPress(supportsLongPress: Bool) -> Bool {
+        supportsLongPress
+    }
+}
+
 enum LUIButtonVisualPolicy {
     static func usesBorderedStyle(variant: String) -> Bool {
         variant == "primary" || variant == "secondary" ||
@@ -5483,10 +5489,16 @@ private struct LUIButtonView: View {
                     selected = modelSelected
                 }
             }
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.35)
-                    .onEnded { _ in
-                        guard model.supportsLongPress, model.isEnabled else { return }
+            // Do not create a dormant GestureViewChild for ordinary buttons.
+            // On iOS 18, replacing a retained button during an action can leave
+            // that unused graph child reading an invalid input on the next touch.
+            .modifier(
+                LUIButtonLongPressModifier(
+                    installed: LUIButtonSupplementaryGesturePolicy.installsLongPress(
+                        supportsLongPress: model.supportsLongPress
+                    ),
+                    action: {
+                        guard model.isEnabled else { return }
                         held = true
                         try? backend.performLongPress(node: model.id)
                         // A long-press released outside the button never runs the
@@ -5497,6 +5509,7 @@ private struct LUIButtonView: View {
                             held = false
                         }
                     }
+                )
             )
             .modifier(
                 LUISecondaryLongPressModifier(
@@ -6119,6 +6132,23 @@ private struct LUISecondaryLongPressModifier: ViewModifier {
 #else
         content
 #endif
+    }
+}
+
+private struct LUIButtonLongPressModifier: ViewModifier {
+    let installed: Bool
+    let action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if installed {
+            content.simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.35)
+                    .onEnded { _ in action() }
+            )
+        } else {
+            content
+        }
     }
 }
 

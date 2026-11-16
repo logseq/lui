@@ -17,6 +17,7 @@ CHECKS = {
     "drawer-rapid-swipes": ("DrawerRapidSwipes.swift", "DrawerRapidSwipesCheck"),
     "bounded-virtual-rows": ("BoundedVirtualRows.swift", "BoundedVirtualRowsCheck"),
     "drawer-vertical-bars": ("DrawerVerticalBars.swift", "DrawerVerticalBarsCheck"),
+    "button-gesture-lifecycle": ("ButtonGestureLifecycle.swift", "ButtonGestureLifecycleCheck"),
 }
 
 
