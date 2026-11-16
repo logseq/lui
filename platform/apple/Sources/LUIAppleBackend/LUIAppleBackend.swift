@@ -189,6 +189,8 @@ struct LUIChildLayout: Equatable {
 /// `LUIAppleBackend` during `apply`, including for parents that were not
 /// themselves touched but whose children were.
 struct LUIChildData: Equatable {
+    /// Native siblings after expanding unmodified reactive fragments.
+    var ordered: [Int] = []
     /// `children` minus auxiliary slots (context-menu, swipe-actions,
     /// list-section header/footer).
     var visible: [Int] = []
@@ -254,7 +256,7 @@ final class LUINodeModel: Identifiable {
     /// Children without a cached layout entry (extension, unmounted)
     /// stay in the flow.
     var flowChildren: [Int] {
-        children.filter { !isHiddenFlowChild($0) }
+        childData.ordered.filter { !isHiddenFlowChild($0) }
     }
     /// Whether child `id` carries `display: none`; children without a
     /// cached layout entry (extension, unmounted) count as visible.
@@ -264,7 +266,7 @@ final class LUINodeModel: Identifiable {
     /// Dense ranks preserve integer z ordering and original sibling order,
     /// including when flow and positioned children occupy separate ForEachs.
     var childPaintOrder: [Int: Double] {
-        let ordered = children.enumerated().sorted { a, b in
+        let ordered = childData.ordered.enumerated().sorted { a, b in
             let az = childData.layout[a.element]?.derived.zIndex ?? 0
             let bz = childData.layout[b.element]?.derived.zIndex ?? 0
             return az == bz ? a.offset < b.offset : az < bz
@@ -297,6 +299,10 @@ final class LUINodeModel: Identifiable {
         storedDerived = LUINodeDerived(properties: state.properties)
         storedChildren = state.children
         storedParent = state.parent
+    }
+
+    var isUnmodifiedFragment: Bool {
+        kind == .box && properties.count == 1 && property(.display)?.stringValue == "contents"
     }
 
     func property(_ property: LUIProperty) -> LUIWireValue? {
@@ -1901,7 +1907,23 @@ public final class LUIAppleBackend {
         var sawWireChild = false
         var sawContextMenu = false
         var allEnabledButtons = true
-        for childID in model.children {
+        func appendNativeChildren(_ ids: [Int]) {
+            for id in ids {
+                if let child = models[id], child.isUnmodifiedFragment {
+                    appendNativeChildren(child.children)
+                } else {
+                    data.ordered.append(id)
+                }
+            }
+        }
+        switch model.kind {
+        case .row, .column, .box, .stack, .panel, .card, .overlay, .scroll:
+            appendNativeChildren(model.children)
+        default:
+            // Semantic row/item identity is not a flow-layout slot.
+            data.ordered = model.children
+        }
+        for childID in data.ordered {
             guard let child = models[childID] else {
                 // Extension and unmounted children stay visible, carry no
                 // layout entry and are ignored for segmented support —

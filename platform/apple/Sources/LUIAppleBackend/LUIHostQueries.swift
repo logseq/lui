@@ -178,9 +178,9 @@ final class LUITextLayout {
 @Observable @MainActor
 final class LUIHostQueries {
     var iconRevision: UInt64 = 0
-    var textQueries: Set<Int> = []
-    var imageQueries: Set<Int> = []
-    var scrollQueries: Set<Int> = []
+    let textQueries = LUIHostQueryMembership()
+    let imageQueries = LUIHostQueryMembership()
+    let scrollQueries = LUIHostQueryMembership()
     @ObservationIgnored var scrollViews: [Int: WeakScrollView] = [:]
     struct WeakScrollView { weak var value: LUIHostScrollMarker? }
     @ObservationIgnored var textViews: [Int: WeakTextView] = [:]

@@ -29,7 +29,7 @@ struct LUIVirtualPopupOwnership: ViewModifier {
 }
 
 /// Sparse prefix sums retain measurements, never views or source records.
-private struct LUISparseRowExtents {
+private struct LUISparseRowExtents: Equatable {
   var count = 0
   var estimate: CGFloat = 32
   var gap: CGFloat = 0
@@ -263,7 +263,9 @@ final class LUISparseVirtualState {
     heights[row.id] = height
     invalidateCompletion()
     lastCorrection = nil
-    extents.measure(row.index, height: height)
+    if abs(extents.height(row.index) - height) > 0.1 {
+      extents.measure(row.index, height: height)
+    }
     let difference = extents.origin(first) - before
     if sharedBinding == nil, abs(difference) > 0.1 { setOffset(offset + difference, animated: false) }
     schedule()

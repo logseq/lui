@@ -80,6 +80,20 @@ final class LUIAnchoredPopoverStore {
 struct LUIAnchoredPopoverModifier: ViewModifier {
     let nodeID: Int
     let backend: LUIAppleBackend
+
+    func body(content: Content) -> some View {
+        content.background {
+            if let item = backend.anchoredPopovers.presentation(at: nodeID) {
+                LUIAnchoredPopoverAnchor(nodeID: nodeID, backend: backend, item: item)
+            }
+        }
+    }
+}
+
+private struct LUIAnchoredPopoverAnchor: View {
+    let nodeID: Int
+    let backend: LUIAppleBackend
+    let item: LUIAnchoredPopoverPresentation
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
@@ -90,19 +104,9 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
     }
     @State private var contentMeasurement: ContentMeasurement?
 
-    func body(content: Content) -> some View {
-        let item = backend.anchoredPopovers.presentation(at: nodeID)
-        content
-            .background {
-                if item != nil {
-                    Color.clear.onGeometryChange(for: CGRect.self) {
-                        $0.frame(in: .global)
-                    } action: { anchorFrame = $0 }
-                }
-            }
-            .onChange(of: item?.id) { _, next in
-                if next == nil { contentMeasurement = nil }
-            }
+    var body: some View {
+        Color.clear
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { anchorFrame = $0 }
             .popover(
                 item: Binding<LUIAnchoredPopoverPresentation?>(
                     get: {
@@ -110,18 +114,18 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
                         return backend.anchoredPopovers.presentation(at: nodeID)
                     },
                     set: { value in
-                        if value == nil, let item, backend.anchoredPopovers.dismiss(item) {
+                        if value == nil, backend.anchoredPopovers.dismiss(item) {
                             try? backend.performDismiss(node: item.model.id)
                         }
                     }
                 ),
                 attachmentAnchor: attachmentAnchor(item),
-                arrowEdge: arrowEdge(item?.model)
+                arrowEdge: arrowEdge(item.model)
             ) { item in
                 popoverContent(item)
                     .presentationCompactAdaptation(.popover)
             }
-            .modifier(LUIVirtualPopupOwnership(presented: item != nil))
+            .modifier(LUIVirtualPopupOwnership(presented: true))
     }
 
     @ViewBuilder

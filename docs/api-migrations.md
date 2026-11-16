@@ -52,6 +52,21 @@ token 7 completes. Scroll success proves the scroll stage only; it does not
 register an editor, claim focus/IME readiness, acknowledge retention or release
 an opaque Core receipt. There is no new timeout or wire-version migration.
 
+## Unreleased: Apple reactive fragments do not create layout boxes
+
+An unmodified `box` whose only property is `display: contents` now forwards its
+children into an Apple layout container's flow. Empty reactive/keyed fragments occupy
+no gap or sizing slot, and populated fragments preserve their children's order,
+grow factors and absolute positioning. The retained wire tree and node IDs do
+not change, and virtual-list sources retain their semantic row identities.
+Fragments with surface or input properties keep their existing
+native container behavior.
+
+For example, a row containing `[a; empty_fragment; b]` with gap 4 now has one
+4-point gap; a fragment containing `[b; c]` lays out as `[a; b; c]`. Applications
+that require a real box must use an ordinary `box` without `display: contents`.
+There are no API signatures or wire-version changes.
+
 ## Unreleased: Apple anchored popover declaration ownership
 
 Native anchored popover dismissals now remain suppressed for the lifetime of
