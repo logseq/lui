@@ -13,8 +13,11 @@ service registries.
 Applications opt in by linking the native renderer libraries and constructing
 their own window driver. No application is migrated automatically. Native
 development requires SDL2/SDL2_ttf and the OCaml dependencies declared in
-`dune-project` and both opam manifests. Platform-specific runtime qualification
-must run on the actual target, including when a different target compiles stubs.
+`dune-project` and both opam manifests. SDL dependencies are installed automatically on macOS and Linux. Windows
+portable-service consumers do not acquire SDL dependencies; experimental native
+Windows builds must install `tsdl` and `tsdl-ttf` explicitly after providing SDL2.
+Platform-specific runtime qualification must run on the actual target, including
+when a different target compiles stubs.
 
 ```ocaml
 let status : [ `Experimental ] = Lui_host.stability
