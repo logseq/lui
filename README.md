@@ -8,6 +8,11 @@ LUI is a retained, cross-platform UI runtime written in OCaml and powered by
 state, diffing, and patch generation stay in OCaml; each backend applies those
 patches to real UI objects:
 
+- **Web desktop (experimental)**: an [OCaml desktop host](platform/desktop/README.md)
+  runs the Melange frontend in the system WebView, with OS packaging and signed
+  full/file-delta update tooling. Initial macOS startup and DMG checks passed;
+  production delivery qualification remains pending under
+  [ADR 0005](docs/adr/0005-ocaml-web-desktop-host.md).
 - **Apple**: one SwiftUI backend shared by iOS and macOS (`platform/apple`,
   `LUIAppleBackend` Swift package).
 - **Web**: a Melange companion library (`platform/web/melange`) plus the
@@ -41,6 +46,7 @@ examples/todos/       headless todo demo (pure OCaml + ocaml-signal)
 examples/gallery/     headless component-gallery demo
 platform/apple/       SwiftUI backend (SwiftPM package + tests)
 platform/web/         Melange DOM library, stylesheet, icons
+platform/desktop/     OCaml system-WebView shell, update engine and Web update window
 platform/android/     Kotlin Android backend (Gradle, dev.lui package)
 platform/bridge/      shared lui_ocaml_* C ABI and GC stress runner
 platform/services/    portable lui.plugin and lui.plugin_fetch libraries

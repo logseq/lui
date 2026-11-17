@@ -527,7 +527,8 @@ let mount_gallery_shell renderer root host =
   in
   let refresh_layout () =
     let tablet =
-      W.Element.getAttribute "data-lui-form-factor" host = Some "tablet"
+      let form_factor = W.Element.getAttribute "data-lui-form-factor" host in
+      form_factor = Some "tablet" || form_factor = Some "desktop"
     in
     let detail =
       W.Element.getAttribute "data-lui-navigation" shell = Some "detail"
@@ -586,6 +587,7 @@ let mount_gallery_shell renderer root host =
 let app_icon_url = "/examples/components/web/app_icon_128.png"
 
 let main host =
+  let desktop = Lui_web_desktop.available () in
   let registry = Extension_schemas.registry () in
   let adapters =
     String_map.empty
@@ -596,8 +598,11 @@ let main host =
     |> String_map.add "gallery-accent" gallery_accent_adapter
   in
   let renderer =
-    Lui_web.create_simulator_with_extensions host IOS String_map.empty
-      registry adapters
+    if desktop then
+      Lui_web.create_with_extensions host String_map.empty registry adapters
+    else
+      Lui_web.create_simulator_with_extensions host IOS String_map.empty
+        registry adapters
   in
   let app =
     Lui_app.create_with_extensions (Lui_web.backend renderer) registry
@@ -622,7 +627,18 @@ let main host =
   Lui_web.drive_clock app;
   Lui_web_agent.install (Lui_agent.app_target ~host:"web" app);
   let refresh_gallery_layout =
+    if desktop then W.Element.setAttribute "data-lui-form-factor" "desktop" host;
     mount_gallery_shell renderer (Lui_app.root_node app) host
   in
-  mount_simulator_toolbar renderer refresh_gallery_layout;
+  if desktop then (
+    let updates = W.Document.createElement "button" W.document in
+    W.Element.setAttribute "type" "button" updates;
+    W.Element.setClassName updates "lui-gallery-nav-item";
+    W.Element.setTextContent updates {js|Check for Updates…|js};
+    W.Element.addEventListener "click"
+      (fun _event -> ignore (Lui_web_desktop.check_for_updates ())) updates;
+    (match W.Element.querySelector ".lui-gallery-sidebar" host with
+     | None -> ()
+     | Some sidebar -> append sidebar updates))
+  else mount_simulator_toolbar renderer refresh_gallery_layout;
   true
