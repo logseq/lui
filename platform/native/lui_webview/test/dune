@@ -1,0 +1,10 @@
+(test
+ (name lui_webview_test)
+ (modules lui_webview_test)
+ (libraries lui_webview alcotest))
+
+(test
+ (name lui_webview_mac_test)
+ (modules lui_webview_mac_test)
+ (enabled_if (= %{system} macosx))
+ (libraries lui_webview tsdl alcotest unix))

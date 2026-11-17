@@ -19,6 +19,9 @@ patches to real UI objects:
   shared stylesheet and icon set (`platform/web/src`).
 - **Android**: a Kotlin/Jetpack Compose backend (`platform/android`,
   package `dev.lui`) applying patches to native Android UI.
+- **Self-drawn native (experimental)**: the opt-in [OCaml native backend](platform/native/README.md)
+  owns layout, text, painting and input, with CPU and platform GPU renderers.
+  It does not replace the maintained Apple, Android, Web or desktop host paths.
 
 macOS desktop uses the Apple SwiftUI backend. Logseq keeps Electron for
 Windows/Linux desktop builds. Apple/iOS and Android remain maintained:
@@ -34,9 +37,10 @@ backend runs in the same process as the OCaml application and applies typed
 patches to DOM nodes — no JSON bridge, no JavaScript UI framework.
 Apple and Android hosts share the `lui_ocaml_*` C ABI in
 `platform/bridge/lui_ocaml_bridge.c`; each host applies wire batches
-incrementally. OCaml owns the application, not a second desktop renderer.
-The former SDL-based OCaml renderer has been removed; see the
-[breaking-change migration](docs/api-migrations.md#unreleased-desktop-backend-removal-breaking).
+incrementally. The self-drawn native backend can consume typed patch batches
+in the application's OCaml process.
+The SDL-based OCaml renderer is available again as an experimental backend;
+see the [API migration guide](docs/api-migrations.md).
 
 ## Layout
 
@@ -50,6 +54,7 @@ platform/desktop/     OCaml system-WebView shell, update engine and Web update w
 platform/android/     Kotlin Android backend (Gradle, dev.lui package)
 platform/bridge/      shared lui_ocaml_* C ABI and GC stress runner
 platform/services/    portable lui.plugin and lui.plugin_fetch libraries
+platform/native/      experimental self-drawn OCaml renderer, hosts and tests
 schema/               canonical component schema (components.json)
 tooling/              schema code generator and tests
 test/                 alcotest suite

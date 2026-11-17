@@ -1,0 +1,13 @@
+(test
+ (name lui_ax_windows_test)
+ (modules lui_ax_windows_test)
+ (libraries lui_ax_windows lui_a11y alcotest))
+
+(test
+ (name lui_ax_windows_uia_test)
+ (modules lui_ax_windows_uia_test)
+ (foreign_stubs
+  (language c)
+  (names lui_axw_test_window))
+ (enabled_if (= %{system} mingw64))
+ (libraries lui lui_store lui_ax_windows lui_a11y alcotest))

@@ -1,0 +1,9 @@
+(test
+ (name lui_plugin_websocket_test)
+ (modules lui_plugin_websocket_test)
+ (libraries alcotest unix yojson lui_plugin lui_plugin_websocket)
+ (deps ws_echo_server.py)
+ (enabled_if
+  (or
+   (= %{system} linux)
+   (= %{system} macosx))))

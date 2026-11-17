@@ -1,0 +1,36 @@
+{
+  "name": "layout-positions",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          { "op": "create-node", "id": 1, "kind": "column" },
+          { "op": "set-prop", "id": 1, "prop": "padding", "value": 8 },
+          { "op": "set-prop", "id": 1, "prop": "gap", "value": 4 },
+          { "op": "create-node", "id": 2, "kind": "row" },
+          { "op": "set-prop", "id": 2, "prop": "height", "value": 40 },
+          { "op": "set-prop", "id": 2, "prop": "padding", "value": 6 },
+          { "op": "set-prop", "id": 2, "prop": "gap", "value": 2 },
+          { "op": "insert-child", "parent": 1, "child": 2, "index": 0 },
+          { "op": "create-node", "id": 3, "kind": "box" },
+          { "op": "set-prop", "id": 3, "prop": "width", "value": 20 },
+          { "op": "set-prop", "id": 3, "prop": "height", "value": 10 },
+          { "op": "insert-child", "parent": 2, "child": 3, "index": 0 },
+          { "op": "create-node", "id": 4, "kind": "box" },
+          { "op": "set-prop", "id": 4, "prop": "width", "value": 30 },
+          { "op": "set-prop", "id": 4, "prop": "height", "value": 10 },
+          { "op": "insert-child", "parent": 2, "child": 4, "index": 1 },
+          { "op": "create-node", "id": 5, "kind": "box" },
+          { "op": "set-prop", "id": 5, "prop": "height", "value": 12 },
+          { "op": "insert-child", "parent": 1, "child": 5, "index": 1 }
+        ]
+      }
+    },
+    { "expect-bounds": { "node": 1, "rect": { "x": 0.0, "y": 0.0, "w": 320.0, "h": 240.0 } } },
+    { "expect-bounds": { "node": 2, "rect": { "x": 8.0, "y": 8.0, "w": 304.0, "h": 40.0 } } },
+    { "expect-bounds": { "node": 3, "rect": { "x": 14.0, "y": 14.0, "w": 20.0, "h": 10.0 } } },
+    { "expect-bounds": { "node": 4, "rect": { "x": 36.0, "y": 14.0, "w": 30.0, "h": 10.0 } } },
+    { "expect-bounds": { "node": 5, "rect": { "x": 8.0, "y": 52.0, "w": 304.0, "h": 12.0 } } }
+  ]
+}

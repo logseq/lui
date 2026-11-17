@@ -66,6 +66,7 @@ runs:
           # The runner image's apt index goes stale between publishes;
           # refresh it before opam installs system dependencies.
           sudo apt-get update -qq
+          sudo apt-get install -y libpango1.0-dev libfontconfig1-dev
         fi
         opam install . --deps-only --with-test -y --locked --confirm-level=unsafe-yes
         # Top up dependencies introduced after the lock overlay was written.

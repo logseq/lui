@@ -1,0 +1,4 @@
+(test
+ (name lui_plugin_gamepad_test)
+ (modules lui_plugin_gamepad_test)
+ (libraries lui_plugin_gamepad lui_plugin lui_gamepad yojson alcotest))

@@ -1,5 +1,35 @@
 # LUI API migration guide
 
+## Experimental self-drawn OCaml native backend
+
+The self-drawn backend under `platform/native` is available again as
+**experimental**. The restored `lui.host`, `lui.store`, `lui.layout`, `lui.paint`,
+`lui.scene`, window, text, raster and GPU libraries use the current shared LUI
+protocol. Existing Apple/iOS, Android, Web and WebView desktop defaults do not
+change. The portable `lui.plugin` and `lui.plugin_fetch` implementations stay
+under `platform/services`; the restored renderer does not provide duplicate
+service registries.
+
+Applications opt in by linking the native renderer libraries and constructing
+their own window driver. No application is migrated automatically. Native
+development requires SDL2/SDL2_ttf and the OCaml dependencies declared in
+`dune-project` and both opam manifests. Platform-specific runtime qualification
+must run on the actual target, including when a different target compiles stubs.
+
+```ocaml
+let status : [ `Experimental ] = Lui_host.stability
+```
+
+Restored example and scaffold views use `reactive` and `lui.ppx`; direct `dyn`
+calls are not a supported application form. The native JSON scenario recorder
+also handles the current `FocusWithinChanged` and `VirtualRetention` event
+constructors instead of leaving those constructors unmatched.
+
+The Darwin test gate recognizes both Unicode and current Apple SF Symbol
+completion markers. It still requires one nonempty successful terminal summary
+and independently observed zero exit statuses for SwiftPM and its test helper.
+Missing, conflicting and unrecognized terminal summaries remain failures.
+
 ## On-demand Web application icons
 
 The Web renderer constructors (`create`, `create_with_extensions`, and their

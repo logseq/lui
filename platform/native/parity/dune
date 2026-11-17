@@ -1,0 +1,4 @@
+(library
+ (name lui_parity)
+ (modules parity)
+ (libraries lui_scene lui_raster_testkit))

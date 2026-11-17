@@ -21,4 +21,13 @@
   melange-webapi
   ocaml-signal
   yojson
+  tsdl
+  tsdl-ttf
+  imagelib
+  tgls
+  cmdliner
+  mirage-crypto-ec
+  digestif
+  decompress
+  uuseg
   (alcotest :with-test)))

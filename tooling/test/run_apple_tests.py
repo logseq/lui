@@ -34,6 +34,12 @@ class Completion:
 
     def line(self, raw):
         line = ANSI.sub("", raw).strip()
+        # Newer Apple toolchains use SF Symbols instead of Unicode marks.
+        # Normalize only observed equivalents; unknown terminal marks fail closed.
+        marker, separator, text = line.partition(" ")
+        symbols = {"\U001007c8": "◇", "\U0010105b": "✔"}
+        if separator and marker in symbols:
+            line = symbols[marker] + " " + text.lstrip()
         if line == "◇ Test run started.":
             self.starts += 1
         match = TERMINAL.fullmatch(line)
@@ -45,7 +51,7 @@ class Completion:
                 "tests": int(match["tests"]), "result": match["result"],
                 "line": line,
             })
-        elif re.match(r"[✔✘] Test run with\b", line):
+        elif re.match(r"\S+\s+Test run with\b", line):
             self.invalid = True
 
     def successful(self):

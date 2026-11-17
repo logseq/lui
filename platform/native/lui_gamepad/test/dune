@@ -1,0 +1,4 @@
+(test
+ (name lui_gamepad_test)
+ (modules lui_gamepad_test)
+ (libraries lui_gamepad alcotest))

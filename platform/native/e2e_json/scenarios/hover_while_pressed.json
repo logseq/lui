@@ -1,0 +1,41 @@
+{
+  "name": "hover-while-pressed",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          { "op": "create-node", "id": 1, "kind": "column" },
+          { "op": "create-node", "id": 2, "kind": "box" },
+          { "op": "set-prop", "id": 2, "prop": "width", "value": 100 },
+          { "op": "set-prop", "id": 2, "prop": "height", "value": 40 },
+          { "op": "set-prop", "id": 2, "prop": "pointer-enabled",
+            "value": true },
+          { "op": "insert-child", "parent": 1, "child": 2, "index": 0 },
+          { "op": "create-node", "id": 3, "kind": "box" },
+          { "op": "set-prop", "id": 3, "prop": "width", "value": 100 },
+          { "op": "set-prop", "id": 3, "prop": "height", "value": 40 },
+          { "op": "set-prop", "id": 3, "prop": "pointer-enabled",
+            "value": true },
+          { "op": "insert-child", "parent": 1, "child": 3, "index": 1 }
+        ]
+      }
+    },
+    { "expect-events": "*" },
+    {
+      "drag": {
+        "from": 2,
+        "to": 3
+      }
+    },
+    {
+      "expect-events": [
+        { "kind": "pointer-enter", "node": 2 },
+        { "kind": "pointer-down", "node": 2, "button": 0 },
+        { "kind": "pointer-leave", "node": 2 },
+        { "kind": "pointer-enter", "node": 3 },
+        { "kind": "pointer-up", "node": 2, "button": 0 }
+      ]
+    }
+  ]
+}

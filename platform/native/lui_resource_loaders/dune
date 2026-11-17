@@ -1,0 +1,6 @@
+(library
+ (name lui_resource_loaders)
+ (public_name lui.resource_loaders)
+ (modules lui_resource_loaders)
+ (libraries lui_resource lui_scene lui_image lui_svg lui_plugin
+  lui_plugin_fetch lui_media))

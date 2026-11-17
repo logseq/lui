@@ -1,0 +1,10 @@
+(test
+ (name lui_pkg_windows_test)
+ (modules lui_pkg_windows_test)
+ (libraries lui_pkg lui_pkg_windows unix yojson))
+
+(test
+ (name lui_pkg_windows_tools_test)
+ (modules lui_pkg_windows_tools_test)
+ (enabled_if (= %{system} mingw64))
+ (libraries lui_pkg lui_pkg_windows unix))

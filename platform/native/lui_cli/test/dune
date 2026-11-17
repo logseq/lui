@@ -1,0 +1,4 @@
+(test
+ (name lui_cli_test)
+ (modules lui_cli_test)
+ (libraries alcotest lui_cli lui_pkg unix))

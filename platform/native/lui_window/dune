@@ -1,0 +1,39 @@
+(library
+ (name lui_window)
+ (public_name lui.window)
+ (modules lui_window)
+ (libraries lui lui_store lui_scene lui_paint lui_host lui_ime lui_input lui_spatial))
+
+; The demo app lives in its own library (not the window library) so
+; tests can drive its model/action/event paths directly.
+(library
+ (name lui_window_demo)
+ (modules demo_app)
+ (libraries lui ocaml-signal)
+ (preprocess (pps lui_ppx)))
+
+(executable
+ (name main)
+ (modules main lui_window_text)
+ (libraries
+  lui_window
+  lui_window_demo
+  lui
+  lui_store
+  lui_scene
+  lui_paint
+  lui_host
+  lui_layout
+  lui_a11y
+  lui_shell
+  lui_ime
+  lui_gl
+  lui_metal
+  lui_raster
+  lui_blit
+  lui_text
+  tsdl
+  ocaml-signal
+  unix)
+ (preprocess (pps lui_ppx))
+ (enabled_if (= %{system} macosx)))
