@@ -2,6 +2,11 @@
 
 ## Desktop WebAssembly capability
 
+The standalone builder also accepts repeated `--ocaml-package <findlib-name>`
+arguments for explicitly installed application dependencies. Existing builds
+keep the same package set. Invalid package names fail before compilation;
+this option does not install dependencies.
+
 Desktop build configuration adds optional `"web": {"wasm": true}`. The default
 is false. Enabling it adds only `'wasm-unsafe-eval'` to the local script CSP so
 applications can instantiate bundled WebAssembly, including SQLite. JavaScript

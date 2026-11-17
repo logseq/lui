@@ -115,6 +115,8 @@ python3 tooling/desktop.py build \
 ```
 
 Compile the shared module into your frontend through its existing build. The
+`--ocaml-package <findlib-name>` option adds an explicitly installed application
+dependency and may be repeated; it does not install packages.
 builder accepts repeated `--ocaml-source` arguments in dependency order; supply
 an adjacent `.mli` when the module has one. `--commands` supplies the native
 initializer above. Direct embedders can use `Lui_desktop.run_with_commands`;

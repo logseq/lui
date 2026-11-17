@@ -159,6 +159,10 @@ def windows_runtime_libraries(binary, compiler):
 
 
 def build(args):
+    extra_packages = getattr(args, "ocaml_package", [])
+    if any(not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*", name) for name in extra_packages):
+        raise ValueError("Invalid application OCaml package name")
+    packages = ",".join([PACKAGES, *extra_packages])
     config = configuration(args.config)
     target = config["platform"]
     output = args.output.resolve()
@@ -179,7 +183,7 @@ def build(args):
             for suffix in [".mli", ".ml"]:
                 directory = ROOT / "src" if name == "lui_command" else SOURCE
                 shutil.copy2(directory / (name + suffix), work)
-                run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
+                run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", packages,
                      "-c", name + suffix], cwd=work)
             objects.append(work / (name + ".cmx"))
         reserved = {"main", "desktop_app", "lui_command", "lui_desktop", "lui_desktop_update", "lui_desktop_commands"}
@@ -191,15 +195,15 @@ def build(args):
             interface = source.with_suffix(".mli")
             if interface.exists():
                 shutil.copy2(interface, work / interface.name)
-                run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
+                run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", packages,
                      "-c", interface.name], cwd=work)
-            run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
+            run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", packages,
                  "-c", source.name], cwd=work)
             objects.append(work / (source.stem + ".cmx"))
         runner = "Lui_desktop.run"
         if args.commands:
             shutil.copy2(args.commands, work / "desktop_app.ml")
-            run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
+            run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", packages,
                  "-c", "desktop_app.ml"], cwd=work)
             objects.append(work / "desktop_app.cmx")
             runner = "Lui_desktop.run_with_commands ~commands:Desktop_app.commands"
@@ -246,7 +250,7 @@ def build(args):
         linker = []
         for flag in link_flags:
             linker.extend(["-cclib", flag])
-        run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES, "-linkpkg",
+        run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", packages, "-linkpkg",
              *objects, work / "main.ml", *native_objects, *linker, "-o", binary], cwd=work)
         if target.startswith("windows-"):
             windows_runtime_libraries(binary, args.cxx)
@@ -602,6 +606,7 @@ def parser():
     create.add_argument("--webview2-headers", type=Path)
     create.add_argument("--commands", type=Path, help="Native OCaml module exporting commands : unit -> binding list")
     create.add_argument("--ocaml-source", type=Path, action="append", default=[], help="Additional shared/native OCaml module, in dependency order")
+    create.add_argument("--ocaml-package", action="append", default=[], help="Additional installed findlib application package")
     create.set_defaults(action=build)
     keys = commands.add_parser("keygen", help="Create an Ed25519 signing key outside the repository")
     keys.add_argument("--private", type=Path, required=True)
