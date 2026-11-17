@@ -32,7 +32,7 @@ const adapter={
  web_extension_create(id,document,_emit){const element=document.createElement('div');element.dataset.vrow=nodes.get(id).rowKey;element.dataset.extensionRow='true';element.style.cssText='display:flex;height:32px';return element},
  web_extension_set_property(_element,_name,_value){},web_extension_remove_property(_element,_name){},web_extension_cleanup(_element){}
 }
-const renderer=extended?Web.create_with_extensions(host,Protocol.String_map.empty,registry,Protocol.String_map.singleton('virtual-extension-row',adapter)):Web.create(undefined,host)
+const renderer=extended?Web.create_with_extensions(undefined,host,Protocol.String_map.empty,registry,Protocol.String_map.singleton('virtual-extension-row',adapter)):Web.create(undefined, undefined, host)
 const backend=Web.backend(renderer)
 
 const nodes=new Map(), rows=new Map(), handlers=new Map(), values=new Map(), events=[], requests=[]

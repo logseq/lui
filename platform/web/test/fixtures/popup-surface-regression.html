@@ -21,7 +21,7 @@
 import * as Web from 'lui.web.dom/shell/lui_web.js';
 import { Protocol, properties, kinds } from './protocol-fixture.mjs';
 const list = values => values.reduceRight((tl,hd) => ({hd,tl}),0);
-const renderer = Web.create(undefined,document.querySelector('#host'));
+const renderer = Web.create(undefined, undefined,document.querySelector('#host'));
 const backend = Web.backend(renderer);
 let id = 0, generation = 0, ops = [];
 const children = new Map();

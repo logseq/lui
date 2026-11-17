@@ -19,7 +19,7 @@
 import * as Web from "lui.web.dom/shell/lui_web.js"
 import {Protocol, properties, kinds} from "./protocol-fixture.mjs"
 try {
-const host=document.querySelector('#host'), renderer=Web.create(undefined,host), backend=Web.backend(renderer)
+const host=document.querySelector('#host'), renderer=Web.create(undefined, undefined, host), backend=Web.backend(renderer)
 let generation=0, ops=[], id=0
 const events=[]
 Web.set_event_handler(renderer,event=>{events.push(event);return true})

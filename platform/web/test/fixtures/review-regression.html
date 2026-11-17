@@ -25,7 +25,7 @@ body { margin: 10px; font: 16px system-ui }
 import * as Web from "lui.web.dom/shell/lui_web.js"
 import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
 const host = document.querySelector("#host")
-const renderer = Web.create(undefined, host)
+const renderer = Web.create(undefined, undefined, host)
 const backend = Web.backend(renderer)
 const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
 const scalar = value => ({ TAG: typeof value === "string" ? 0 : typeof value === "boolean" ? 1 : 2, _0: value })
