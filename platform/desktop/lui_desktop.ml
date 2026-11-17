@@ -5,7 +5,7 @@ external webview_run : string * string * string * int * int * bool * (unit -> bo
   = "lui_desktop_webview_run"
 external updater_window_run : string * string -> unit = "lui_desktop_updater_window_run"
 external scheme_window_run :
-  string * string * int * int * bool * (string -> string * string) * (string -> string) -> unit
+  string * string * int * int * bool * (string -> string * string) * (string -> string) * string -> unit
   = "lui_desktop_scheme_window_run"
 external wait_for_process : int -> bool = "lui_desktop_wait_for_process"
 external reply_to_command : int * int * string * string -> unit = "lui_desktop_reply"
@@ -287,6 +287,7 @@ if (!updater) {
           | ".html" -> "text/html; charset=utf-8" | ".js" | ".mjs" -> "text/javascript; charset=utf-8"
           | ".css" -> "text/css; charset=utf-8" | ".svg" -> "image/svg+xml"
           | ".png" -> "image/png" | ".json" -> "application/json" | ".woff2" -> "font/woff2"
+          | ".wasm" -> "application/wasm"
           | _ -> "application/octet-stream" in
         let body = if path = "index.html" then
             let insertion = "<script src=\"./__lui/bridge.js\"></script>" in
@@ -301,7 +302,12 @@ if (!updater) {
                ^ String.sub body index (String.length body - index))
           else body in
         kind, body in
-  let csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" in
+  let wasm = match Json.member "web" config with
+    | `Null -> false
+    | web -> (match Json.member "wasm" web with `Null -> false | value -> Json.to_bool value) in
+  let csp = "default-src 'self'; script-src 'self'"
+    ^ (if wasm then " 'wasm-unsafe-eval'" else "")
+    ^ "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" in
   let serve client =
     Unix.setsockopt_float client Unix.SO_RCVTIMEO 5.;
     let input = Unix.in_channel_of_descr client in
@@ -404,7 +410,7 @@ if (!updater) {
         scheme_window_run (text "name" config ^ (if updater_mode then " Updates" else ""),
           base ^ (if updater_mode then "__lui/update" else ""),
           (if updater_mode then 520 else integer "width" config),
-          (if updater_mode then 440 else integer "height" config), updater_mode, asset, callback)
+          (if updater_mode then 440 else integer "height" config), updater_mode, asset, callback, csp)
       else webview_run (text "name" config, base, token,
           integer "width" config, integer "height" config, false, open_updater, invoke))
 

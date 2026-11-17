@@ -187,6 +187,16 @@ class DesktopUpdates(unittest.TestCase):
             self.feed()
         self.assertFalse((self.directory / "release/update-linux-amd64.json").exists())
 
+    def test_wasm_is_an_explicit_boolean_build_capability(self):
+        config = self.directory / "config.json"
+        for web in [{"wasm": True}, {"wasm": False}, {}]:
+            config.write_text(json.dumps(dict(self.config, web=web)))
+            self.assertEqual(desktop.configuration(config)["web"], web)
+        for web in [True, {"wasm": "true"}, {"wasm": 1}, {"wasn": True}]:
+            config.write_text(json.dumps(dict(self.config, web=web)))
+            with self.assertRaises(ValueError):
+                desktop.configuration(config)
+
     def test_public_artifact_constructor_cannot_bypass_validation(self):
         invalid = self.directory / "invalid.ml"
         invalid.write_text('let artifact : Lui_desktop_update.artifact = {url="http://bad"; size=0; sha256=""}\n')

@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+## Desktop WebAssembly capability
+
+Desktop build configuration adds optional `"web": {"wasm": true}`. The default
+is false. Enabling it adds only `'wasm-unsafe-eval'` to the local script CSP so
+applications can instantiate bundled WebAssembly, including SQLite. JavaScript
+eval and inline scripts remain disabled. The builder rejects non-boolean values
+and unknown `web` options. `.wasm` assets now use `application/wasm` so streaming
+instantiation receives the correct MIME type. Existing configurations need no
+changes; applications using WASM must opt in and rebuild the host executable.
+The internal macOS scheme-window FFI tuple now includes the host-generated CSP;
+custom native probes must append that string argument.
+
 ## OCaml Web desktop host and optional Melange desktop services
 
 The new opt-in `platform/desktop` host runs a prebuilt Melange frontend in a

@@ -1,19 +1,25 @@
 external run :
-  string * string * int * int * bool * (string -> string * string) * (string -> string) -> unit
+  string * string * int * int * bool * (string -> string * string) * (string -> string) * string -> unit
   = "lui_desktop_scheme_window_run"
+
+let wasm_enabled = Sys.getenv_opt "LUI_TEST_WASM" = Some "1"
 
 let asset = function
   | "/" -> "text/html; charset=utf-8", {|<!doctype html><html><head>
       <meta charset="utf-8"><title>LUI Scheme Lifecycle Probe</title>
       </head><body><p id="result"></p><script type="module" src="./probe.js"></script></body></html>|}
-  | "/probe.js" -> "text/javascript; charset=utf-8", {|
+  | "/probe.wasm" -> "application/wasm", "\000asm\001\000\000\000"
+  | "/probe.js" -> "text/javascript; charset=utf-8", Printf.sprintf {|
       if (location.origin !== "lui://localhost" && location.origin !== "null")
         throw new Error("Wrong scheme origin: " + location.origin);
       document.getElementById("result").textContent = "Unicode: 中文 …";
       window.addEventListener("load", async () => {
+        let compiled = false;
+        try { await WebAssembly.compileStreaming(fetch('./probe.wasm')); compiled = true; } catch (_) {}
+        if (compiled !== %s) throw new Error('WASM capability mismatch');
         await window.__lui_request("ready");
         setTimeout(() => window.__lui_later(), 1200);
-      });|}
+      });|} (string_of_bool wasm_enabled)
   | _ -> invalid_arg "Unknown probe asset"
 
 let command = function
@@ -22,5 +28,6 @@ let command = function
   | _ -> invalid_arg "Unknown probe command"
 
 let () =
-  run ("LUI Scheme Lifecycle Probe", "lui://localhost/", 400, 240, true, asset, command);
+  run ("LUI Scheme Lifecycle Probe", "lui://localhost/", 400, 240, true, asset, command,
+       "default-src 'self'; script-src 'self'" ^ (if wasm_enabled then " 'wasm-unsafe-eval'" else ""));
   print_endline "scheme-closed"

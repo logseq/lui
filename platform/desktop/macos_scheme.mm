@@ -16,6 +16,7 @@ struct LuiSchemeHost {
   value options;
   bool stopped = false;
   std::shared_ptr<LuiReplySink> replies;
+  std::string csp;
 };
 
 static void lui_stop_application(void) {
@@ -81,7 +82,7 @@ static std::string lui_call(LuiSchemeHost *host, int field, const char *argument
   NSMutableDictionary *headers = [@{
     @"Content-Type": type, @"Cache-Control": @"no-store",
     @"Referrer-Policy": @"no-referrer", @"X-Content-Type-Options": @"nosniff",
-    @"Content-Security-Policy": @"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    @"Content-Security-Policy": [NSString stringWithUTF8String:self.host->csp.c_str()]
   } mutableCopy];
   if ([origin isEqualToString:@"lui://localhost"] || [origin isEqualToString:@"null"])
     headers[@"Access-Control-Allow-Origin"] = origin;
@@ -179,7 +180,8 @@ static std::string lui_call(LuiSchemeHost *host, int field, const char *argument
 
 extern "C" CAMLprim value lui_desktop_scheme_window_run(value options) {
   CAMLparam1(options);
-  LuiSchemeHost host{options, false, nullptr};
+  LuiSchemeHost host{options, false, nullptr,
+      std::string(String_val(Field(options, 7)), caml_string_length(Field(options, 7)))};
   caml_register_generational_global_root(&host.options);
   const std::string title = String_val(Field(options, 0));
   const std::string url = String_val(Field(options, 1));

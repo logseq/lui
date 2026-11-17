@@ -81,6 +81,9 @@ def configuration(path, target=None):
         config.setdefault(key, default)
         if type(config[key]) is not int or not 200 <= config[key] <= 16384:
             raise ValueError(f"Invalid window {key}")
+    web = config.get("web", {})
+    if not isinstance(web, dict) or set(web) - {"wasm"} or type(web.get("wasm", False)) is not bool:
+        raise ValueError("web accepts only the boolean wasm option")
     if "updates" in config:
         updates = config["updates"]
         https(updates["url"])

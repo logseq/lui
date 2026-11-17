@@ -60,6 +60,12 @@ inline scripts, arbitrary remote connections and form submissions are
 disabled. Applications needing remote APIs must explicitly extend this
 policy in the host; there is no arbitrary privileged IPC escape hatch.
 
+Applications bundling WebAssembly, such as SQLite, must explicitly set
+`"web": {"wasm": true}` in their build config. This adds `'wasm-unsafe-eval'`
+to the script CSP; the default is false and JavaScript eval remains prohibited.
+WASM files are served as `application/wasm`. Local workers and persistent
+WebKit storage remain under the application's `lui://localhost` origin.
+
 Only the desktop bundle loads its thin scrollbar stylesheet. The Gallery
 uses two columns and omits its phone simulator toolbar in this host. Regular
 browser Gallery and mobile rendering retain their existing behavior.

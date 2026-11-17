@@ -74,7 +74,8 @@ class DesktopWindowLifetime(unittest.TestCase):
                 arguments = [executable] if sys.platform == "darwin" else [executable, "--lui-updater", "LUI Update Lifecycle Probe",
                                             f"http://127.0.0.1:{server.server_port}/"]
                 process = subprocess.Popen(arguments,
-                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                           env=dict(os.environ, LUI_TEST_WASM=str(iteration % 2)))
                 observed = set()
                 deadline = time.monotonic() + 15
                 while process.poll() is None and time.monotonic() < deadline:
