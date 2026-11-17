@@ -1852,7 +1852,16 @@ let remove_dropdown_after_exit renderer node parent positioner =
           Lui_web_layers.transition renderer.web_layers node = token
           && not (Lui_web_layers.is_open renderer.web_layers node)
         then begin
-          if W.Element.contains (W.Element.asNode positioner) parent then
+          let retained =
+            match Store.node renderer.web_store node with
+            | Some current -> current.retained_parent <> None
+            | None -> false
+          in
+          W.Element.removeAttribute "data-ending-style" popup;
+          if
+            not retained
+            && W.Element.contains (W.Element.asNode positioner) parent
+          then
             ignore
               (W.Element.removeChild (W.Element.asNode positioner) parent);
           Lui_web_layers.finish_present renderer.web_layers

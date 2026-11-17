@@ -210,6 +210,7 @@ function setupRuntimeOwnedMenu(){
   handlers.set(action,()=>window.audit.runtimeOwnedMenu.actionActivations++);
   window.audit.runtimeOwnedMenu.trigger=trigger;
   window.audit.runtimeOwnedMenu.menu=popup;
+  window.audit.runtimeOwnedMenu.layerPresent=()=>Layers.is_present(renderer.web_layers,popup);
   window.audit.runtimeOwnedMenu.reinsert=()=>{
     const parent=window.audit.runtimeOwnedMenu.trigger;
     const menu=window.audit.runtimeOwnedMenu.menu;

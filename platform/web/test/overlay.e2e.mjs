@@ -75,6 +75,18 @@ test("top-level runtime-owned MenuTrigger toggles on activation and preserves di
 
   await trigger.click()
   await waitForExpanded("true")
+  await session.page.evaluate(() => window.audit.runtimeOwnedMenu.reinsert())
+  await session.page.waitForFunction(() => !window.audit.runtimeOwnedMenu.layerPresent())
+  await waitForClosed()
+  await trigger.click()
+  await waitForExpanded("true")
+  assert.equal(await action.isVisible(), true)
+  await action.click()
+  await waitForClosed()
+  assert.equal(await state(`window.audit.runtimeOwnedMenu.actionActivations`), 1)
+
+  await trigger.click()
+  await waitForExpanded("true")
   const outsideDismisses = await dismissCount()
   await clickButton("Outside action")
   assert.ok(await dismissCount() > outsideDismisses)
@@ -93,11 +105,6 @@ test("top-level runtime-owned MenuTrigger toggles on activation and preserves di
   await trigger.press("Space")
   await waitForClosed()
   assert.equal(await session.page.locator(":focus").textContent(), "Runtime-owned menu")
-
-  await trigger.click()
-  await action.click()
-  await waitForClosed()
-  assert.equal(await state(`window.audit.runtimeOwnedMenu.actionActivations`), 1)
 
   await trigger.click()
   await waitForExpanded("true")
