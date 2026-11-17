@@ -350,6 +350,35 @@
       #expect(h.indices.count < 32)
     }
 
+    @Test("animated far targets settle while variable rows change the document extent")
+    func animatedVariableTarget() async throws {
+      let h = try SparseHostFixture()
+      defer { h.close() }
+      h.variable = true
+      h.rowHeight = 80
+      try await h.wait("initial variable rows") { !h.indices.isEmpty }
+      try h.apply([
+        ["op": "set-prop", "id": 1, "property": "virtual-scroll-index", "value": 99999],
+        ["op": "set-prop", "id": 1, "property": "scroll-token", "value": 1],
+        ["op": "set-prop", "id": 1, "property": "scroll-target", "value": "key-99999"],
+        ["op": "set-prop", "id": 1, "property": "scroll-animated", "value": true],
+      ])
+      try await h.wait("animated variable target has native geometry and completes once") {
+        h.indices.contains(99999) && h.events.contains {
+          if case .scrollCompleted(1, 1, "succeeded") = $0 { return true }
+          return false
+        }
+      }
+      let scroll = try #require(h.nativeScroll())
+      let target = try #require(h.lifetimes.views[h.roots[99999] ?? -1]?.value)
+      #expect(target.convert(target.bounds, to: scroll.contentView).intersects(scroll.contentView.bounds))
+      #expect(h.indices.count < 32)
+      #expect(h.events.filter {
+        if case .scrollCompleted(1, 1, _) = $0 { return true }
+        return false
+      }.count == 1)
+    }
+
     @Test(
       "far targets acknowledge native geometry, supersession, missing targets and reused tokens")
     func scrollTokens() async throws {

@@ -19,6 +19,9 @@ import SwiftUI
       private weak var focusedView: NSView?
       private var focusedRow: Int?
       private var menus: [ObjectIdentifier: (row: Int, token: UUID)] = [:]
+      private var animationAttempt: UUID?
+      private var animationDeadline: TimeInterval = 0
+      private var animationTarget: NSPoint?
 
       init(state: LUISparseVirtualState) {
         self.state = state
@@ -95,6 +98,8 @@ import SwiftUI
         observers.removeAll()
         if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
         pointerMonitor = nil
+        animationAttempt = nil
+        animationTarget = nil
         scrollView = nil
         state?.disconnectNative(self)
       }
@@ -194,16 +199,34 @@ import SwiftUI
       }
 
       private func scroll(to offset: CGFloat, animated: Bool) -> Bool {
-        guard let scroll = scrollView, let document = scroll.documentView, scroll.window != nil else { return false }
+        guard let state, let scroll = scrollView, let document = scroll.documentView, scroll.window != nil else { return false }
         let y = document.isFlipped ? document.bounds.minY + offset
           : document.bounds.maxY - scroll.contentView.bounds.height - offset
         let point = NSPoint(x: scroll.contentView.bounds.minX, y: y)
         if animated {
-          NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.25
-            scroll.contentView.animator().setBoundsOrigin(point)
+          let now = ProcessInfo.processInfo.systemUptime
+          if animationAttempt != state.scrollAttempt {
+            animationAttempt = state.scrollAttempt
+            animationDeadline = now + 0.25
+            animationTarget = nil
+          }
+          // Viewport notifications and row measurements can retarget a request
+          // every frame. They share its original deadline instead of restarting
+          // the easing curve indefinitely near a moving document edge.
+          let remaining = animationDeadline - now
+          if remaining > 0 {
+            if animationTarget == point { return true }
+            animationTarget = point
+            NSAnimationContext.runAnimationGroup { context in
+              context.duration = remaining
+              scroll.contentView.animator().setBoundsOrigin(point)
+            }
+          } else {
+            animationTarget = nil
+            scroll.contentView.scroll(to: point)
           }
         } else {
+          animationTarget = nil
           scroll.contentView.scroll(to: point)
         }
         scroll.reflectScrolledClipView(scroll.contentView)
