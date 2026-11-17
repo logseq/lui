@@ -62,6 +62,9 @@ runs:
       if: inputs.scope == 'dependencies'
       shell: bash
       run: |
+        # Restored switches can retain SDL2 roots from before the migration.
+        # Remove them before dependency solving attempts unrelated recompiles.
+        opam remove -y tsdl-ttf tsdl
         if [ "$RUNNER_OS" = "Linux" ]; then
           # The runner image's apt index goes stale between publishes;
           # refresh it before opam installs system dependencies.
