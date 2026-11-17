@@ -702,11 +702,19 @@ struct LUISparseVirtualListView: View {
     .onAppear { state.configure(model: model, backend: backend) }
     .onDisappear { state.dispose() }
   }
+  @ViewBuilder
+  private func rowContent(_ row: LUISparseVirtualState.Row) -> some View {
+    #if os(macOS)
+    LUISparseHostedRow(nodeID: row.id, backend: backend)
+    #else
+    LUIAnyNodeView(nodeID: row.id, backend: backend).equatable()
+    #endif
+  }
   private var rowsContent: some View {
       ZStack(alignment: .topLeading) {
         Color.clear.frame(height: state.contentHeight).accessibilityHidden(true)
         ForEach(state.rows) { row in
-          LUIAnyNodeView(nodeID: row.id, backend: backend).equatable()
+          rowContent(row)
             .environment(\.luiVirtualRowOwner, LUIVirtualRowOwner(state: state, row: row.id))
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)

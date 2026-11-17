@@ -105,8 +105,29 @@ private struct LUIAnchoredPopoverAnchor: View {
     @State private var contentMeasurement: ContentMeasurement?
 
     var body: some View {
-        Color.clear
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { anchorFrame = $0 }
+        #if os(macOS)
+        anchor.background {
+            LUIAppKitPopover(
+                presentationID: AnyHashable(item.id),
+                isPresented: Binding(
+                    get: {
+                        anchorFrame.width > 0 && anchorFrame.height > 0
+                            && backend.anchoredPopovers.presentation(at: nodeID)?.id == item.id
+                    },
+                    set: { value in
+                        if !value, backend.anchoredPopovers.dismiss(item) {
+                            try? backend.performDismiss(node: item.model.id)
+                        }
+                    }
+                ),
+                attachment: .rect(attachmentRect(item)),
+                arrowEdge: arrowEdge(item.model),
+                content: popoverContent(item)
+            )
+        }
+        .modifier(LUIVirtualPopupOwnership(presented: true))
+        #else
+        anchor
             .popover(
                 item: Binding<LUIAnchoredPopoverPresentation?>(
                     get: {
@@ -126,6 +147,12 @@ private struct LUIAnchoredPopoverAnchor: View {
                     .presentationCompactAdaptation(.popover)
             }
             .modifier(LUIVirtualPopupOwnership(presented: true))
+        #endif
+    }
+
+    private var anchor: some View {
+        Color.clear
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { anchorFrame = $0 }
     }
 
     @ViewBuilder
@@ -158,6 +185,10 @@ private struct LUIAnchoredPopoverAnchor: View {
 
     private func attachmentAnchor(_ item: LUIAnchoredPopoverPresentation?) -> PopoverAttachmentAnchor {
         guard let item else { return .point(.bottomLeading) }
+        return .rect(.rect(attachmentRect(item)))
+    }
+
+    private func attachmentRect(_ item: LUIAnchoredPopoverPresentation) -> CGRect {
         let model = item.model
         let rect = item.anchorRect?.offsetBy(dx: -anchorFrame.minX, dy: -anchorFrame.minY)
             ?? CGRect(origin: .zero, size: anchorFrame.size)
@@ -187,9 +218,7 @@ private struct LUIAnchoredPopoverAnchor: View {
         case "right": point = CGPoint(x: rect.maxX + offset, y: y)
         default: point = CGPoint(x: x, y: rect.maxY + offset)
         }
-        return .rect(.rect(CGRect(
-            x: point.x, y: point.y,
-            width: 0, height: 0)))
+        return CGRect(x: point.x, y: point.y, width: 0, height: 0)
     }
 
     private func arrowEdge(_ model: LUINodeModel?) -> Edge {
