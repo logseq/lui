@@ -31,13 +31,25 @@
     let windowEvent: SparseWindow
     let textEvent: SparseText
     let resync: SparseStop
-    let clock: LUIRuntimeClock
+    /// Assigned in `init` after `self` exists: its callbacks capture `self`
+    /// so every tick and delay query joins the `callOCaml` depth tracking.
+    var clock: LUIRuntimeClock!
     var errors: [String] = []
     var events: [LUIEvent] = []
     var snapshotBatches: [String]?
     var measurements: [[String: Any]] = []
     var hosting: NSHostingView<LUISwiftUIRoot>!
     var window: NSWindow!
+
+    /// Depth of active OCaml runtime calls: `lui_ocaml_*` exports plus the
+    /// patch callback, which runs while the runtime lock is held. The bridge
+    /// forbids re-entering an export inside the patch callback (the lock is
+    /// not recursive: a nested call aborts with EDEADLK), so events emitted
+    /// while `ocamlDepth > 0` are queued in `pendingDispatches` and delivered
+    /// once the outermost call returns.
+    var ocamlDepth = 0
+    var pendingDispatches: [LUIEvent] = []
+    var clockDirty = false
 
     init(path: String, negotiate: Bool = true) throws {
       guard let library = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
@@ -60,14 +72,22 @@
       press = try load("lui_ocaml_press", SparseNode.self)
       textEvent = try load("lui_ocaml_text_changed_utf8", SparseText.self)
       windowEvent = try load("lui_ocaml_virtual_window", SparseWindow.self)
-      clock = LUIRuntimeClock(library: library)
+      typealias ClockTick = @convention(c) (Double) -> Int32
+      typealias ClockDelay = @convention(c) () -> Double
+      let rawTick = try load("lui_ocaml_clock_tick", ClockTick.self)
+      let rawDelay = try load("lui_ocaml_clock_next_delay", ClockDelay.self)
       let version =
         dlsym(library, "lui_ocaml_virtual_rows_version").map {
           unsafeBitCast($0, to: SparseVersion.self)()
         } ?? 0
       backend.onEvent = { [weak self] event in self?.dispatch(event) }
       sparseActive = self
-      let result = start(sparseReceive, 1, negotiate && version == 1 ? 258 : 2)
+      clock = LUIRuntimeClock(
+        tick: { [weak self] now in self?.callOCaml { rawTick(now) } ?? 0 },
+        nextDelay: { [weak self] in self?.callOCaml { rawDelay() } ?? -1 })
+      let result = callOCaml {
+        start(sparseReceive, 1, negotiate && version == 1 ? 258 : 2)
+      }
       #expect(result == 1)
       clock.reschedule()
       try checkErrors()
@@ -81,7 +101,23 @@
       window.orderFrontRegardless()
     }
 
+    /// Runs `body` inside an OCaml runtime call and, once the outermost call
+    /// returns, delivers every event queued while the runtime lock was held.
+    @discardableResult
+    func callOCaml<T>(_ body: () -> T) -> T {
+      ocamlDepth += 1
+      let result = body()
+      ocamlDepth -= 1
+      if ocamlDepth == 0 { drainDispatches() }
+      return result
+    }
+
+    /// The patch callback runs while the runtime lock is held; it marks
+    /// `ocamlDepth` only so `dispatch` queues instead of re-entering exports.
+    /// Draining happens in `callOCaml`, which knows when no export is active.
     func receive(_ json: String) {
+      ocamlDepth += 1
+      defer { ocamlDepth -= 1 }
       if snapshotBatches != nil {
         snapshotBatches!.append(json)
         return
@@ -93,12 +129,22 @@
       }
     }
 
+    func drainDispatches() {
+      while !pendingDispatches.isEmpty {
+        deliver(pendingDispatches.removeFirst())
+      }
+      if clockDirty {
+        clockDirty = false
+        clock.reschedule()
+      }
+    }
+
     func restoreAuthoritativeSnapshot() throws {
       let previousSource = try #require(list)
       let previousIDs = Set(ids)
       let previousGeneration = backend.generation
       snapshotBatches = []
-      #expect(resync() == 1)
+      #expect(callOCaml { resync() } == 1)
       let batches = try #require(snapshotBatches)
       snapshotBatches = nil
       #expect(!batches.isEmpty)
@@ -113,19 +159,37 @@
 
     func dispatch(_ event: LUIEvent) {
       events.append(event)
-      defer { clock.reschedule() }
+      // Any call may schedule, cancel, pause or fire timers: rearm the
+      // clock after each delivered event, deferred like the event itself
+      // while the runtime lock is held.
+      if ocamlDepth > 0 {
+        pendingDispatches.append(event)
+        clockDirty = true
+        return
+      }
+      deliver(event)
+      clock.reschedule()
+    }
+
+    /// Delivers one backend event through its `lui_ocaml_*` export. Must run
+    /// with `ocamlDepth == 0`; `callOCaml` drains the queue this fills.
+    func deliver(_ event: LUIEvent) {
       switch event {
       case .virtualWindow(let node, let generation, let first, let last, let pins):
         let ids = pins.map(Int64.init)
-        let result = ids.withUnsafeBufferPointer {
-          windowEvent(
-            Int64(node), Int64(generation), Int64(first), Int64(last),
-            $0.baseAddress, Int32($0.count))
+        let result = callOCaml {
+          ids.withUnsafeBufferPointer {
+            windowEvent(
+              Int64(node), Int64(generation), Int64(first), Int64(last),
+              $0.baseAddress, Int32($0.count))
+          }
         }
         if result != 1 { errors.append("virtual window rejected: \(event)") }
-      case .press(let node): _ = press(Int64(node))
+      case .press(let node): _ = callOCaml { press(Int64(node)) }
       case .textChanged(let node, let text):
-        text.withCString { _ = textEvent(Int64(node), $0, Int32(text.utf8.count)) }
+        text.withCString { cString in
+          _ = callOCaml { textEvent(Int64(node), cString, Int32(text.utf8.count)) }
+        }
       default: break
       }
     }
@@ -135,7 +199,7 @@
       window.contentView = nil
       backend.onEvent = nil
       clock.cancel()
-      _ = stop()
+      _ = callOCaml { stop() }
       sparseActive = nil
       // The process owns the OCaml runtime; unloading its code is unsafe.
     }
@@ -215,14 +279,15 @@
     }
     func agentRoundTrip() async throws {
       let agent = LUINativeAgent(library: library, recovery: LUINativeRefusalRecovery(library: library))
-      let hello = agent.answer(#"{"op":"hello"}"#)
+      let answer: (String) -> String = { request in self.callOCaml { agent.answer(request) } }
+      let hello = answer(#"{"op":"hello"}"#)
       #expect(hello.contains(#""protocol":"lui-agent""#), "\(hello)")
-      #expect(agent.answer("nope").hasPrefix(#"{"ok":false"#))
+      #expect(answer("nope").hasPrefix(#"{"ok":false"#))
       let loadNode = try identified("sparse-load")
-      let load = agent.answer(#"{"op":"press","selector":"prop:accessibility-identifier=sparse-load"}"#)
+      let load = answer(#"{"op":"press","selector":"prop:accessibility-identifier=sparse-load"}"#)
       #expect(load == #"{"ok":true,"op":"press","node":\#(loadNode)}"#, "\(load)")
       #expect(list?.property(.virtualTotalCount)?.intValue == 100000)
-      let server = try LUIAgentServer { agent.answer($0) }
+      let server = try LUIAgentServer { answer($0) }
       defer { server.stop() }
       try await pump(until: "lui-agent listener ready") { server.port != nil || server.failure != nil }
       let port = try #require(server.port)
