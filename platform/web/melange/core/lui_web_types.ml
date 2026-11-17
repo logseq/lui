@@ -96,6 +96,24 @@ type web_virtual_list = {
   virtual_live_rows : unit -> int list;
 }
 
+type web_svg_tag = Svg_path | Svg_rect | Svg_circle | Svg_ellipse | Svg_line | Svg_polyline | Svg_polygon
+
+type web_svg_attribute =
+  | Svg_d | Svg_points | Svg_x | Svg_y | Svg_x1 | Svg_y1 | Svg_x2 | Svg_y2
+  | Svg_cx | Svg_cy | Svg_r | Svg_rx | Svg_ry | Svg_width | Svg_height
+  | Svg_fill | Svg_stroke | Svg_stroke_width | Svg_stroke_linecap
+  | Svg_stroke_linejoin | Svg_stroke_miterlimit | Svg_fill_rule | Svg_clip_rule
+  | Svg_opacity | Svg_fill_opacity | Svg_stroke_opacity | Svg_transform
+  | Svg_stroke_dasharray | Svg_stroke_dashoffset
+
+type web_svg_icon = {
+  svg_view_box : string;
+  svg_filled : bool;
+  svg_shapes : (web_svg_tag * (web_svg_attribute * string) list) list;
+}
+
+type web_app_icon = Icon_url of string | Icon_svg of web_svg_icon
+
 type web_renderer = {
   web_store : web_node retained_store;
   web_document : Dom.document;
@@ -108,6 +126,8 @@ type web_renderer = {
   web_toast_viewport : web_node;
   web_event_handler : (event -> bool) ref;
   web_app_icons : string String_map.t;
+  web_resolve_app_icon : string -> web_app_icon option;
+  web_inline_icons : (int, web_node * web_node) Hashtbl.t;
   web_images : (int, web_image_resource) Hashtbl.t;
   web_media_surfaces : (int, web_image_resource) Hashtbl.t;
   web_cleanups : (int, unit -> unit) Hashtbl.t;

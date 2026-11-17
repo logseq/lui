@@ -3,7 +3,14 @@
 open Lui_protocol
 open Lui_web_types
 
+(** [resolve_app_icon] receives the bare name of an [app:] icon only when
+    that icon is rendered and is absent from [app_icons]. [Icon_url] uses
+    an image URL; [Icon_svg] creates typed inline shapes directly in the
+    owning document. Shapes leave with their node, with no image document
+    cache or XML parser allocation. Tags and attributes use closed types;
+    dynamic paint values reject resource references. Results are not cached. *)
 val create_with_extensions :
+  ?resolve_app_icon:(string -> web_app_icon option) ->
   web_node ->
   string String_map.t ->
   Lui_extension.extension_registry ->
@@ -11,6 +18,7 @@ val create_with_extensions :
   web_renderer
 
 val create_simulator_with_extensions :
+  ?resolve_app_icon:(string -> web_app_icon option) ->
   web_node ->
   operating_system ->
   string String_map.t ->
@@ -19,9 +27,12 @@ val create_simulator_with_extensions :
   web_renderer
 
 val create_simulator :
+  ?resolve_app_icon:(string -> web_app_icon option) ->
   ?app_icons:string String_map.t -> web_node -> operating_system -> web_renderer
 
-val create : ?app_icons:string String_map.t -> web_node -> web_renderer
+val create :
+  ?resolve_app_icon:(string -> web_app_icon option) ->
+  ?app_icons:string String_map.t -> web_node -> web_renderer
 
 val set_event_handler : web_renderer -> (event -> bool) -> bool
 

@@ -1,0 +1,15 @@
+opam-version: "2.0"
+synopsis: "Standalone OCaml system-WebView host for LUI Web applications"
+maintainer: "Tienson Qin <tiensonqin@gmail.com>"
+authors: "LUI contributors"
+license: "MIT"
+depends: [
+  "ocaml" {>= "5.1"}
+  "ocamlfind" {>= "1.9.8"}
+  "yojson" {= "3.0.0"}
+  "uri" {= "4.4.0"}
+  "digestif" {= "1.4.1"}
+  "mirage-crypto-ec" {= "2.4.1"}
+  "mirage-crypto-rng" {= "2.4.1"}
+  "ohex" {= "0.2.0"}
+]

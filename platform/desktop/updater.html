@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Software Update</title>
+  <link rel="stylesheet" href="../__lui-desktop.css">
+  <style>
+    :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+    body { margin: 0; padding: 28px; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    #notes { white-space: pre-wrap; max-height: 180px; overflow: auto; }
+    #message { min-height: 3em; }
+    footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+    button { font: inherit; padding: 7px 12px; cursor: pointer; }
+    button:disabled { cursor: wait; }
+    progress { width: 100%; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <h1>Software Update</h1>
+  <p id="message" role="status" aria-live="polite">Checking for updates…</p>
+  <progress id="progress" aria-label="Update in progress" hidden></progress>
+  <section id="notes" aria-label="Release notes"></section>
+  <footer>
+    <button id="check">Check Again</button>
+    <button id="install" hidden>Install Update</button>
+    <button id="restart" hidden>Restart and Install</button>
+    <button id="skip" hidden>Skip This Version</button>
+    <button id="later">Remind Me Later</button>
+  </footer>
+  <script src="./bridge.js"></script>
+  <script src="./updater.js"></script>
+</body>
+</html>

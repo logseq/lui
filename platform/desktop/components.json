@@ -1,0 +1,12 @@
+{
+  "name": "LUI Components",
+  "slug": "lui-components-web",
+  "identifier": "dev.lui.components.web",
+  "version": "0.1.0",
+  "build": 1,
+  "width": 1180,
+  "height": 820,
+  "description": "LUI components with an OCaml Web frontend",
+  "maintainer": "LUI contributors",
+  "license": "MIT"
+}

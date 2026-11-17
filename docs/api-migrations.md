@@ -1,5 +1,189 @@
 # LUI API migration guide
 
+## On-demand Web application icons
+
+The Web renderer constructors (`create`, `create_with_extensions`, and their
+simulator variants) accept optional `~resolve_app_icon:(string -> Lui_web_types.web_app_icon option)`.
+It receives a bare `app:` name when a mounted icon needs an asset.
+Return `Icon_url url` or `Icon_svg descriptor`. The typed descriptor contains
+`svg_view_box`, `svg_filled` and `svg_shapes`. Shape tags (`Svg_path`, `Svg_rect`,
+`Svg_circle`, etc.) and attributes (`Svg_d`, `Svg_fill`, etc.) use closed
+constructors, excluding active elements and event/resource attributes.
+Dynamic paint values reject resource references. Shapes mount directly in
+the owning document and leave with their node, avoiding both cached SVG image
+documents and per-icon XML document parsing. Explicit
+`app_icons` entries retain precedence; `None` retains the missing-icon fallback.
+Omitting the resolver preserves existing behavior. There is no wire change.
+Resolver results are not retained by the renderer, so scrolling through a
+catalog does not create an unbounded application registry.
+
+Applications can replace an eagerly expanded SVG registry with:
+
+```ocaml
+Lui_web.create ~resolve_app_icon:(fun name ->
+  Option.map (fun descriptor -> Lui_web_types.Icon_svg descriptor)
+    (catalog_lookup name)) root
+```
+
+Only look up and decode the requested icon inside the callback. Static
+overrides can remain in `~app_icons`; native renderers are unchanged.
+
+## Desktop WebAssembly capability
+
+The standalone builder also accepts repeated `--ocaml-package <findlib-name>`
+arguments for explicitly installed application dependencies. Existing builds
+keep the same package set. Invalid package names fail before compilation;
+this option does not install dependencies.
+
+Desktop build configuration adds optional `"web": {"wasm": true}`. The default
+is false. Enabling it adds only `'wasm-unsafe-eval'` to the local script CSP so
+applications can instantiate bundled WebAssembly, including SQLite. JavaScript
+eval and inline scripts remain disabled. The builder rejects non-boolean values
+and unknown `web` options. `.wasm` assets now use `application/wasm` so streaming
+instantiation receives the correct MIME type. Existing configurations need no
+changes; applications using WASM must opt in and rebuild the host executable.
+The internal macOS scheme-window FFI tuple now includes the host-generated CSP;
+custom native probes must append that string argument.
+
+## OCaml Web desktop host and optional Melange desktop services
+
+The new opt-in `platform/desktop` host runs a prebuilt Melange frontend in a
+system WebView. Existing browser, Apple/macOS/iOS and Android APIs remain
+compatible. No Dune stanza, shared LUI wire schema or mobile package changes.
+The native shell and update engine run in OCaml.
+
+`lui.web.dom` adds `Lui_web_desktop.available : unit -> bool` and
+`Lui_web_desktop.check_for_updates : unit -> bool Js.Promise.t`. Ordinary
+browsers report `false` and resolve checks to `false`. In the desktop host,
+a check opens/reuses the Web update window and resolves `true`. Existing
+applications need no changes; add a settings/menu action as follows:
+
+```ocaml
+let check_updates () = ignore (Lui_web_desktop.check_for_updates ())
+```
+
+The shell also handles Command/Ctrl+Shift+U. The update window uses an on-demand
+OCaml helper process, created only when requested. Repeated requests reuse its
+live instance. Closing the window or choosing Remind Me Later exits that helper
+and its WebKit session; reopening starts a fresh helper. The main process closes
+the updater helper before shutdown or installation, releasing executable locks.
+On Windows this uses process termination (`Sys.sigkill`), since native OCaml
+does not support `Sys.sigterm`; application command APIs are unchanged.
+The Windows installation helper also leaves the application's working directory
+before replacing its tree, avoiding a directory lock inherited from shortcuts.
+Windows replacement and rollback retry transient file-lock errors for up to ten
+seconds while WebView2 children release their files. A headless cleanup child
+waits for the installation helper to exit, then removes only its token-named
+directory under the application's storage. The internal `--lui-cleanup` mode
+does not register application commands or open a WebView; application APIs and
+configuration are unchanged.
+Windows Authenticode packaging uses DigiCert's documented HTTP RFC3161 endpoint
+because SignTool rejects an HTTPS timestamp URL. The timestamp token remains
+cryptographically verified; update feeds and downloads still require HTTPS.
+Its native bridge exposes built-in update actions and explicitly registered
+application commands; it exposes no native reflection.
+On macOS the host loads packaged assets at `lui://localhost`, with no HTTP
+listener. `WKURLSchemeHandler` serves assets and a main-frame/origin-checked
+script-message bridge handles desktop commands. The update helper owns its
+update state and uses the same scheme. Linux/Windows retain their loopback
+transport until native scheme adapters are qualified.
+The host reserves `__lui/*` and `__lui-desktop.css`, injects the
+bridge before `</head>`, serves assets with MIME types and a local-only CSP,
+and requires same-origin JSON POSTs for update mutations on loopback transports. Frontends must use
+relative, production-bundled assets and external scripts. The Gallery detects
+this host, displays a desktop two-column layout with a Check for Updates
+action, and omits its mobile simulator controls. Its browser mode is unchanged.
+Desktop scrollbars use the host's thin stylesheet; mobile/browser defaults
+remain unchanged. Unicode DOM literals must use Melange `{js|…|js}` strings.
+
+The shell's JSON build config requires stable `identifier` and `slug`, a
+semantic `version`, and a positive monotonically increasing integer `build`.
+Window defaults are 1100×760. The sample config explicitly selects 1180×820
+and disables updates by omitting `updates`. Enabling updates requires an
+HTTPS feed URL and a 32-byte Ed25519 public key encoded as lowercase hex.
+These values are embedded in the native binary. Upgrading an existing browser
+app requires bundling its output and running `tooling/desktop.py build` as
+documented in the [host guide](../platform/desktop/README.md).
+
+Update contract version 1 signs exact JSON payload bytes prefixed with
+`lui desktop update v1\n`. The signed payload binds app ID, platform,
+build, version, plain-text notes and full/delta artifact descriptors
+(`url`, `size`, `sha256`). Builds at or below the running build are ignored;
+wrong app/platform and invalid signatures are errors. Package format 1 uses
+`LUIUPD1\n`, a big-endian 32-bit JSON index length, the index, and sequential
+file payloads. Each file has a relative path, length, SHA-256, mode 0644/0755,
+and either a payload offset or `null` to copy the same installed path.
+Files absent from the new index are removed by whole-tree reconstruction.
+No application-internal symlink is supported. Limits are 2 GB per artifact
+and reconstructed tree, 8 MB/100,000 files per index and 1 MB per feed.
+
+Configured builds check after 10 seconds and every 24 hours while the main
+page remains open. Package-managed installations and builds without a feed
+never check automatically. Skip persists a build; a manual check bypasses
+that skip. Remind Me Later closes the window. Download/install and restart
+require explicit user actions. A delta failure retries the authenticated full
+package. Installation replaces the complete app after exit, retains user data,
+and requires the replacement page to acknowledge its expected build within
+30 seconds before removing the previous tree; failed startup rolls back.
+Keep the public key stable; key rotation and binary-level patches are not
+part of format 1. Generate update files only after final OS signing and
+notarization, then publish artifacts before the feed. The tooling does not
+upload or publish anything. Production qualification and cross-platform
+installed-upgrade checks remain required; see the host guide.
+
+### Typed native application commands
+
+`Lui_command` adds portable `('request, 'response) t` descriptors with abstract,
+validated `Name.t` and `Codec.t` constructors. Share a descriptor module between
+native OCaml and Melange. `Name.of_string` accepts lowercase dot-separated
+identifier segments up to 128 characters and reserves `lui.*`. Built-in codecs
+cover unit, UTF-8 string, boolean and canonical signed 32-bit decimal integers;
+`Codec.make` supports application-specific validated encodings.
+
+```ocaml
+(* Shared app_commands.ml *)
+let echo =
+  let name = Result.get_ok (Lui_command.Name.of_string "app.echo") in
+  Lui_command.v ~name ~request:Lui_command.Codec.string
+    ~response:Lui_command.Codec.string
+
+(* Native desktop_app.ml *)
+let commands () =
+  [Lui_desktop_commands.handle App_commands.echo (fun text -> Ok text)]
+
+(* Melange frontend *)
+let echo text = Lui_web_desktop.invoke App_commands.echo text
+```
+
+`Lui_desktop.run_with_commands ~commands` initializes bindings only in the main
+application. Existing `run` remains compatible and registers none. The standalone
+builder adds ordered, repeatable `--ocaml-source` modules and a `--commands`
+module exporting `commands : unit -> Lui_desktop_commands.binding list`.
+Duplicate names fail startup. Handler and client types must match the descriptor;
+wrong response/request types and raw string descriptors are compiler errors.
+
+`invoke` resolves `('response, Lui_command.error) result Js.Promise.t`. Browser
+calls return `Unavailable`. Dynamic unknown commands, decode failures, overload,
+handler failures and malformed responses remain validated at the boundary.
+Errors carry `code` and `message`; codes are `unavailable`, `unknown_command`,
+`invalid_arguments`, `command_failed`, `internal_error`, `busy`, `closed`,
+`timed_out` and `invalid_response`. Unexpected native exceptions are redacted.
+
+The command wire envelope carries the registered name and codec-encoded UTF-8
+payload string. Replies contain either `{"result":"encoded string"}` or
+`{"error":{"code":"...","message":"..."}}`. Custom encodings and name stability
+are application contracts; version them when incompatible. Built-in updater
+actions retain their previous wire behavior. Only the main frame at
+`lui://localhost` can invoke on macOS; the loopback transport requires its launch
+capability. Updater helpers do not initialize application bindings.
+
+Handlers run on bounded OCaml worker threads (default 16 in flight; explicit
+registry limits must be 1–256), with 1 MiB encoded request/response limits.
+They must marshal UI work to the native UI thread themselves. The WebKit bridge
+allows 256 pending requests and a five-minute timeout. Page close/navigation
+rejects pending calls and discards stale replies; already running handlers are
+not cancelled. Applications must manage their own cancellation and side effects.
+No migration is required for applications using only the existing update API.
 ## macOS sparse-list animated scroll convergence
 
 Animated sparse virtual-list scroll requests now share one 250 ms animation
