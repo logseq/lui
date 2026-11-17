@@ -1,0 +1,5 @@
+(library
+ (name lui_raster)
+ (public_name lui.raster)
+ (modules lui_raster)
+ (libraries lui_scene))

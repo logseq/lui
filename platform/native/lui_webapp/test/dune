@@ -1,0 +1,6 @@
+(test
+ (name lui_webapp_test)
+ (modules lui_webapp_test)
+ ; the cli cases spawn the real launcher
+ (deps ../main.exe)
+ (libraries alcotest lui_webapp lui_webview lui_pkg unix yojson))

@@ -1,0 +1,6 @@
+(test
+ (name lui_backend_test)
+ (modules lui_backend_test)
+ (libraries lui_backend lui lui_store lui_e2e lui_host ocaml-signal
+   alcotest)
+ (preprocess (pps lui_ppx)))

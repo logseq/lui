@@ -1,0 +1,5 @@
+(executable
+ (name lui_pkg_cli)
+ (public_name lui_pkg)
+ (modules lui_pkg_cli)
+ (libraries lui_pkg cmdliner unix))

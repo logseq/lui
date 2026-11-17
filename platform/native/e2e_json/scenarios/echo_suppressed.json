@@ -1,0 +1,30 @@
+{
+  "name": "echo-suppressed",
+  "app": "e2e",
+  "steps": [
+    {
+      "dispatch": {
+        "kind": "text-changed",
+        "node": { "kind": "text-field" },
+        "text": "same"
+      }
+    },
+    { "expect-store": { "generation": 2 } },
+    {
+      "dispatch": {
+        "kind": "text-changed",
+        "node": { "kind": "text-field" },
+        "text": "same"
+      }
+    },
+    {
+      "expect-store": {
+        "generation": 2,
+        "nodes": [
+          { "id": { "kind": "text" },
+            "props": { "text": "items=2 draft=same" } }
+        ]
+      }
+    }
+  ]
+}

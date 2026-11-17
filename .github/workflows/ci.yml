@@ -17,6 +17,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/feat/ml-backend' }}
 
 jobs:
+  experimental-native-tests:
+    name: Experimental native backend (macOS)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install native system dependencies
+        run: brew install pkg-config sdl2 sdl2_ttf
+      - uses: ./.github/actions/setup-lui-ocaml
+      - name: Install experimental native dependencies
+        run: opam install . --deps-only --with-test -y --confirm-level=unsafe-yes
+      - name: Build experimental native backend
+        run: opam exec -- dune build platform/native
+      - name: Test experimental native backend
+        run: opam exec -- dune runtest platform/native -j 1
+
   ocaml-tests:
     runs-on: ubuntu-latest
     steps:
@@ -45,6 +64,8 @@ jobs:
         run: opam exec -- dune build @all
       - name: Schema tests
         run: node --test tooling/test/*.mjs
+      - name: Swift Testing completion parser regressions
+        run: python3 -m unittest discover -s tooling/test -p test_apple_completion.py
       - name: OCaml tests
         run: make test-ocaml
       - name: Build portable OCaml bounded-row application

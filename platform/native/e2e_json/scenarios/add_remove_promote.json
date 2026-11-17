@@ -1,0 +1,61 @@
+{
+  "name": "add-remove-promote",
+  "app": "e2e",
+  "steps": [
+    { "click": { "kind": "text-field" } },
+    { "expect-events": "*" },
+    { "input": "gamma" },
+    { "expect-events": "*" },
+    { "click": { "kind": "button", "text": "add" } },
+    { "expect-events": "*" },
+    {
+      "expect-store": {
+        "node-count": 16,
+        "nodes": [
+          { "id": { "kind": "text" },
+            "props": { "text": "items=3 draft=" } },
+          { "id": { "kind": "text", "text": "item:gamma" },
+            "kind": "text", "props": { "text": "item:gamma" } }
+        ]
+      }
+    },
+    { "click": { "kind": "button", "text": "^-gamma" } },
+    { "expect-events": "*" },
+    {
+      "expect-store": {
+        "nodes": [
+          { "id": { "kind": "column" },
+            "kind": "column",
+            "children": [
+              { "kind": "text" },
+              { "kind": "text-field" },
+              { "kind": "button", "text": "add" },
+              { "kind": "row", "index": 2 },
+              { "kind": "row", "index": 0 },
+              { "kind": "row", "index": 1 }
+            ]
+          },
+          { "id": { "kind": "row", "index": 2 },
+            "children": [
+              { "kind": "text", "text": "item:gamma" },
+              { "kind": "button", "text": "x-gamma" },
+              { "kind": "button", "text": "^-gamma" }
+            ]
+          }
+        ]
+      }
+    },
+    { "click": { "kind": "button", "text": "x-gamma" } },
+    { "expect-events": "*" },
+    {
+      "expect-store": {
+        "node-count": 12,
+        "absent": [{ "kind": "text", "text": "item:gamma" }],
+        "nodes": [
+          { "id": { "kind": "text" },
+            "props": { "text": "items=2 draft=" } }
+        ]
+      }
+    }
+  ]
+}

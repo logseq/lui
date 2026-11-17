@@ -1,0 +1,4 @@
+(test
+ (name test_lui_resilience)
+ (modules test_lui_resilience)
+ (libraries lui_resilience lui_scene lui_raster alcotest unix))

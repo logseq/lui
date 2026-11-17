@@ -1,0 +1,29 @@
+{
+  "name": "resize-first-frame",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          { "op": "create-node", "id": 1, "kind": "column" },
+          { "op": "create-node", "id": 2, "kind": "box" },
+          { "op": "set-prop", "id": 2, "prop": "background",
+            "value": "#ff0000" },
+          { "op": "insert-child", "parent": 1, "child": 2, "index": 0 }
+        ]
+      }
+    },
+    { "resize": { "width": 160, "height": 120 } },
+    {
+      "expect-events": [
+        { "kind": "resize-host", "width": 160, "height": 120 }
+      ]
+    },
+    {
+      "expect-frame": {
+        "bytes": 76800,
+        "scene": { "width": 160, "height": 120, "scale": 1.0 }
+      }
+    }
+  ]
+}

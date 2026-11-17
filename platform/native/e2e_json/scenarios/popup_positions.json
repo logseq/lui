@@ -1,0 +1,43 @@
+{
+  "name": "popup-positions",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          { "op": "create-node", "id": 1, "kind": "column" },
+          { "op": "set-prop", "id": 1, "prop": "width", "value": 320 },
+          { "op": "set-prop", "id": 1, "prop": "height", "value": 240 },
+          { "op": "create-node", "id": 2, "kind": "toast" },
+          { "op": "set-prop", "id": 2, "prop": "width", "value": 100 },
+          { "op": "set-prop", "id": 2, "prop": "height", "value": 40 },
+          { "op": "insert-child", "parent": 1, "child": 2, "index": 0 },
+          { "op": "create-node", "id": 3, "kind": "toast" },
+          { "op": "set-prop", "id": 3, "prop": "width", "value": 120 },
+          { "op": "set-prop", "id": 3, "prop": "height", "value": 30 },
+          { "op": "insert-child", "parent": 1, "child": 3, "index": 1 },
+          { "op": "create-node", "id": 4, "kind": "sheet" },
+          { "op": "set-prop", "id": 4, "prop": "width", "value": 80 },
+          { "op": "insert-child", "parent": 1, "child": 4, "index": 2 },
+          { "op": "create-node", "id": 5, "kind": "dialog" },
+          { "op": "set-prop", "id": 5, "prop": "width", "value": 100 },
+          { "op": "set-prop", "id": 5, "prop": "height", "value": 50 },
+          { "op": "insert-child", "parent": 1, "child": 5, "index": 3 }
+        ]
+      }
+    },
+    { "repaint": {} },
+    { "expect-bounds": { "node": 2, "rect": { "x": 204.0, "y": 48.0, "w": 100.0, "h": 40.0 } } },
+    { "expect-bounds": { "node": 3, "rect": { "x": 184.0, "y": 96.0, "w": 120.0, "h": 30.0 } } },
+    { "expect-bounds": { "node": 4, "rect": { "x": 240.0, "y": 0.0, "w": 80.0, "h": 240.0 } } },
+    { "expect-bounds": { "node": 5, "rect": { "x": 110.0, "y": 95.0, "w": 100.0, "h": 50.0 } } },
+    {
+      "expect-frame": {
+        "find": [
+          { "kind": "fill", "rect": { "x": 0.0, "y": 0.0, "w": 320.0, "h": 240.0 },
+            "color": { "r": 0, "g": 0, "b": 0, "a": 128 } }
+        ]
+      }
+    }
+  ]
+}

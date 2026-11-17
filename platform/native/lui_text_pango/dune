@@ -1,0 +1,23 @@
+(library
+ (name lui_text_pango)
+ (public_name lui.text_pango)
+ (modules lui_text_pango)
+ (foreign_stubs
+  (language c)
+  (names lui_text_pango_stubs)
+  (flags (:standard (:include c_flags.sexp))))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+(rule
+ (target c_flags.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in linux) printf '(%s)' \"$(pkg-config --cflags pangocairo pangoft2 fontconfig 2>/dev/null)\";; *) printf '()';; esac"))))
+
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in linux) printf '(%s)' \"$(pkg-config --libs pangocairo pangoft2 fontconfig 2>/dev/null)\";; *) printf '()';; esac"))))

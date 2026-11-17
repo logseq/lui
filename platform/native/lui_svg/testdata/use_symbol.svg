@@ -1,0 +1,13 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="dot" viewBox="0 0 10 10">
+      <circle cx="5" cy="5" r="4" fill="#993300"/>
+    </symbol>
+    <g id="pair">
+      <rect x="0" y="0" width="4" height="4" fill="#0066cc"/>
+      <rect x="5" y="0" width="4" height="4" fill="#00cc66"/>
+    </g>
+  </defs>
+  <use href="#dot" x="2" y="2" width="10" height="10"/>
+  <use href="#pair" x="14" y="14"/>
+</svg>

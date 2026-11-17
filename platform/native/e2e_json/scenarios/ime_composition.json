@@ -1,0 +1,21 @@
+{
+  "name": "ime-composition",
+  "app": "menu",
+  "steps": [
+    { "click": { "kind": "textarea" } },
+    { "expect-focused": { "kind": "textarea" } },
+    { "expect-events": "*" },
+    { "ime": { "mark": { "text": "にほ", "start": 2, "len": 0 } } },
+    { "expect-marked": "にほ" },
+    { "expect-events": [] },
+    { "key": "return" },
+    { "expect-events": [] },
+    { "ime": { "commit": "日本語" } },
+    {
+      "expect-events": [
+        { "kind": "text-changed", "node": "*", "text": "日本語" }
+      ]
+    },
+    { "expect-marked": "" }
+  ]
+}

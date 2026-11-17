@@ -1,0 +1,6 @@
+(test
+ (name e2e_json_test)
+ (modules e2e_json_test)
+ (libraries lui_e2e_json alcotest yojson)
+ (deps
+  (source_tree ../scenarios)))

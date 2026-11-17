@@ -1,0 +1,16 @@
+{
+  "name": "tab-focus",
+  "app": "menu",
+  "steps": [
+    { "click": { "kind": "textarea" } },
+    { "expect-focused": { "kind": "textarea" } },
+    { "expect-events": "*" },
+    { "key": "tab" },
+    {
+      "expect-events": [
+        { "kind": "focus-changed", "node": "*" }
+      ]
+    },
+    { "expect-focused": { "kind": "button", "text": "menu" } }
+  ]
+}

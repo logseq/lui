@@ -1,0 +1,5 @@
+(library
+ (name lui_ime)
+ (public_name lui.ime)
+ (modules lui_ime)
+ (libraries lui_scene))
