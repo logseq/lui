@@ -248,6 +248,17 @@ let test_popup_motion () =
       Lui_host.tick h ~now:10.;
       ignore (Lui_host.repaint h);
       check (float 0.00001) "surface starts transparent" 0. (popup_alpha h);
+      check bool "transparent entrance emits no chrome or scrim" false
+        (List.exists (function
+          | Lui_scene.Fill fill -> fill.fopacity = 0.
+          | Shadow shadow -> shadow.sopacity = 0.
+          | Image image -> image.iopacity = 0.
+          | Effect shader -> shader.edopacity = 0.
+          | Hole hole -> hole.hopacity = 0.
+          | Glyphs _ | Push_clip _ | Pop_clip -> false)
+          (Lui_host.scene h).Lui_scene.ops);
+      check bool "transparent entrance does not emit its surface fill" true
+        (popup_fill h = None);
       check bool "entrance schedules frames" true (Lui_host.wants_repaint h);
       Lui_host.tick h ~now:10.075;
       ignore (Lui_host.repaint h);
@@ -374,6 +385,9 @@ let test_surface_motion_defaults () =
                 CreateNode (4, Box); InsertChild (3, 4, 0);
                 SetProp (4, BackgroundValue, StringValue "#ff0000") ]));
       motion_frame h 0.;
+      check bool "default entrance has no visible first-frame shell" true
+        (popup_fill h = None);
+      motion_frame h (duration *. 1e-7);
       (match popup_fill h with
        | Some fill ->
            check (float 0.00001) "default entrance starts at 95 percent" 22.8 fill.frect.w;
@@ -381,7 +395,7 @@ let test_surface_motion_defaults () =
              (fill.frect.x +. fill.frect.w /. 2.);
            check (float 0.00001) "default zoom keeps its vertical center" 14.
              (fill.frect.y +. fill.frect.h /. 2.)
-       | None -> fail "default entrance must retain its initial geometry");
+       | None -> fail "a visible entrance must retain its initial geometry");
       motion_frame h (duration /. 2.);
       check (float 0.00001) "default curve matches the shared motion policy"
         halfway (popup_alpha h);
@@ -430,8 +444,11 @@ let test_popup_declared_easing () =
       check (float 0.00001)
         (easing ^ " opacity matches CSS")
         expected (popup_alpha h);
-      check (float 0.00001) "undeclared transform snaps to final geometry" 24.
-        (popup_width h))
+      if expected = 0. then
+        check bool "a zero-opacity step emits no paint operations" true (popup_fill h = None)
+      else
+        check (float 0.00001) "undeclared transform snaps to final geometry" 24.
+          (popup_width h))
     [
       ("linear", 0.5);
       ("ease", 0.8024033876);
