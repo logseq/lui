@@ -37,6 +37,10 @@ pin-depends: [
     "ocaml-signal.0.1.0"
     "git+https://github.com/logseq/ocaml-signal.git#02e18cdc5e0ad672aa223f638eaa3ba52fc9421e"
   ]
+  [
+    "sdl3.0.0.1--alpha"
+    "git+https://github.com/logseq/ocaml-sdl3.git#a9919c19bb4a0ba4857142f007ad93dd2563e799"
+  ]
 ]
 build: [
   ["dune" "subst"] {dev}
@@ -52,5 +56,3 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-
-pin-depends: [["sdl3.0.0.1--alpha" "git+https://github.com/logseq/ocaml-sdl3.git#a9919c19bb4a0ba4857142f007ad93dd2563e799"]]
