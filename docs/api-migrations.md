@@ -1,5 +1,18 @@
 # LUI API migration guide
 
+## Experimental native hover includes ancestor controls
+
+Native hover styling now remains active on a control while the pointer covers
+its icon, label or another descendant, matching Web `:hover`. Entering and
+leaving invalidate affected ancestor paint; moving between children of the
+same control preserves the parent's cached background. Pointer enter/leave
+payloads and event admission do not change.
+
+Keep hover styling on the owning control, for example
+`Lui_ui.string_property context button HoverBackground "accent"`. Remove child-specific hover
+workarounds if they were added to preserve the parent background. Web and
+maintained mobile backends retain their existing behavior.
+
 ## Experimental native hosts use SDL3
 
 The experimental native host replaces `tsdl` and `tsdl-ttf` with the pinned

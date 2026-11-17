@@ -1722,7 +1722,8 @@ module Ui = struct
     in
     { Lui_paint.hovered =
         ((if menu_highlight then Lui_gesture.hl t.gesture = id
-          else Lui_pointer.hovered t.pointer = id)
+          else let hovered = Lui_pointer.hovered t.pointer in
+            hovered <> 0 && (hovered = id || Lui_query.is_desc store hovered id))
          || Lui_drag.target t.drag = id);
       pressed =
         (Lui_pointer.pressed t.pointer = id
@@ -1754,7 +1755,16 @@ module Ui = struct
     let s = t.paint_snap in
     let drag_src = Lui_drag.source t.drag
     and drop_target = Lui_drag.target t.drag in
-    if s.ps_hovered <> hovered t then (mark s.ps_hovered; mark (hovered t));
+    if s.ps_hovered <> hovered t then begin
+      let module Nodes = Lui_pointer.Nodes in
+      let rec ancestors id nodes =
+        if id = 0 then nodes
+        else ancestors (Option.value ~default:0 (Lui_store.parent store id)) (Nodes.add id nodes) in
+      let before = ancestors s.ps_hovered Nodes.empty
+      and after = ancestors (hovered t) Nodes.empty in
+      Nodes.iter mark (Nodes.diff before after);
+      Nodes.iter mark (Nodes.diff after before)
+    end;
     if s.ps_pressed <> pressed t then (mark s.ps_pressed; mark (pressed t));
     if s.ps_focused <> focused t then begin
       let rec mark_group id =
