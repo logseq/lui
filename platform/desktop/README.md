@@ -45,8 +45,8 @@ uses its built-in WebKit. macOS and Windows provide `curl`; Linux packages
 declare it as a dependency. No OpenSSL executable is used at runtime.
 
 macOS loads packaged assets directly at `lui://localhost`, with no local TCP
-listener. The native bridge accepts a fixed set of desktop commands from the
-main frame of that origin. The update helper owns its own update state and
+listener. The native bridge accepts built-in desktop actions and explicitly
+registered application commands from the main frame of that origin. The update helper owns its own update state and
 uses the same custom scheme. Linux and Windows retain the loopback transport
 while their native scheme adapters remain pending.
 
@@ -77,6 +77,72 @@ on-demand OCaml helper. Repeated requests reuse a live helper. Remind Me Later
 or closing its window exits the helper and its WebKit session; a later check
 starts a fresh one. No updater WebView or helper exists before the first check.
 The main application closes its updater helper before exit or replacement.
+
+## Typed application commands
+
+Share a command descriptor between native OCaml and the Melange frontend:
+
+```ocaml
+(* app_commands.ml: compiled for both targets *)
+let echo =
+  let name = Result.get_ok (Lui_command.Name.of_string "app.echo") in
+  Lui_command.v ~name ~request:Lui_command.Codec.string
+    ~response:Lui_command.Codec.string
+```
+
+Register handlers in a native-only module. The initializer runs only in the
+main application, never in updater or installer helpers:
+
+```ocaml
+(* desktop_app.ml *)
+let commands () =
+  [Lui_desktop_commands.handle App_commands.echo (fun text -> Ok text)]
+```
+
+```sh
+python3 tooling/desktop.py build \
+  --config platform/desktop/components.json --frontend _build/web-release \
+  --ocaml-source /absolute/path/app_commands.ml \
+  --commands /absolute/path/desktop_app.ml \
+  --output _build/desktop/Commands.app
+```
+
+Compile the shared module into your frontend through its existing build. The
+builder accepts repeated `--ocaml-source` arguments in dependency order; supply
+an adjacent `.mli` when the module has one. `--commands` supplies the native
+initializer above. Direct embedders can use `Lui_desktop.run_with_commands`;
+the existing `run` entry point registers no application commands.
+
+```ocaml
+let echo text = Lui_web_desktop.invoke App_commands.echo text
+(* (string, Lui_command.error) result Js.Promise.t *)
+```
+
+Descriptors fix request and response types: an incompatible handler or client
+argument fails compilation on its actual target. Names are validated lowercase
+dot-separated identifiers, at most 128 characters; `lui.*` is reserved and
+duplicate registrations fail startup. The host exposes no reflection or
+unregistered native method calls.
+
+Codecs encode UTF-8 strings inside a JSON result/error envelope. Built-ins cover
+unit (empty string), string, boolean (`true`/`false`) and canonical signed
+32-bit decimal integers. Use `Codec.make` for application records and validate
+dynamic data in its decoder. A descriptor is a shared contract; it does not
+generate a serializer or check that separately deployed versions agree.
+
+Handlers run asynchronously on OCaml worker threads, with at most 16 in flight
+per window. They must not call UI-thread-only native APIs directly. The payload
+and encoded response limit is 1 MiB each. Unknown commands, invalid arguments
+and overload return structured errors before running the handler. Exceptions
+become redacted `internal_error` replies. The Melange API resolves errors as
+`Error`; an ordinary browser returns `Unavailable`.
+
+The WebKit bridge bounds pending requests at 256 and times out after five
+minutes. Closing/navigating the page rejects pending requests and discards stale
+native replies. This does not cancel work already running in a handler;
+applications own cancellation and side effects. The macOS updater helper has
+no application handlers. The optional loopback transport uses its launch
+capability for application command calls.
 
 ## OS packages
 
@@ -198,6 +264,7 @@ requires write access to the installation's parent directory.
 
 ```sh
 python3 -m unittest discover -s tooling/test -p 'test_desktop.py'
+python3 -m unittest discover -s tooling/test -p 'test_desktop_commands.py'
 opam exec -- dune build @all
 opam exec -- dune runtest
 npm --prefix platform/web test
@@ -212,6 +279,18 @@ checks successful exit and checks that newly created WebKit processes end:
 ```sh
 LUI_DESKTOP_TEST_APP=/absolute/path/Components.app/Contents/MacOS/app \
   python3 -m unittest discover -s tooling/test -p 'test_desktop_window.py'
+```
+
+The installed-upgrade qualification builds an ad-hoc-signed fixture, installs
+it from a DMG outside the checkout and drives the actual updater over local
+HTTPS. Its application frontend and appended updater automation are fixtures;
+native host and update-engine sources are unchanged. It checks full/delta
+replacement, damaged-delta fallback, invalid-signature refusal, failed-start
+rollback, finalized-tree hashes, code signatures and preserved user data:
+
+```sh
+python3 tooling/qualify_desktop_macos.py \
+  --output _build/desktop/macos-qualification
 ```
 
 Developer ID/notarization requires the application's credentials. Windows and

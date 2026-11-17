@@ -1,6 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 #include <string>
+#include "lui_desktop_reply.hh"
 
 extern "C" {
 #include <caml/mlvalues.h>
@@ -14,6 +15,7 @@ extern "C" {
 struct LuiSchemeHost {
   value options;
   bool stopped = false;
+  std::shared_ptr<LuiReplySink> replies;
 };
 
 static void lui_stop_application(void) {
@@ -41,7 +43,7 @@ static std::string lui_call_locked(LuiSchemeHost *host, int field, const char *a
       output.assign(String_val(body), caml_string_length(body));
     } else output.assign(String_val(result), caml_string_length(result));
   }
-  if (failed) CAMLreturnT(std::string, "");
+  if (failed) CAMLreturnT(std::string, mime ? "" : "{\"error\":{\"code\":\"internal_error\",\"message\":\"Native request failed\"}}");
   CAMLreturnT(std::string, output);
 }
 
@@ -109,8 +111,26 @@ static std::string lui_call(LuiSchemeHost *host, int field, const char *argument
   NSNumber *identifier = body[@"id"];
   NSString *method = body[@"method"];
   if (![identifier isKindOfClass:[NSNumber class]] || ![method isKindOfClass:[NSString class]]
-      || method.length > 64 || identifier.longLongValue <= 0) return;
-  std::string result = lui_call(self.host, 6, method.UTF8String);
+      || method.length > 64 || identifier.longLongValue <= 0
+      || CFGetTypeID((CFTypeRef)identifier) == CFBooleanGetTypeID()
+      || identifier.doubleValue != identifier.longLongValue
+      || identifier.longLongValue > 9007199254740991LL) return;
+  std::string result;
+  if ([method isEqualToString:@"invoke"]) {
+    NSDictionary *arguments = body[@"args"];
+    if (![arguments isKindOfClass:[NSDictionary class]]) return;
+    NSDictionary *envelope = @{@"session": @(self.host->replies->session),
+      @"epoch": @(self.host->replies->epoch.load()),
+      @"id": identifier.stringValue, @"args": arguments};
+    NSData *data = [NSJSONSerialization dataWithJSONObject:envelope options:0 error:nullptr];
+    if (!data || data.length > 1100000) {
+      result = "{\"error\":{\"code\":\"invalid_arguments\",\"message\":\"Command payload is too large\"}}";
+    } else {
+      std::string request(static_cast<const char *>(data.bytes), data.length);
+      result = lui_call(self.host, 6, request.c_str());
+      if (result.empty()) return;
+    }
+  } else result = lui_call(self.host, 6, method.UTF8String);
   NSString *payload = result.empty() ? @"{\"error\":\"Request failed\"}"
       : [[[NSString alloc] initWithBytes:result.data() length:result.size() encoding:NSUTF8StringEncoding] autorelease];
   NSString *script = [NSString stringWithFormat:@"window.__luiReply(%lld,%@)", identifier.longLongValue, payload];
@@ -138,6 +158,11 @@ static std::string lui_call(LuiSchemeHost *host, int field, const char *argument
   }
 }
 
+- (void)webView:(WKWebView *)view didStartProvisionalNavigation:(WKNavigation *)navigation {
+  (void)view; (void)navigation;
+  if (self.host && self.host->replies) ++self.host->replies->epoch;
+}
+
 - (void)windowWillClose:(NSNotification *)notification {
   (void)notification;
   self.host->stopped = true;
@@ -154,7 +179,7 @@ static std::string lui_call(LuiSchemeHost *host, int field, const char *argument
 
 extern "C" CAMLprim value lui_desktop_scheme_window_run(value options) {
   CAMLparam1(options);
-  LuiSchemeHost host{options};
+  LuiSchemeHost host{options, false, nullptr};
   caml_register_generational_global_root(&host.options);
   const std::string title = String_val(Field(options, 0));
   const std::string url = String_val(Field(options, 1));
@@ -187,12 +212,16 @@ extern "C" CAMLprim value lui_desktop_scheme_window_run(value options) {
     [configuration setURLSchemeHandler:delegate forURLScheme:@"lui"];
     [configuration.userContentController addScriptMessageHandler:delegate name:@"luiDesktop"];
     NSString *source = @"(() => { let next = 0; const pending = new Map();"
-      "window.__lui_request = method => new Promise((resolve,reject) => {"
-      "const id = ++next; pending.set(id,{resolve,reject});"
-      "window.webkit.messageHandlers.luiDesktop.postMessage({id,method}); });"
+      "window.__lui_request = (method,args) => new Promise((resolve,reject) => {"
+      "if(pending.size>=256) return reject(Object.assign(new Error('Too many requests'),{code:'busy'}));"
+      "const id = ++next; const timer=setTimeout(()=>{pending.delete(id);reject(Object.assign(new Error('Native request timed out'),{code:'timed_out'}));},300000);"
+      "pending.set(id,{resolve,reject,timer});"
+      "window.webkit.messageHandlers.luiDesktop.postMessage({id,method,args}); });"
       "window.__luiReply = (id,result) => { const p=pending.get(id); if(!p)return; pending.delete(id);"
-      "if(result && result.error) p.reject(new Error(result.error)); else p.resolve(result); };"
+      "clearTimeout(p.timer); if(result && result.error) { const error=result.error; p.reject(Object.assign(new Error(error.message||String(error)),{code:error.code||'internal_error'})); } else p.resolve(result); };"
+      "window.addEventListener('pagehide',()=>{for(const p of pending.values()){clearTimeout(p.timer);p.reject(Object.assign(new Error('Page closed'),{code:'closed'}));}pending.clear();});"
       "window.__lui_check_for_updates = () => window.__lui_request('check_for_updates');"
+      "window.__lui_invoke = (_token,command,payload) => window.__lui_request('invoke',{command,payload});"
       "window.__lui_later = () => window.__lui_request('later'); })();";
     WKUserScript *script = [[WKUserScript alloc] initWithSource:source
         injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES];
@@ -206,6 +235,17 @@ extern "C" CAMLprim value lui_desktop_scheme_window_run(value options) {
     window.title = [NSString stringWithUTF8String:title.c_str()];
     window.delegate = delegate;
     WKWebView *view = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, width, height) configuration:configuration];
+    host.replies = lui_register_reply_sink(
+      [](std::function<void()> callback) {
+        dispatch_async(dispatch_get_main_queue(), ^{ callback(); });
+      },
+      [view](const std::string &id, const std::string &body) {
+        NSString *payload = [[[NSString alloc] initWithBytes:body.data() length:body.size()
+            encoding:NSUTF8StringEncoding] autorelease];
+        NSString *identifier = [NSString stringWithUTF8String:id.c_str()];
+        NSString *script = [NSString stringWithFormat:@"window.__luiReply(%@,%@)", identifier, payload];
+        [view evaluateJavaScript:script completionHandler:nil];
+      });
     view.navigationDelegate = delegate;
     view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     window.contentView = view;
@@ -214,6 +254,7 @@ extern "C" CAMLprim value lui_desktop_scheme_window_run(value options) {
     [application activateIgnoringOtherApps:YES];
     [view loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithUTF8String:url.c_str()]]]];
     [application run];
+    lui_retire_reply_sink(host.replies);
     view.navigationDelegate = nil;
     [configuration.userContentController removeScriptMessageHandlerForName:@"luiDesktop"];
     window.delegate = nil;

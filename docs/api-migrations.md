@@ -22,8 +22,8 @@ OCaml helper process, created only when requested. Repeated requests reuse its
 live instance. Closing the window or choosing Remind Me Later exits that helper
 and its WebKit session; reopening starts a fresh helper. The main process closes
 the updater helper before shutdown or installation, releasing executable locks.
-Its capability-checked native
-bridge only opens the updater; it exposes no arbitrary method invocation.
+Its native bridge exposes built-in update actions and explicitly registered
+application commands; it exposes no native reflection.
 On macOS the host loads packaged assets at `lui://localhost`, with no HTTP
 listener. `WKURLSchemeHandler` serves assets and a main-frame/origin-checked
 script-message bridge handles desktop commands. The update helper owns its
@@ -72,6 +72,60 @@ part of format 1. Generate update files only after final OS signing and
 notarization, then publish artifacts before the feed. The tooling does not
 upload or publish anything. Production qualification and cross-platform
 installed-upgrade checks remain required; see the host guide.
+
+### Typed native application commands
+
+`Lui_command` adds portable `('request, 'response) t` descriptors with abstract,
+validated `Name.t` and `Codec.t` constructors. Share a descriptor module between
+native OCaml and Melange. `Name.of_string` accepts lowercase dot-separated
+identifier segments up to 128 characters and reserves `lui.*`. Built-in codecs
+cover unit, UTF-8 string, boolean and canonical signed 32-bit decimal integers;
+`Codec.make` supports application-specific validated encodings.
+
+```ocaml
+(* Shared app_commands.ml *)
+let echo =
+  let name = Result.get_ok (Lui_command.Name.of_string "app.echo") in
+  Lui_command.v ~name ~request:Lui_command.Codec.string
+    ~response:Lui_command.Codec.string
+
+(* Native desktop_app.ml *)
+let commands () =
+  [Lui_desktop_commands.handle App_commands.echo (fun text -> Ok text)]
+
+(* Melange frontend *)
+let echo text = Lui_web_desktop.invoke App_commands.echo text
+```
+
+`Lui_desktop.run_with_commands ~commands` initializes bindings only in the main
+application. Existing `run` remains compatible and registers none. The standalone
+builder adds ordered, repeatable `--ocaml-source` modules and a `--commands`
+module exporting `commands : unit -> Lui_desktop_commands.binding list`.
+Duplicate names fail startup. Handler and client types must match the descriptor;
+wrong response/request types and raw string descriptors are compiler errors.
+
+`invoke` resolves `('response, Lui_command.error) result Js.Promise.t`. Browser
+calls return `Unavailable`. Dynamic unknown commands, decode failures, overload,
+handler failures and malformed responses remain validated at the boundary.
+Errors carry `code` and `message`; codes are `unavailable`, `unknown_command`,
+`invalid_arguments`, `command_failed`, `internal_error`, `busy`, `closed`,
+`timed_out` and `invalid_response`. Unexpected native exceptions are redacted.
+
+The command wire envelope carries the registered name and codec-encoded UTF-8
+payload string. Replies contain either `{"result":"encoded string"}` or
+`{"error":{"code":"...","message":"..."}}`. Custom encodings and name stability
+are application contracts; version them when incompatible. Built-in updater
+actions retain their previous wire behavior. Only the main frame at
+`lui://localhost` can invoke on macOS; the loopback transport requires its launch
+capability. Updater helpers do not initialize application bindings.
+
+Handlers run on bounded OCaml worker threads (default 16 in flight; explicit
+registry limits must be 1–256), with 1 MiB encoded request/response limits.
+They must marshal UI work to the native UI thread themselves. The WebKit bridge
+allows 256 pending requests and a five-minute timeout. Page close/navigation
+rejects pending calls and discards stale replies; already running handlers are
+not cancelled. Applications must manage their own cancellation and side effects.
+No migration is required for applications using only the existing update API.
 
 ## Unreleased: macOS sparse rows use independent hosting graphs
 

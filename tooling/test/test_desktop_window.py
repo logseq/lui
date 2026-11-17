@@ -59,10 +59,13 @@ class DesktopWindowLifetime(unittest.TestCase):
             native = Path(probe.name) / "scheme.o"
             subprocess.run(["c++", "-std=c++17", "-O2", "-I", include, "-c", str(source / "macos_scheme.mm"),
                             "-o", str(native)], check=True)
+            reply = Path(probe.name) / "reply.o"
+            subprocess.run(["c++", "-std=c++17", "-O2", "-I", include, "-c", str(source / "lui_desktop_reply.cc"),
+                            "-o", str(reply)], check=True)
             executable = str(app / "MacOS/probe")
             shutil.copy2(source / "test/scheme_probe.ml", Path(probe.name) / "scheme_probe.ml")
             subprocess.run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", "unix,threads", "-linkpkg",
-                            "-o", executable, "scheme_probe.ml", str(native),
+                            "-o", executable, "scheme_probe.ml", str(native), str(reply),
                             "-cclib", "-lc++", "-cclib", "-framework", "-cclib", "WebKit",
                             "-cclib", "-framework", "-cclib", "Cocoa"], cwd=probe.name, check=True)
         try:

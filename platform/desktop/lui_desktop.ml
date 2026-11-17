@@ -1,13 +1,14 @@
 module Update = Lui_desktop_update
 module Json = Yojson.Basic.Util
 
-external webview_run : string * string * string * int * int * bool * (unit -> bool) -> unit
+external webview_run : string * string * string * int * int * bool * (unit -> bool) * (string -> string) -> unit
   = "lui_desktop_webview_run"
 external updater_window_run : string * string -> unit = "lui_desktop_updater_window_run"
 external scheme_window_run :
   string * string * int * int * bool * (string -> string * string) * (string -> string) -> unit
   = "lui_desktop_scheme_window_run"
 external wait_for_process : int -> bool = "lui_desktop_wait_for_process"
+external reply_to_command : int * int * string * string -> unit = "lui_desktop_reply"
 
 let text key json = Json.member key json |> Json.to_string
 let integer key json = Json.member key json |> Json.to_int
@@ -32,12 +33,14 @@ let copy_file source destination =
         if count > 0 then (output_substring output (Bytes.unsafe_to_string buffer) 0 count; copy ()) in
       copy ()))
 
-let run ~config ~updater_html ~updater_js =
+let run_with_commands ~commands ~config ~updater_html ~updater_js =
   let config = Yojson.Basic.from_string config in
   let executable = Unix.realpath Sys.executable_name in
   let platform = text "platform" config in
   let macos = String.starts_with ~prefix:"darwin-" platform in
   let updater_mode = macos && Array.length Sys.argv = 3 && Sys.argv.(1) = "--lui-updater" in
+  let registry = match Lui_desktop_commands.create (if updater_mode then [] else commands ()) with
+    | Ok registry -> registry | Error message -> invalid_arg message in
   let owner_pid = if updater_mode then int_of_string Sys.argv.(2) else Unix.getpid () in
   let root = if macos then Filename.dirname (Filename.dirname (Filename.dirname executable))
     else Filename.dirname executable in
@@ -209,6 +212,11 @@ const request = window.__lui_request || (async name => {
 });
 Object.defineProperty(window, "luiDesktop", {value: Object.freeze({
   request,
+  invoke: async (name,payload) => {
+    const response = await window.__lui_invoke(%s,name,payload);
+    if (response.error) throw Object.assign(new Error(response.error.message),{code:response.error.code});
+    return response.result;
+  },
   checkForUpdates: () => window.__lui_check_for_updates(%s)
 })});
 if (!updater) window.addEventListener("load", () => {
@@ -221,7 +229,7 @@ document.addEventListener("keydown", e => {
 });
 %s
 |} (json (string (base ^ "__lui-desktop.css")))
-    (json (string (base ^ "__lui/"))) (json (string token))
+    (json (string (base ^ "__lui/"))) (json (string token)) (json (string token))
       (if enabled then {|
 if (!updater) {
   const automatic = async () => {
@@ -363,7 +371,25 @@ if (!updater) {
       let pid = Unix.create_process executable arguments Unix.stdin Unix.stdout Unix.stderr in
       updater_process := Some pid;
       true)) in
+  let invoke request =
+    try
+      if String.length request > 1100000 then invalid_arg "Command request exceeds its limit";
+      let request = Yojson.Basic.from_string request in
+      let session = integer "session" request and epoch = integer "epoch" request in
+      let id = text "id" request in
+      if session <= 0 || epoch <= 0 || id = "" || String.length id > 128 then
+        invalid_arg "Invalid command context";
+      let name, payload = match Json.member "args" request with
+        | `Assoc _ as arguments -> text "command" arguments, text "payload" arguments
+        | `List [`String capability; `String name; `String payload] when capability = token -> name, payload
+        | _ -> invalid_arg "Invalid command arguments" in
+      Lui_desktop_commands.dispatch registry ~name ~payload
+        ~reply:(fun response -> reply_to_command (session, epoch, id, response));
+      ""
+    with _ -> Yojson.Basic.to_string (`Assoc ["error", `Assoc [
+      "code", `String "invalid_arguments"; "message", `String "Invalid command request"]]) in
   Fun.protect ~finally:(fun () ->
+      Lui_desktop_commands.close registry;
       stop_updater ();
       Atomic.set stopped true;
       Option.iter (fun socket ->
@@ -372,13 +398,18 @@ if (!updater) {
       Option.iter Thread.join server)
     (fun () ->
       if macos then
-        let callback name = if name = "check_for_updates" then json (`Bool (open_updater ())) else command name in
+        let callback name =
+          if String.starts_with ~prefix:"{" name then invoke name
+          else if name = "check_for_updates" then json (`Bool (open_updater ())) else command name in
         scheme_window_run (text "name" config ^ (if updater_mode then " Updates" else ""),
           base ^ (if updater_mode then "__lui/update" else ""),
           (if updater_mode then 520 else integer "width" config),
           (if updater_mode then 440 else integer "height" config), updater_mode, asset, callback)
       else webview_run (text "name" config, base, token,
-          integer "width" config, integer "height" config, false, open_updater))
+          integer "width" config, integer "height" config, false, open_updater, invoke))
+
+let run ~config ~updater_html ~updater_js =
+  run_with_commands ~commands:(fun () -> []) ~config ~updater_html ~updater_js
 
 let () =
   if Array.length Sys.argv = 4 && Sys.argv.(1) = "--lui-updater" then (

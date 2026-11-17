@@ -172,13 +172,35 @@ def build(args):
     with tempfile.TemporaryDirectory(prefix="lui-desktop-", dir=output.parent) as temporary:
         work = Path(temporary)
         objects = []
-        for name in ["lui_desktop_update", "lui_desktop"]:
+        for name in ["lui_command", "lui_desktop_update", "lui_desktop_commands", "lui_desktop"]:
             for suffix in [".mli", ".ml"]:
-                shutil.copy2(SOURCE / (name + suffix), work)
+                directory = ROOT / "src" if name == "lui_command" else SOURCE
+                shutil.copy2(directory / (name + suffix), work)
                 run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
                      "-c", name + suffix], cwd=work)
             objects.append(work / (name + ".cmx"))
-        embedded = "let () = Lui_desktop.run ~config:%s ~updater_html:%s ~updater_js:%s\n" % tuple(
+        reserved = {"main", "desktop_app", "lui_command", "lui_desktop", "lui_desktop_update", "lui_desktop_commands"}
+        for source in args.ocaml_source:
+            if source.suffix != ".ml" or source.stem in reserved or not re.fullmatch(r"[a-z][A-Za-z0-9_]*", source.stem):
+                raise ValueError(f"Invalid or duplicate application module: {source}")
+            reserved.add(source.stem)
+            shutil.copy2(source, work / source.name)
+            interface = source.with_suffix(".mli")
+            if interface.exists():
+                shutil.copy2(interface, work / interface.name)
+                run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
+                     "-c", interface.name], cwd=work)
+            run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
+                 "-c", source.name], cwd=work)
+            objects.append(work / (source.stem + ".cmx"))
+        runner = "Lui_desktop.run"
+        if args.commands:
+            shutil.copy2(args.commands, work / "desktop_app.ml")
+            run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-O3", "-thread", "-package", PACKAGES,
+                 "-c", "desktop_app.ml"], cwd=work)
+            objects.append(work / "desktop_app.cmx")
+            runner = "Lui_desktop.run_with_commands ~commands:Desktop_app.commands"
+        embedded = ("let () = " + runner + " ~config:%s ~updater_html:%s ~updater_js:%s\n") % tuple(
             ocaml_string(value) for value in [
                 json.dumps(config), (SOURCE / "updater.html").read_text(), (SOURCE / "updater.js").read_text()])
         (work / "main.ml").write_text(embedded)
@@ -198,7 +220,10 @@ def build(args):
         stub = work / "webview_stubs.o"
         run([args.cxx, "-std=c++17", "-O2", "-fPIC", "-I", webview / "core/include", "-I", include,
              *compile_flags, "-c", SOURCE / "webview_stubs.cc", "-o", stub])
-        native_objects = [stub]
+        reply = work / "lui_desktop_reply.o"
+        run([args.cxx, "-std=c++17", "-O2", "-fPIC", "-I", include,
+             "-c", SOURCE / "lui_desktop_reply.cc", "-o", reply])
+        native_objects = [stub, reply]
         if target.startswith("darwin-"):
             scheme = work / "macos_scheme.o"
             run([args.cxx, "-std=c++17", "-O2", "-fPIC", "-I", include,
@@ -565,6 +590,8 @@ def parser():
     create.add_argument("--output", type=Path, required=True)
     create.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     create.add_argument("--webview2-headers", type=Path)
+    create.add_argument("--commands", type=Path, help="Native OCaml module exporting commands : unit -> binding list")
+    create.add_argument("--ocaml-source", type=Path, action="append", default=[], help="Additional shared/native OCaml module, in dependency order")
     create.set_defaults(action=build)
     keys = commands.add_parser("keygen", help="Create an Ed25519 signing key outside the repository")
     keys.add_argument("--private", type=Path, required=True)
