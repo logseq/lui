@@ -1,5 +1,37 @@
 # LUI API migration guide
 
+## Unreleased: macOS sparse rows use independent hosting graphs
+
+macOS sparse virtual rows now retain an independent SwiftUI hosting graph per
+mounted row. Measured row heights propagate back to the outer layout, including
+growth and shrinkage after mounting. Existing row identities, retention leases,
+focus, composition and shared-scroll ownership remain authoritative. iOS keeps
+its existing row host.
+
+Anchored macOS popovers and hosted dropdowns now present through `NSPopover`,
+including anchors inside independent row hosts. Native content-size changes
+resize the popup; current retained declarations still own admission and dismissal.
+No wire fields, public signatures or event names change. Applications keep their
+existing anchor properties and Dismiss handlers. Custom SwiftUI extensions must
+not depend on preference values crossing an independent hosting-controller
+boundary; pass required state explicitly through their extension context.
+
+## Unreleased: Apple scroll padding moves with the document
+
+Padding on a `scroll` node now belongs to its scrolling document. The native
+viewport and scrollbar occupy the whole container, and content fills the native
+cross-axis proposal without adding the scrollbar width to the container.
+For example, a 320-point-high scroll with 32-point vertical padding keeps a
+320-point viewport and adds 64 points to its document height. Remove any
+application-level compensating outer padding when adopting this behavior.
+
+On macOS, hover-opacity tracking is now a hit-transparent native tracking view
+mounted only when hover opacity is declared. Empty layout and overlay containers
+no longer acquire an interaction surface from unconditional SwiftUI hover
+handlers. Late tracking activation samples the current stationary pointer;
+retired trackers cannot deliver pending samples. No application migration is
+required for ordinary buttons, overlays or hover-opacity properties.
+
 ## Unreleased: Apple hosted menus keep retained declaration admission
 
 Apple anchored dropdowns presented by the stack/panel/card menu host no longer

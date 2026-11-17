@@ -331,17 +331,20 @@
       let preceding = try #require(
         h.indices.first(where: { $0 < anchor.0 }).flatMap { h.roots[$0] })
       let precedingView = try #require(h.lifetimes.views[preceding]?.value)
-      let oldHeight = precedingView.bounds.height
-      let oldOffset = scroll.contentView.bounds.minY
-      try h.apply([
-        ["op": "set-extension-prop", "id": preceding, "property": "row-height", "value": 128]
-      ])
-      try await h.wait("height correction") {
-        abs(precedingView.bounds.height - 128) < 1
-          && abs(scroll.contentView.bounds.minY - oldOffset - (128 - oldHeight)) < 2
-          && abs(
-            anchor.1.convert(anchor.1.bounds, to: scroll.contentView).minY
-              - scroll.contentView.bounds.minY - anchor.2) < 2
+      let originalHeight = Int(precedingView.bounds.height)
+      for height in [128, 16, originalHeight] {
+        let oldHeight = precedingView.bounds.height
+        let oldOffset = scroll.contentView.bounds.minY
+        try h.apply([
+          ["op": "set-extension-prop", "id": preceding, "property": "row-height", "value": height]
+        ])
+        try await h.wait("height correction") {
+          abs(precedingView.bounds.height - CGFloat(height)) < 1
+            && abs(scroll.contentView.bounds.minY - oldOffset - (CGFloat(height) - oldHeight)) < 2
+            && abs(
+              anchor.1.convert(anchor.1.bounds, to: scroll.contentView).minY
+                - scroll.contentView.bounds.minY - anchor.2) < 2
+        }
       }
       #expect(h.roots[anchor.0] == anchorID)
       #expect(h.indices.count < 32)
@@ -415,8 +418,8 @@
       try await h.wait("removed target completes once") { outcomes(5) == ["missing-target"] }
     }
 
-    @Test("a mounted popup retains its row anchor until dismissal")
-    func popupOwnership() async throws {
+    @Test("a mounted popup retains its row anchor until dismissal", arguments: ["dropdown-menu", "popover"])
+    func popupOwnership(popupKind: String) async throws {
       let h = try SparseHostFixture()
       defer { h.close() }
       try await h.wait("initial rows") { h.roots[2] != nil }
@@ -426,7 +429,7 @@
       h.roots[2] = root
       var ops: [[String: Any]] = [["op": "detach-subtree", "id": previous]]
       for (id, kind) in [
-        (root, "stack"), (root + 1, "select"), (root + 2, "dropdown-menu"), (root + 3, "menu-item"),
+        (root, "stack"), (root + 1, "select"), (root + 2, popupKind), (root + 3, "menu-item"),
       ] {
         ops.append(["op": "create-node", "id": id, "kind": kind])
       }

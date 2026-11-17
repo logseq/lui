@@ -216,18 +216,31 @@ struct LUIHostedScrollView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     let children: [Int]
-    @State private var viewportSize = CGSize.zero
+
+    private var contentPadding: EdgeInsets {
+        let padding = model.property(.padding)?.intValue ?? 0
+        let horizontal = model.property(.paddingHorizontal)?.intValue ?? padding
+        let vertical = model.property(.paddingVertical)?.intValue ?? padding
+        return EdgeInsets(
+            top: CGFloat(model.property(.paddingTop)?.intValue ?? vertical),
+            leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
+            bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
+            trailing: CGFloat(model.property(.paddingRight)?.intValue ?? horizontal))
+    }
 
     var body: some View {
         let horizontal = model.property(.orientation)?.stringValue == "horizontal"
+        let padding = contentPadding
         ScrollView(horizontal ? .horizontal : .vertical) {
             ZStack(alignment: .topLeading) {
                 ForEach(children, id: \.self) { childID in
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                 }
             }
-            .frame(minWidth: horizontal ? nil : viewportSize.width,
-                   minHeight: horizontal ? viewportSize.height : nil, alignment: .topLeading)
+            .frame(maxWidth: horizontal ? nil : .infinity,
+                   maxHeight: horizontal ? .infinity : nil,
+                   alignment: .topLeading)
+            .padding(padding)
             .environment(\.luiInsideScroll, true)
             .background {
                 if model.property(.virtualViewportEpoch) != nil {
@@ -240,10 +253,9 @@ struct LUIHostedScrollView: View {
                 }
             }
         }
-        // Accept smaller cross-axis proposals even while the content still
-        // carries the previous viewport minimum. Keep scroll-axis ideal sizing.
+        // Accept the container proposal independently of the document ideal size.
+        // Keep scroll-axis ideal sizing.
         .frame(minWidth: horizontal ? nil : 0, maxWidth: horizontal ? nil : .infinity,
                minHeight: horizontal ? 0 : nil, maxHeight: horizontal ? .infinity : nil)
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { viewportSize = $0 }
     }
 }

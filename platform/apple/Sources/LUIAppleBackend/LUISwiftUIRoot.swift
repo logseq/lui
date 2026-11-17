@@ -2534,23 +2534,20 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                 }
         }
         #else
-        content
-            .popover(
-                isPresented: presentationBinding(lease),
-                attachmentAnchor: .point(attachmentPoint),
-                arrowEdge: arrowEdge
-            ) {
-                if let model {
-                    LUIDropdownMenuView(
-                        model: model,
-                        backend: backend,
-                        isPresented: true,
-                        closeHostedMenu: { if let lease { backend.dismissAnchoredMenu(lease) } }
-                    )
-                    .padding(arrowEdgeOffset)
-                    .presentationCompactAdaptation(.popover)
-                }
+        content.background {
+            if let lease {
+                LUIAppKitPopover(
+                    presentationID: AnyHashable(lease.id),
+                    isPresented: presentationBinding(lease),
+                    attachment: .point(attachmentPoint),
+                    arrowEdge: arrowEdge,
+                    content: LUIDropdownMenuView(
+                        model: lease.menu, backend: backend, isPresented: true,
+                        closeHostedMenu: { backend.dismissAnchoredMenu(lease) }
+                    ).padding(arrowEdgeOffset)
+                )
             }
+        }
         #endif
         }
         .background {
@@ -8497,16 +8494,19 @@ private struct LUIHoverOpacityModifier: ViewModifier {
             .onChange(of: identity) { hoveredModel = nil }
             .background {
                 if hoverOpacity != nil {
-                    // Keep the hover box present even when paint is transparent.
-                    Color.clear
-                        .contentShape(Rectangle())
+                    #if os(macOS)
+                    LUIHoverTracking { inside in
+                        hoveredModel = inside ? model : nil
+                    }
+                    .onDisappear { if hoveredModel === model { hoveredModel = nil } }
+                    #else
+                    Color.clear.contentShape(Rectangle())
+                    #endif
                 }
             }
-            // Observe the content's ancestor so child controls do not cover the
-            // tracker. Keeping it mounted also supports adding hover while inside.
-            .onHover { inside in
-                hoveredModel = inside ? model : nil
-            }
+            #if !os(macOS)
+            .onHover { inside in hoveredModel = inside ? model : nil }
+            #endif
             .onDisappear {
                 if hoveredModel === model { hoveredModel = nil }
             }
@@ -8564,7 +8564,7 @@ private struct LUISurfaceModifier: ViewModifier {
             ? 0
             : model.property(.paddingHorizontal)?.intValue ?? padding
         let vertical = model.property(.paddingVertical)?.intValue ?? padding
-        let insets = EdgeInsets(
+        let insets = model.kind == .scroll ? EdgeInsets() : EdgeInsets(
             top: CGFloat(model.property(.paddingTop)?.intValue ?? vertical),
             leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
             bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
