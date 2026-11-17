@@ -125,6 +125,7 @@ final class LUISparseVirtualState {
   @ObservationIgnored private var pendingKey: String?
   @ObservationIgnored private var pendingAnimated = false
   @ObservationIgnored private var attempt = UUID()
+  var scrollAttempt: UUID { attempt }
   @ObservationIgnored private var mutation: UInt64 = 0
   @ObservationIgnored private var configuration: UInt64 = 0
   @ObservationIgnored private var completionID: UUID?
