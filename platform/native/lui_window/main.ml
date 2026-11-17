@@ -18,7 +18,7 @@
 open Lui_window
 open Lui_window_demo
 
-module Sdl = Tsdl.Sdl
+module Sdl = Lui_sdl3
 
 let log fmt = Printf.printf (fmt ^^ "\n%!")
 let warn fmt = Printf.eprintf (fmt ^^ "\n%!")
@@ -62,74 +62,24 @@ let mods_of_keymod km =
    only sees events that survived routing. *)
 let input_of_event e =
   let open Input in
-  match Sdl.Event.enum (Sdl.Event.get e Sdl.Event.typ) with
-  | `Quit -> Some Quit_input
-  | `Window_event ->
-    (match
-       Sdl.Event.window_event_enum
-         (Sdl.Event.get e Sdl.Event.window_event_id)
-     with
-     | `Resized | `Size_changed ->
-       Some
-         (Resize
-            ( Int32.to_int (Sdl.Event.get e Sdl.Event.window_data1),
-              Int32.to_int (Sdl.Event.get e Sdl.Event.window_data2) ))
-     | `Close -> Some Quit_input
-     | _ -> None)
-  | `Key_down ->
-    Some
-      (Key_down
-         ( Input.key_of_sdl_scancode
-             (Sdl.Event.get e Sdl.Event.keyboard_scancode),
-           mods_of_keymod (Sdl.Event.get e Sdl.Event.keyboard_keymod),
-           Sdl.Event.get e Sdl.Event.keyboard_repeat <> 0 ))
-  | `Text_input ->
-    Some (Text_input (Sdl.Event.get e Sdl.Event.text_input_text))
-  | `Text_editing ->
-    Some
-      (Text_editing
-         ( Sdl.Event.get e Sdl.Event.text_editing_text,
-           Sdl.Event.get e Sdl.Event.text_editing_start,
-           Sdl.Event.get e Sdl.Event.text_editing_length ))
-  | `Mouse_motion ->
-    Some
-      (Move
-         ( float (Sdl.Event.get e Sdl.Event.mouse_motion_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_motion_y) ))
-  | `Mouse_button_down ->
-    Some
-      (Button_down
-         ( float (Sdl.Event.get e Sdl.Event.mouse_button_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_button_y),
-           Input.button_of_sdl
-             (Sdl.Event.get e Sdl.Event.mouse_button_button),
-           Sdl.Event.get e Sdl.Event.mouse_button_clicks,
-           mods_of_keymod (Sdl.get_mod_state ()) ))
-  | `Mouse_button_up ->
-    Some
-      (Button_up
-         ( float (Sdl.Event.get e Sdl.Event.mouse_button_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_button_y),
-           Input.button_of_sdl
-             (Sdl.Event.get e Sdl.Event.mouse_button_button),
-           mods_of_keymod (Sdl.get_mod_state ()) ))
-  | `Mouse_wheel ->
-    Some
-      (Wheel_mods
-         ( float (Sdl.Event.get e Sdl.Event.mouse_wheel_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_wheel_y),
-           mods_of_keymod (Sdl.get_mod_state ()) ))
-  | `Drop_file ->
-    (* SDL_DROPFILE: the payload string must be freed once read *)
-    let s = Sdl.Event.drop_file_file e in
-    Sdl.Event.drop_file_free e;
-    (match s with Some f -> Some (Drop_file f) | None -> None)
-  | `Drop_text ->
-    (* SDL_DROPTEXT: the dragged text rides the same field *)
-    let s = Sdl.Event.drop_file_file e in
-    Sdl.Event.drop_file_free e;
-    (match s with Some t -> Some (Drop_text t) | None -> None)
-  | `Drop_begin | `Drop_complete -> None
+  match (Sdl.Event.value e).kind with
+  | Sdl.Event.Quit -> Some Quit_input
+  | Window (Resized, w, h) -> Some (Resize (w, h))
+  | Window (Close_requested, _, _) -> Some Quit_input
+  | Key_down key -> Some (Key_down (Input.key_of_sdl_scancode key.scancode,
+                                   mods_of_keymod key.keymod, key.repeat))
+  | Text_input text -> Some (Text_input text)
+  | Text_editing (text, start, length) -> Some (Text_editing (text, start, length))
+  | Mouse_motion motion -> Some (Move (motion.x, motion.y))
+  | Mouse_button_down button ->
+    Some (Button_down (button.x, button.y, Input.button_of_sdl button.button,
+                       button.clicks, mods_of_keymod (Sdl.get_mod_state ())))
+  | Mouse_button_up button ->
+    Some (Button_up (button.x, button.y, Input.button_of_sdl button.button,
+                     mods_of_keymod (Sdl.get_mod_state ())))
+  | Mouse_wheel (x, y) -> Some (Wheel_mods (x, y, mods_of_keymod (Sdl.get_mod_state ())))
+  | Drop_file file -> Some (Drop_file file)
+  | Drop_text text -> Some (Drop_text text)
   | _ -> None
 
 type stats = {
@@ -212,7 +162,7 @@ let pending : Demo_app.action Queue.t = Queue.create ()
 let drawable (s : surf) =
   (* Under the dummy driver this may report 0x0; fall back to the
      logical size so layout still gets a sane extent. *)
-  match Sdl.gl_get_drawable_size s.driver.sdl with
+  match Sdl.get_window_size_in_pixels s.driver.sdl with
   | 0, 0 -> (s.Multi.logical_w, s.Multi.logical_h)
   | d -> d
 
@@ -220,7 +170,7 @@ let drawable (s : surf) =
    backing scale converts the device-px rect. *)
 let set_ime_rect (s : surf) (r : Lui_scene.rect) =
   let sc = Multi.scale s in
-  Sdl.set_text_input_rect
+  Sdl.set_text_input_rect s.driver.sdl
     (Some
        (Sdl.Rect.create
           ~x:(int_of_float (r.Lui_scene.x /. sc))
@@ -236,32 +186,21 @@ let set_ime_rect (s : surf) (r : Lui_scene.rect) =
    on; 0 when the OS declines to say (the scheduler keeps its previous
    rate then — [Frame.set_refresh_hz] ignores non-positive input). *)
 let refresh_hz_of (s : surf) =
-  if s.Multi.display < 0 then 0
+  if s.Multi.display <= 0 then 0.
   else
-    match Sdl.get_current_display_mode s.Multi.display with
-    | Ok m -> Option.value ~default:0 m.Sdl.dm_refresh_rate
-    | Error _ -> 0
+    match Sdl.display_refresh_rate s.Multi.display with
+    | Ok hz -> hz
+    | Error _ -> 0.
 
 let refresh_scale (s : surf) =
-  (match Sdl.get_window_display_index s.driver.sdl with
+  (match Sdl.get_window_display_id s.driver.sdl with
    | Ok di when di <> s.Multi.display -> s.Multi.display <- di
    | _ -> ());
-  Frame.set_refresh_hz s.driver.sched (float (refresh_hz_of s));
+  Frame.set_refresh_hz s.driver.sched (refresh_hz_of s);
   let dw, dh = drawable s in
   if Multi.apply_drawable s ~dw ~dh then
     log "win=%d: drawable %dx%d scale %.2f (display %d)" s.driver.idx
       dw dh (Multi.scale s) s.Multi.display
-
-(* The window holding a text field's focus, for the process-global
-   IME candidate window; prefers the OS-focused window. *)
-let focused_field () =
-  match Multi.find_focused windows with
-  | Some w when Ui.focused w.Multi.ui <> 0 -> Some w
-  | _ ->
-    let hit = ref None in
-    Multi.iter windows (fun w ->
-        if !hit = None && Ui.focused w.Multi.ui <> 0 then hit := Some w);
-    !hit
 
 let rec apply_actions (s : surf) acts =
   let d = s.driver in
@@ -294,14 +233,13 @@ let rec apply_actions (s : surf) acts =
         ignore
           (if id = 0 then Lui_a11y.clear_focused d.a11y
            else Lui_a11y.set_focused d.a11y id);
-        (* IME is process-global: input stays on while ANY window
-           holds a field; the candidate window anchors on that
-           window's rect. *)
-        (match focused_field () with
-         | Some w ->
-           Sdl.start_text_input ();
-           set_ime_rect w (Rects.get w.Multi.rects (Ui.focused w.Multi.ui))
-         | None -> Sdl.stop_text_input ())
+        (* SDL3 text input belongs to this window, independently of other
+           windows' focused fields. *)
+        if id = 0 then Sdl.stop_text_input d.sdl
+        else begin
+          Sdl.start_text_input d.sdl;
+          set_ime_rect s (Rects.get s.Multi.rects id)
+        end
       | Ime_rect r -> set_ime_rect s r
       | Quit -> quit := true)
     acts
@@ -323,21 +261,6 @@ let close_window id =
     log "win=%d closed (%d left)" s.driver.idx (Multi.count windows);
     if Multi.count windows = 0 then quit := true
 
-let focus_window id =
-  match Multi.find windows id with
-  | Some s ->
-    Sdl.raise_window s.driver.sdl;
-    Multi.set_focused windows id
-  | None -> ()
-
-(* Scale query for a window id: [Option.map Multi.scale
-   (Multi.find windows id)] — the surface-level accessor is
-   {!Multi.scale}. *)
-
-(* Synthetic OS drops (--drop-file): on frame 1 each path lands on
-   the deepest target accepting its namespaced payload — found by
-   scanning the store rather than hard-coding a hit point, so the
-   injection follows wherever the demo puts its drop well. *)
 let inject_drops (s : surf) =
   let store = Lui_host.store s.host in
   List.iter
@@ -517,7 +440,7 @@ let tick (s : surf) ~t0 =
 (* ---------- window creation ---------- *)
 
 let flags_for gl =
-  let base = Sdl.Window.(resizable + allow_highdpi + shown) in
+  let base = Sdl.Window.(resizable + high_pixel_density) in
   if gl then Sdl.Window.(base + opengl) else base
 
 (* ---------- runtime backend-loss recovery ---------- *)
@@ -670,7 +593,7 @@ let open_window ~title ~idx =
     | None -> false
   in
   let drawable_of w =
-    match Sdl.gl_get_drawable_size w with
+    match Sdl.get_window_size_in_pixels w with
     | 0, 0 -> (!cfg.width, !cfg.height)
     | d -> d
   in
@@ -808,7 +731,7 @@ let open_window ~title ~idx =
     (match Assembly.first_autofocus asm with
      | Some id ->
        Ui.set_focused ui store id;
-       Sdl.start_text_input ()
+       Sdl.start_text_input !win
      | None -> ());
   let id = Sdl.get_window_id !win in
   let d =
@@ -828,10 +751,10 @@ let open_window ~title ~idx =
   in
   Multi.register windows s;
   surf_cell := Some s;
-  (match Sdl.get_window_display_index !win with
+  (match Sdl.get_window_display_id !win with
    | Ok di -> s.Multi.display <- di
    | Error _ -> ());
-  Frame.set_refresh_hz d.sched (float (refresh_hz_of s));
+  Frame.set_refresh_hz d.sched (refresh_hz_of s);
   log "lui_window[%d]: %dx%d drawable (scale %.2f), renderer=%s%s"
     idx dw dh scale (!(renderer_cell)).Lui_host.name
     (if !headless then " [headless]" else "");
@@ -847,20 +770,8 @@ let open_window ~title ~idx =
 
 (* The SDL windowID an event belongs to; None = process-global. *)
 let window_id_of e =
-  match Sdl.Event.enum (Sdl.Event.get e Sdl.Event.typ) with
-  | `Key_down | `Key_up -> Some (Sdl.Event.get e Sdl.Event.keyboard_window_id)
-  | `Text_input -> Some (Sdl.Event.get e Sdl.Event.text_input_window_id)
-  | `Text_editing ->
-    Some (Sdl.Event.get e Sdl.Event.text_editing_window_id)
-  | `Mouse_motion ->
-    Some (Sdl.Event.get e Sdl.Event.mouse_motion_window_id)
-  | `Mouse_button_down | `Mouse_button_up ->
-    Some (Sdl.Event.get e Sdl.Event.mouse_button_window_id)
-  | `Mouse_wheel -> Some (Sdl.Event.get e Sdl.Event.mouse_wheel_window_id)
-  | `Drop_file | `Drop_text | `Drop_begin | `Drop_complete ->
-    Some (Sdl.Event.get e Sdl.Event.drop_window_id)
-  | `Window_event -> Some (Sdl.Event.get e Sdl.Event.window_window_id)
-  | _ -> None
+  let id = (Sdl.Event.value e).window_id in
+  if id = 0 then None else Some id
 
 (* Window lifecycle, routed by windowID: logical resize feeds the
    window's Ui (which emits Resize_host, applied against the real
@@ -868,63 +779,42 @@ let window_id_of e =
    focus updates the registry's focused window, close destroys just
    that surface. *)
 let handle_window_event e =
-  let id = Sdl.Event.get e Sdl.Event.window_window_id in
-  match Multi.find windows id with
-  | None -> ()
-  | Some s ->
-    (match
-       Sdl.Event.window_event_enum
-         (Sdl.Event.get e Sdl.Event.window_event_id)
-     with
-     | `Resized | `Size_changed ->
-       let w = Int32.to_int (Sdl.Event.get e Sdl.Event.window_data1)
-       and h = Int32.to_int (Sdl.Event.get e Sdl.Event.window_data2) in
+  let event = Sdl.Event.value e in
+  match Multi.find windows event.window_id, event.kind with
+  | Some s, Sdl.Event.Window (change, w, h) ->
+    let id = event.window_id in
+    (match change with
+     | Resized ->
        Multi.apply_logical_size s ~w ~h;
        apply_actions s (Multi.dispatch s (Input.Resize (w, h)))
-     | `Moved -> refresh_scale s
-     | `Close -> close_window id
-     (* Visibility feeds the scheduler: covered windows throttle to
-        the background cadence, restored ones present fresh content. *)
-     | `Hidden -> Frame.set_visibility s.driver.sched Frame.Hidden
-     | `Minimized -> Frame.set_visibility s.driver.sched Frame.Minimized
-     | `Shown | `Restored ->
-       Frame.set_visibility s.driver.sched Frame.Shown
-     | `Exposed -> Frame.request_frame s.driver.sched
-     | `Focus_gained -> Multi.set_focused windows id
-     | `Focus_lost ->
-       if Multi.focused windows = id then Multi.clear_focus windows
-     | `Take_focus -> focus_window id
-     | _ -> ())
+     | Pixel_size_changed | Display_scale_changed | Display_changed | Moved -> refresh_scale s
+     | Close_requested -> close_window id
+     | Hidden -> Frame.set_visibility s.driver.sched Frame.Hidden
+     | Minimized -> Frame.set_visibility s.driver.sched Frame.Minimized
+     | Shown | Restored -> Frame.set_visibility s.driver.sched Frame.Shown
+     | Exposed -> Frame.request_frame s.driver.sched
+     | Focus_gained -> Multi.set_focused windows id
+     | Focus_lost -> if Multi.focused windows = id then Multi.clear_focus windows
+     | Other_window _ -> ())
+  | _ -> ()
 
 (* One SDL event, routed: process-global events apply everywhere,
    window-tagged events go to their surface. An event that woke a
    [Sdl.wait_event_timeout] sleep goes through here too — a wake is
    just a slower first poll. *)
 let handle_sdl_event e =
-  let typ = Sdl.Event.get e Sdl.Event.typ in
-  (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the GPU
-     device is shared across windows, so a reset demotes every
-     surface down the ladder. *)
-  if typ = 0x2000 || typ = 0x2001 then
-    Multi.iter windows (fun s -> demote s "SDL render reset")
-  else
-    match Sdl.Event.enum typ with
-    | `Quit -> quit := true
-    | `Window_event -> handle_window_event e
-    | `Display_event ->
-      (* Hotplug / mode change: re-query every window's drawable —
-         cheap, and only windows that actually changed respond. *)
-      Multi.iter windows refresh_scale
-    | _ ->
-      let target =
-        match window_id_of e with
-        | Some id -> Multi.find windows id
-        | None -> Multi.find_focused windows
-      in
-      (match target, input_of_event e with
-       | Some s, Some input ->
-         apply_actions s (Multi.dispatch s input)
-       | _ -> ())
+  match (Sdl.Event.value e).kind with
+  | Sdl.Event.Render_reset -> Multi.iter windows (fun s -> demote s "SDL render reset")
+  | Quit -> quit := true
+  | Window _ -> handle_window_event e
+  | Display_changed -> Multi.iter windows refresh_scale
+  | _ ->
+    let target = match window_id_of e with
+      | Some id -> Multi.find windows id
+      | None -> Multi.find_focused windows in
+    (match target, input_of_event e with
+     | Some s, Some input -> apply_actions s (Multi.dispatch s input)
+     | _ -> ())
 
 let drain_events e =
   (* Shell-queued model actions go to the focused window (falling back

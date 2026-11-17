@@ -1,4 +1,4 @@
 (test
  (name lui_blit_test)
  (modules lui_blit_test)
- (libraries alcotest lui_blit tsdl))
+ (libraries alcotest lui_blit lui_sdl3))

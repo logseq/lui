@@ -1,0 +1,1 @@
+pin-depends: [["sdl3.0.0.1--alpha" "git+https://github.com/logseq/ocaml-sdl3.git#a9919c19bb4a0ba4857142f007ad93dd2563e799"]]

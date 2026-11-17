@@ -18,7 +18,7 @@
      through AVAssetReader into premultiplied RGBA frames.
    - Linux: audio decode via a runtime-resolved libsndfile with an
      [ffmpeg] subprocess fallback; playback via a runtime-resolved
-     SDL2 device queue, with an [ffplay] subprocess fallback that only
+     SDL3 device queue, with an [ffplay] subprocess fallback that only
      supports play/stop. Video is not implemented there.
    - Windows and everything else: the availability flags are [false]
      and every constructor reports an error; nothing else needs

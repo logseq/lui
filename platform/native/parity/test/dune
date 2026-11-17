@@ -7,6 +7,6 @@
   lui_raster
   lui_gl
   lui_scene
-  tsdl
+  lui_sdl3
   tgls.tgl3
   alcotest))

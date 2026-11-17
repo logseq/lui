@@ -3,7 +3,7 @@
    Thin OCaml wrappers over the C stubs plus the per-frame refresh
    loop.  The path is state-polling only: it pumps SDL for fresh
    hardware state, diffs the controller set and reads
-   SDL_GameController state directly — it never consumes the SDL
+   SDL_Gamepad state directly — it never consumes the SDL
    event queue, so it composes cleanly with window hosts that own
    SDL event delivery. *)
 
@@ -13,11 +13,10 @@ external c_probe : unit -> int = "lui_gp_sdl_probe"
 external c_load_error : unit -> string = "lui_gp_sdl_load_error"
 external c_init : unit -> int = "lui_gp_sdl_init"
 external c_pump : unit -> unit = "lui_gp_sdl_pump"
-external c_num_devices : unit -> int = "lui_gp_sdl_num_devices"
+external c_devices : unit -> int list = "lui_gp_sdl_devices"
 external c_is_controller : int -> bool = "lui_gp_sdl_is_controller"
 external c_device_name : int -> string = "lui_gp_sdl_device_name"
 external c_device_guid : int -> string = "lui_gp_sdl_device_guid"
-external c_device_instance : int -> int = "lui_gp_sdl_device_instance"
 external c_device_mapping : int -> string = "lui_gp_sdl_device_mapping"
 external c_open : int -> int = "lui_gp_sdl_open"
 external c_close : int -> unit = "lui_gp_sdl_close"
@@ -86,10 +85,9 @@ let refresh trk =
   c_pump ();
   let seen = Hashtbl.create 8 in
   let evs = ref [] in
-  let n = c_num_devices () in
-  for i = 0 to n - 1 do
+  List.iter (fun i ->
     if c_is_controller i then begin
-      let inst = c_device_instance i in
+      let inst = i in
       Hashtbl.replace seen inst ();
       if tracker_mem trk inst then begin
         if c_attached inst then
@@ -109,7 +107,7 @@ let refresh trk =
         end
       end
     end
-  done;
+  ) (c_devices ());
   (* Anything still tracked under this backend but absent from the
      enumeration has gone away. *)
   List.iter
@@ -123,16 +121,15 @@ let refresh trk =
 
 let add_mapping s = c_add_mapping s
 
-(* SDL_GameControllerAddMappingsFromFile; Linux hosts use this for
+(* SDL_GamepadAddMappingsFromFile; Linux hosts use this for
    the community mapping file, and it works on every SDL platform. *)
 let add_mappings_from_file path = c_add_mappings_file path
 
 (* ---- fake-event injection harness (virtual joysticks) ---- *)
 
-(* Returns the device index or -1 when the build's SDL lacks
-   SDL_JoystickAttachVirtual (SDL >= 2.14) or it failed. *)
+(* Returns a stable SDL3 joystick ID, or -1 on failure. *)
 let attach_virtual ~naxes ~nbuttons ~nhats =
-  (* SDL_JOYSTICK_TYPE_GAMECONTROLLER *)
+  (* SDL_JOYSTICK_TYPE_GAMEPAD *)
   c_attach_virtual 1 naxes nbuttons nhats
 
 let joystick_open = c_joystick_open

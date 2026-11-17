@@ -23,7 +23,7 @@
   (with-stdout-to
    %{target}
    (bash
-    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc)'; else printf '()'; fi"))))
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc)'; elif [ \"$(uname -s)\" = Linux ]; then flags=$(pkg-config --cflags sdl3) || exit; printf '(%s)' \"$flags\"; else printf '()'; fi"))))
 
 (rule
  (target c_libs.sexp)

@@ -14,10 +14,10 @@ module Gl = Tgl3.Gl
 (* A GL3 core context on a hidden SDL window — the recipe the lui_gl
    tests use — or None where it cannot be had (headless CI). *)
 let sdl_gl_context () =
-  match Tsdl.Sdl.init Tsdl.Sdl.Init.(video + events) with
+  match Lui_sdl3.init Lui_sdl3.Init.(video + events) with
   | Error _ -> None
   | Ok () -> (
-    let open Tsdl in
+    let module Sdl = Lui_sdl3 in
     ignore (Sdl.gl_set_attribute Sdl.Gl.context_major_version 3);
     ignore (Sdl.gl_set_attribute Sdl.Gl.context_minor_version 3);
     ignore
@@ -68,9 +68,9 @@ let sdl_gl_context () =
           else Some (win, ctx))))
 
 let release_gl (win, ctx) =
-  Tsdl.Sdl.gl_delete_context ctx;
-  Tsdl.Sdl.destroy_window win;
-  Tsdl.Sdl.quit ()
+  Lui_sdl3.gl_delete_context ctx;
+  Lui_sdl3.destroy_window win;
+  Lui_sdl3.quit ()
 
 (* The context once for the suite; it stays current on this thread. *)
 let gl_context = lazy (sdl_gl_context ())

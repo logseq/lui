@@ -8,7 +8,7 @@
    platform engine progress and deliver page events to the spec-level
    message and ready hooks. *)
 
-module Sdl = Tsdl.Sdl
+module Sdl = Lui_sdl3
 
 let ( let* ) = Result.bind
 
@@ -29,25 +29,12 @@ let pump_window_events t quit =
   let ev = Sdl.Event.create () in
   Sdl.pump_events ();
   while Sdl.poll_event (Some ev) do
-    (match Sdl.Event.enum (Sdl.Event.get ev Sdl.Event.typ) with
-     | `Quit -> quit := true
-     | `Window_event ->
-       (match
-          Sdl.Event.window_event_enum
-            (Sdl.Event.get ev Sdl.Event.window_event_id)
-        with
-        | `Close -> quit := true
-        | `Resized | `Size_changed ->
-          let w =
-            Int32.to_int (Sdl.Event.get ev Sdl.Event.window_data1)
-          in
-          let h =
-            Int32.to_int (Sdl.Event.get ev Sdl.Event.window_data2)
-          in
-          Lui_webview.layout_webview t
-            (Lui_webview.rect 0. 0. (Float.of_int w) (Float.of_int h))
-        | _ -> ())
-     | _ -> ())
+    match (Sdl.Event.value ev).kind with
+    | Sdl.Event.Quit | Window (Close_requested, _, _) -> quit := true
+    | Window (Resized, w, h) ->
+      Lui_webview.layout_webview t
+        (Lui_webview.rect 0. 0. (Float.of_int w) (Float.of_int h))
+    | _ -> ()
   done
 
 let sdl_window (window : window) title =
@@ -57,8 +44,8 @@ let sdl_window (window : window) title =
     | Ok () -> Ok ()
   in
   let flags =
-    if window.resizable then Sdl.Window.(shown + resizable)
-    else Sdl.Window.shown
+    if window.resizable then Sdl.Window.(resizable)
+    else Sdl.Window.none
   in
   match
     Sdl.create_window ~w:window.width ~h:window.height title flags

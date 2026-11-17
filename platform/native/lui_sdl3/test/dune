@@ -1,0 +1,6 @@
+(test
+ (name lui_sdl3_test)
+ (libraries lui_sdl3 sdl3 alcotest)
+ (action
+  (setenv SDL_VIDEODRIVER dummy
+   (run %{test}))))

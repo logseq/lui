@@ -945,12 +945,9 @@ module Doctor = struct
   let checks_for = function
     | Lui_pkg.Macos ->
       common
-      @ [ { c_name = "sdl2"; c_required = true;
-            c_hint = "brew install sdl2";
-            c_probe = Any [ Pkg_config "sdl2"; Brew "sdl2" ] };
-          { c_name = "sdl2_ttf"; c_required = true;
-            c_hint = "brew install sdl2_ttf";
-            c_probe = Any [ Pkg_config "SDL2_ttf"; Brew "sdl2_ttf" ] };
+      @ [ { c_name = "sdl3"; c_required = true;
+            c_hint = "brew install sdl3";
+            c_probe = Any [ Pkg_config "sdl3"; Brew "sdl3" ] };
           { c_name = "codesign"; c_required = true;
             c_hint = "xcode-select --install";
             c_probe = On_path "codesign" };
@@ -977,9 +974,9 @@ module Doctor = struct
           { c_name = "pkg-config"; c_required = true;
             c_hint = "apt install pkg-config";
             c_probe = On_path "pkg-config" };
-          { c_name = "sdl2"; c_required = true;
-            c_hint = "apt install libsdl2-dev";
-            c_probe = Pkg_config "sdl2" };
+          { c_name = "sdl3"; c_required = true;
+            c_hint = "apt install libsdl3-dev";
+            c_probe = Pkg_config "sdl3" };
           { c_name = "tar"; c_required = true;
             c_hint = "apt install tar";
             c_probe = On_path "tar" };

@@ -2,7 +2,7 @@
    dummy video driver (a headless run produces a real SDL software
    renderer, so these exercise the actual upload calls). *)
 
-module Sdl = Tsdl.Sdl
+module Sdl = Lui_sdl3
 
 let init () =
   Unix.putenv "SDL_VIDEODRIVER" "dummy";

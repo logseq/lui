@@ -381,7 +381,7 @@ let test_doctor_probes () =
   let names p = List.map (fun c -> c.c_name) (checks_for p) in
   check bool "common ocaml" true (List.mem "ocaml" (names Lui_pkg.Linux));
   check bool "mac codesign" true (List.mem "codesign" (names Lui_pkg.Macos));
-  check bool "mac sdl2" true (List.mem "sdl2" (names Lui_pkg.Macos));
+  check bool "mac sdl3" true (List.mem "sdl3" (names Lui_pkg.Macos));
   check bool "linux pkg-config" true
     (List.mem "pkg-config" (names Lui_pkg.Linux));
   check bool "win mingw" true

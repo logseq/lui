@@ -37,13 +37,12 @@
 #endif
 
 #if defined(__has_include)
-# if __has_include(<SDL.h>) && __has_include(<SDL_syswm.h>)
+# if __has_include(<SDL3/SDL.h>)
 #  define LUI_WV_SDL 1
 # endif
 #endif
 #ifdef LUI_WV_SDL
-# include <SDL.h>
-# include <SDL_syswm.h>
+# include <SDL3/SDL.h>
 #endif
 
 /* ------------------------------------------------------- event queue */
@@ -991,7 +990,7 @@ static value lui_gtk_capture(LuiWv *w)
 #elif defined(_WIN32)
 /* ========= Windows: WebView2 via LoadLibrary + minimal COM =========== */
 
-/* Minimal Win32 declarations — needed only when SDL_syswm.h did not
+/* Minimal Win32 declarations — needed only when platform headers did not
    already pull in <windows.h>; otherwise the real protos apply (and
    windows.h macros like LoadLibraryW->LoadLibraryExW keep working). */
 
@@ -1026,7 +1025,7 @@ extern __declspec(dllimport) long LUI_STDCALL CreateStreamOnHGlobal(
     void *, int, void **);
 extern __declspec(dllimport) void LUI_STDCALL CoTaskMemFree(void *);
 #else
-/* <windows.h> came in via SDL_syswm.h, which defines
+/* <windows.h> came in via platform headers, which defines
    WIN32_LEAN_AND_MEAN: that skips the COM headers, so the real
    CoTaskMemFree / CreateStreamOnHGlobal / GetHGlobalFromStream protos
    must be pulled in explicitly. */
@@ -1653,20 +1652,21 @@ CAMLprim value lui_wv_host_of_sdl(value vsdl)
   {
     CAMLlocal1(v);
     SDL_Window *win = (SDL_Window *)(intnat)Nativeint_val(vsdl);
-    SDL_SysWMinfo info;
-    SDL_VERSION(&info.version);
-    if (win == NULL || !SDL_GetWindowWMInfo(win, &info))
-      lui_wv_die("SDL_GetWindowWMInfo failed");
+    if (!win) lui_wv_die("SDL3 window is NULL");
+    SDL_PropertiesID properties = SDL_GetWindowProperties(win);
+    if (!properties) lui_wv_die(SDL_GetError());
 # if defined(__APPLE__)
-    if (info.subsystem != SDL_SYSWM_COCOA)
-      lui_wv_die("SDL window is not Cocoa");
-    v = caml_copy_nativeint((intnat)info.info.cocoa.window);
+    void *native = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+    if (!native) lui_wv_die("SDL3 window is not Cocoa");
+    v = caml_copy_nativeint((intnat)native);
 # elif defined(__linux__)
-    if (info.subsystem != SDL_SYSWM_X11)
-      lui_wv_die("SDL window is not X11 (Wayland unsupported)");
-    v = caml_copy_nativeint((intnat)info.info.x11.window);
+    Sint64 native = SDL_GetNumberProperty(properties, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+    if (!native) lui_wv_die("SDL3 window is not X11 (Wayland unsupported)");
+    v = caml_copy_nativeint((intnat)native);
 # elif defined(_WIN32)
-    v = caml_copy_nativeint((intnat)info.info.win.window);
+    void *native = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+    if (!native) lui_wv_die("SDL3 window is not Win32");
+    v = caml_copy_nativeint((intnat)native);
 # else
     v = caml_copy_nativeint(0);
 # endif
@@ -1674,7 +1674,7 @@ CAMLprim value lui_wv_host_of_sdl(value vsdl)
   }
 #else
   (void)vsdl;
-  lui_wv_die("built without SDL2 headers");
+  lui_wv_die("built without SDL3 headers");
   CAMLreturn(Val_unit);
 #endif
 }

@@ -10,7 +10,7 @@
      premultiplied RGBA. AVAssetWriter backs the test-clip generator.
    - Linux: decode through a runtime-resolved libsndfile, with an
      ffmpeg subprocess fallback; playback through a runtime-resolved
-     SDL2 device queue, with an ffplay subprocess fallback that only
+     SDL3 audio stream, with an ffplay subprocess fallback that only
      supports play/stop. Video decode is not implemented.
    - Everything else: availability probes return false and every
      entry point raises Failure, so the OCaml side needs no platform
@@ -1157,62 +1157,75 @@ static int decode_any(const char *path, const void *data, size_t dlen,
   return 0;
 }
 
-/* ---- SDL2, runtime-resolved ---- */
+/* ---- SDL3, runtime-resolved ---- */
+#include <SDL3/SDL.h>
+#include <limits.h>
 
-typedef uint32_t LUI_SdlDev;
-typedef struct {
-  int freq;
-  uint16_t format;
-  uint8_t channels;
-  uint8_t silence;
-  uint16_t samples;
-  uint16_t padding;
-  uint32_t size;
-  void (*callback)(void *, uint8_t *, int);
-  void *userdata;
-} LUI_SdlSpec;
+typedef SDL_AudioStream *LUI_SdlDev;
+typedef SDL_AudioSpec LUI_SdlSpec;
+#define LUI_SDL_INIT_AUDIO SDL_INIT_AUDIO
+#define LUI_AUDIO_F32 SDL_AUDIO_F32
 
-#define LUI_SDL_INIT_AUDIO 0x10u
-#define LUI_AUDIO_F32 0x8120u
-#define LUI_SDL_ALLOW_ANY 15u
-
-static int (*p_SDL_InitSubSystem)(uint32_t);
-static LUI_SdlDev (*p_SDL_OpenAudioDevice)(const char *, int,
-                                           const LUI_SdlSpec *,
-                                           LUI_SdlSpec *, int);
-static int (*p_SDL_QueueAudio)(LUI_SdlDev, const void *, uint32_t);
-static uint32_t (*p_SDL_GetQueuedAudioSize)(LUI_SdlDev);
-static void (*p_SDL_ClearQueuedAudio)(LUI_SdlDev);
-static void (*p_SDL_PauseAudioDevice)(LUI_SdlDev, int);
-static void (*p_SDL_CloseAudioDevice)(LUI_SdlDev);
-static const char *(*p_SDL_GetError)(void);
+static __typeof__(&SDL_InitSubSystem) p_SDL_InitSubSystem;
+static __typeof__(&SDL_OpenAudioDeviceStream) p_SDL_OpenAudioDeviceStream;
+static __typeof__(&SDL_PutAudioStreamData) p_SDL_PutAudioStreamData;
+static __typeof__(&SDL_GetAudioStreamQueued) p_SDL_GetAudioStreamQueued;
+static __typeof__(&SDL_ClearAudioStream) p_SDL_ClearAudioStream;
+static __typeof__(&SDL_PauseAudioStreamDevice) p_SDL_PauseAudioStreamDevice;
+static __typeof__(&SDL_ResumeAudioStreamDevice) p_SDL_ResumeAudioStreamDevice;
+static __typeof__(&SDL_DestroyAudioStream) p_SDL_DestroyAudioStream;
+static __typeof__(&SDL_GetError) p_SDL_GetError;
 static int sdl_state = 0;
 
 static int sdl_resolve(void)
 {
   if (sdl_state) return sdl_state;
   sdl_state = -1;
-  static const char *names[] = { "libSDL2-2.0.so.0", "libSDL2.so", 0 };
-  void *h = 0;
-  for (int i = 0; names[i] && !h; i++)
-    h = dlopen(names[i], RTLD_NOW | RTLD_LOCAL);
-  if (!h) {
-    /* SDL may already be linked into the host process. */
-    h = dlopen(NULL, RTLD_NOW);
-    if (!h) return -1;
+  void *h = NULL;
+  const char *override = getenv("SDL3_LIBRARY");
+  if (override) h = dlopen(override, RTLD_NOW | RTLD_GLOBAL);
+  else {
+    static const char *names[] = {"libSDL3.so.0", "libSDL3.so", NULL};
+    for (int i = 0; names[i] && !h; i++) h = dlopen(names[i], RTLD_NOW | RTLD_GLOBAL);
+    if (!h) h = dlopen(NULL, RTLD_NOW);
   }
+  if (!h) return -1;
   int ok = 1;
   ok &= sym(h, "SDL_InitSubSystem", (void **)&p_SDL_InitSubSystem);
-  ok &= sym(h, "SDL_OpenAudioDevice", (void **)&p_SDL_OpenAudioDevice);
-  ok &= sym(h, "SDL_QueueAudio", (void **)&p_SDL_QueueAudio);
-  ok &= sym(h, "SDL_GetQueuedAudioSize",
-            (void **)&p_SDL_GetQueuedAudioSize);
-  ok &= sym(h, "SDL_ClearQueuedAudio", (void **)&p_SDL_ClearQueuedAudio);
-  ok &= sym(h, "SDL_PauseAudioDevice", (void **)&p_SDL_PauseAudioDevice);
-  ok &= sym(h, "SDL_CloseAudioDevice", (void **)&p_SDL_CloseAudioDevice);
+  ok &= sym(h, "SDL_OpenAudioDeviceStream", (void **)&p_SDL_OpenAudioDeviceStream);
+  ok &= sym(h, "SDL_PutAudioStreamData", (void **)&p_SDL_PutAudioStreamData);
+  ok &= sym(h, "SDL_GetAudioStreamQueued", (void **)&p_SDL_GetAudioStreamQueued);
+  ok &= sym(h, "SDL_ClearAudioStream", (void **)&p_SDL_ClearAudioStream);
+  ok &= sym(h, "SDL_PauseAudioStreamDevice", (void **)&p_SDL_PauseAudioStreamDevice);
+  ok &= sym(h, "SDL_ResumeAudioStreamDevice", (void **)&p_SDL_ResumeAudioStreamDevice);
+  ok &= sym(h, "SDL_DestroyAudioStream", (void **)&p_SDL_DestroyAudioStream);
   ok &= sym(h, "SDL_GetError", (void **)&p_SDL_GetError);
   sdl_state = ok ? 1 : -1;
   return sdl_state;
+}
+
+static void sdl_clear_audio(LUI_SdlDev stream)
+{
+  if (!p_SDL_ClearAudioStream(stream)) caml_failwith(p_SDL_GetError());
+}
+
+static void sdl_queue_audio(LUI_SdlDev stream, const void *data, size_t bytes)
+{
+  if (bytes > INT_MAX) caml_invalid_argument("SDL3 audio input exceeds the stream data limit");
+  if (!p_SDL_PutAudioStreamData(stream, data, (int)bytes)) caml_failwith(p_SDL_GetError());
+}
+
+static int sdl_queued_audio(LUI_SdlDev stream)
+{
+  int bytes = p_SDL_GetAudioStreamQueued(stream);
+  if (bytes < 0) caml_failwith(p_SDL_GetError());
+  return bytes;
+}
+
+static void sdl_pause_audio(LUI_SdlDev stream, int paused)
+{
+  bool ok = paused ? p_SDL_PauseAudioStreamDevice(stream) : p_SDL_ResumeAudioStreamDevice(stream);
+  if (!ok) caml_failwith(p_SDL_GetError());
 }
 
 /* ---- player ---- */
@@ -1249,13 +1262,13 @@ static double wall_s(void)
 static void player_queue_from(struct lui_player *p, long f)
 {
   if (p->dev) {
-    p_SDL_ClearQueuedAudio(p->dev);
+    sdl_clear_audio(p->dev);
     p->q_origin = f;
     size_t bpf = (size_t)p->ch * 4;
     p->q_frames = p->frames - f;
     if (p->q_frames > 0)
-      p_SDL_QueueAudio(p->dev, (const void *)(p->playbuf + f * p->ch),
-                       (uint32_t)((size_t)p->q_frames * bpf));
+      sdl_queue_audio(p->dev, (const void *)(p->playbuf + f * p->ch),
+                       ((size_t)p->q_frames * bpf));
     else
       p->q_frames = 0;
   }
@@ -1312,7 +1325,7 @@ static double player_position(struct lui_player *p)
   }
   if (p->state != LUI_MED_PLAYING && p->state != LUI_MED_PAUSED)
     return (double)p->origin / p->rate;
-  uint32_t qb = p->dev ? p_SDL_GetQueuedAudioSize(p->dev) : 0;
+  uint32_t qb = p->dev ? sdl_queued_audio(p->dev) : 0;
   long bpf = (long)p->ch * 4;
   long played = p->q_frames - (long)(qb / (uint32_t)bpf);
   long fr = p->q_origin + played;
@@ -1346,12 +1359,11 @@ static void player_pump(struct lui_player *p)
   }
   if (!p->dev || p->state != LUI_MED_PLAYING) return;
   long bpf = (long)p->ch * 4;
-  long qf = (long)(p_SDL_GetQueuedAudioSize(p->dev) / (uint32_t)bpf);
+  long qf = (long)(sdl_queued_audio(p->dev) / (uint32_t)bpf);
   if (p->loopf) {
     while (qf < p->frames) {
-      if (p_SDL_QueueAudio(p->dev, (const void *)p->playbuf,
-                           (uint32_t)((size_t)p->frames * bpf)) != 0)
-        break;
+      sdl_queue_audio(p->dev, (const void *)p->playbuf,
+                      ((size_t)p->frames * bpf));
       p->q_frames += p->frames;
       qf += p->frames;
     }
@@ -1370,7 +1382,7 @@ static void lui_player_finalize(value v)
 {
   struct lui_player *p = player_of(v);
   if (p) {
-    if (p->dev) p_SDL_CloseAudioDevice(p->dev);
+    if (p->dev) p_SDL_DestroyAudioStream(p->dev);
     ffplay_kill(p);
     free(p->pcm);
     free(p->playbuf);
@@ -1401,18 +1413,16 @@ static int sdl_audio_out_ok(void)
   if (state) return state > 0;
   state = -1;
   if (sdl_resolve() != 1 ||
-      p_SDL_InitSubSystem(LUI_SDL_INIT_AUDIO) != 0)
+      !p_SDL_InitSubSystem(LUI_SDL_INIT_AUDIO))
     return 0;
   LUI_SdlSpec want;
   memset(&want, 0, sizeof(want));
   want.freq = 44100;
   want.format = LUI_AUDIO_F32;
   want.channels = 1;
-  want.samples = 4096;
-  want.callback = NULL;
   LUI_SdlDev dev =
-      p_SDL_OpenAudioDevice(NULL, 0, &want, NULL, LUI_SDL_ALLOW_ANY);
-  if (dev) p_SDL_CloseAudioDevice(dev);
+      p_SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want, NULL, NULL);
+  if (dev) p_SDL_DestroyAudioStream(dev);
   state = dev ? 1 : -1;
   return state > 0;
 }
@@ -1468,7 +1478,7 @@ CAMLprim value lui_media_player_create(value unit)
 {
   CAMLparam1(unit);
   if (sdl_resolve() != 1 && !ffplay_ok())
-    caml_failwith("lui_media: no audio output (SDL2, ffplay)");
+    caml_failwith("lui_media: no audio output (SDL3, ffplay)");
   struct lui_player *p =
       (struct lui_player *)calloc(1, sizeof(*p));
   if (!p) caml_failwith("lui_media: out of memory");
@@ -1543,19 +1553,17 @@ CAMLprim value lui_media_player_load(value v, value vsrc, value vis_data)
 static void player_open_dev(struct lui_player *p)
 {
   if (p->dev || sdl_resolve() != 1 || !p->playbuf) return;
-  if (p_SDL_InitSubSystem(LUI_SDL_INIT_AUDIO) != 0) return;
+  if (!p_SDL_InitSubSystem(LUI_SDL_INIT_AUDIO)) return;
   LUI_SdlSpec want;
   memset(&want, 0, sizeof(want));
   want.freq = p->rate;
   want.format = LUI_AUDIO_F32;
-  want.channels = (uint8_t)p->ch;
-  want.samples = 4096;
-  want.callback = NULL;
+  want.channels = p->ch;
   LUI_SdlDev dev =
-      p_SDL_OpenAudioDevice(NULL, 0, &want, NULL, LUI_SDL_ALLOW_ANY);
+      p_SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want, NULL, NULL);
   if (dev) {
     p->dev = dev;
-    p_SDL_PauseAudioDevice(dev, 0);
+    sdl_pause_audio(dev, 0);
   }
 }
 
@@ -1566,7 +1574,7 @@ CAMLprim value lui_media_player_play(value v)
   if (!p->pcm || p->frames <= 0) CAMLreturn(Val_unit);
   if (p->state == LUI_MED_PLAYING) CAMLreturn(Val_unit);
   if (p->state == LUI_MED_PAUSED) {
-    if (p->dev) p_SDL_PauseAudioDevice(p->dev, 0);
+    if (p->dev) sdl_pause_audio(p->dev, 0);
     else if (p->ff <= 0) ffplay_spawn(p);
     p->state = LUI_MED_PLAYING;
     CAMLreturn(Val_unit);
@@ -1577,7 +1585,7 @@ CAMLprim value lui_media_player_play(value v)
     player_open_dev(p);
     if (p->dev) {
       player_queue_from(p, f);
-      p_SDL_PauseAudioDevice(p->dev, 0);
+      sdl_pause_audio(p->dev, 0);
       p->state = LUI_MED_PLAYING;
       CAMLreturn(Val_unit);
     }
@@ -1595,7 +1603,7 @@ CAMLprim value lui_media_player_pause(value v)
   CAMLparam1(v);
   struct lui_player *p = player_of(v);
   if (p->state == LUI_MED_PLAYING) {
-    if (p->dev) p_SDL_PauseAudioDevice(p->dev, 1);
+    if (p->dev) sdl_pause_audio(p->dev, 1);
     if (p->ff > 0) {
       p->ff_pos = player_position(p);
       ffplay_kill(p);
@@ -1610,8 +1618,8 @@ CAMLprim value lui_media_player_stop(value v)
   CAMLparam1(v);
   struct lui_player *p = player_of(v);
   if (p->dev) {
-    p_SDL_PauseAudioDevice(p->dev, 1);
-    p_SDL_ClearQueuedAudio(p->dev);
+    sdl_pause_audio(p->dev, 1);
+    sdl_clear_audio(p->dev);
   }
   ffplay_kill(p);
   p->state = LUI_MED_STOPPED;
@@ -1627,9 +1635,9 @@ CAMLprim value lui_media_player_unload(value v)
   CAMLparam1(v);
   struct lui_player *p = player_of(v);
   if (p->dev) {
-    p_SDL_PauseAudioDevice(p->dev, 1);
-    p_SDL_ClearQueuedAudio(p->dev);
-    p_SDL_CloseAudioDevice(p->dev);
+    sdl_pause_audio(p->dev, 1);
+    sdl_clear_audio(p->dev);
+    p_SDL_DestroyAudioStream(p->dev);
     p->dev = 0;
   }
   ffplay_kill(p);

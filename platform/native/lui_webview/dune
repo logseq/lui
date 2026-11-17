@@ -14,19 +14,19 @@
 
 ; The stubs are plain C off macOS but must be compiled as Objective-C
 ; with ARC on macOS to reach WebKit; the frameworks only exist there.
-; SDL headers give host_of_sdl_window a real SDL_GetWindowWMInfo on
-; every platform; when pkg-config has no sdl2 the stubs fall back to a
+; SDL3 headers let host_of_sdl_window query native window properties on
+; every platform; when pkg-config has no sdl3 the stubs fall back to a
 ; clear runtime error instead.
 (rule
  (target c_flags.sexp)
  (action
   (with-stdout-to %{target}
    (bash
-    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc %s)' \"$(pkg-config --cflags sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --cflags sdl2 2>/dev/null)\"; fi"))))
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc %s)' \"$(pkg-config --cflags sdl3 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --cflags sdl3 2>/dev/null)\"; fi"))))
 
 (rule
  (target c_libs.sexp)
  (action
   (with-stdout-to %{target}
    (bash
-    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework WebKit -framework AppKit -framework QuartzCore %s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; elif [ \"$(uname -s)\" = Linux ]; then printf '(-ldl %s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; fi"))))
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework WebKit -framework AppKit -framework QuartzCore %s)' \"$(pkg-config --libs sdl3 2>/dev/null)\"; elif [ \"$(uname -s)\" = Linux ]; then printf '(-ldl %s)' \"$(pkg-config --libs sdl3 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --libs sdl3 2>/dev/null)\"; fi"))))

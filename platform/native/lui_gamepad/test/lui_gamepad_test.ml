@@ -4,8 +4,8 @@
    connect/disconnect tracking, dispatch translation) is exercised
    headless.  The SDL path gets a real smoke test: the joystick
    subsystem needs no video device, so init + pump run headless
-   anywhere SDL2 is installed; where SDL_JoystickAttachVirtual exists
-   (SDL >= 2.14) a virtual controller drives the live
+   anywhere SDL3 is installed; where SDL_AttachVirtualJoystick exists
+   (SDL3) a virtual controller drives the live
    connect → axis → button → disconnect pipeline end to end.  XInput
    stubs only exist on Windows; elsewhere they raise Failure, which
    is asserted directly. *)

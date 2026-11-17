@@ -32,7 +32,7 @@
   lui_raster
   lui_blit
   lui_text
-  tsdl
+  lui_sdl3
   ocaml-signal
   unix)
  (preprocess (pps lui_ppx))
