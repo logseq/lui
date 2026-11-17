@@ -29,7 +29,7 @@ PACKAGES = "unix,threads,yojson,uri,digestif.c,mirage-crypto-ec,mirage-crypto-rn
 
 
 def run(args, **kwargs):
-    return subprocess.run([str(arg) for arg in args], check=True, **kwargs)
+    return subprocess.run([arg.as_posix() if isinstance(arg, Path) else str(arg) for arg in args], check=True, **kwargs)
 
 
 def capture(args):
@@ -449,6 +449,11 @@ UninstPage uninstConfirm
 UninstPage instfiles
 Function .onInit
   WriteUninstaller "{quote(app / 'uninstall.exe')}"
+  IfErrors failed
+  SetErrorLevel 0
+  Quit
+failed:
+  SetErrorLevel 1
   Quit
 FunctionEnd
 Section
