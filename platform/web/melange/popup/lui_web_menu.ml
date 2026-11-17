@@ -332,6 +332,21 @@ let activate_menu_item_bang = activate_menu_item
 
 (* --- dropdown open/close --- *)
 
+let sync_menu_trigger_expanded renderer node expanded =
+  match Store.node renderer.web_store node with
+  | Some current ->
+      (match current.retained_parent with
+       | Some trigger ->
+           (match Store.node renderer.web_store trigger with
+            | Some trigger_node
+              when Store.standard_kind_is trigger_node MenuTrigger ->
+                W.Element.setAttribute "aria-expanded"
+                  (if expanded then "true" else "false")
+                  (Lui_web_nodes.dom_node renderer trigger)
+            | _ -> ())
+       | None -> ())
+  | None -> ()
+
 (* Return after the close batch publishes its next focus owner. A retained
    menu reopened in that batch must keep its current focus. *)
 let restore_dropdown_focus renderer node positioner =
@@ -352,6 +367,37 @@ let restore_dropdown_focus renderer node positioner =
            Lui_web_focus.restore_focus_if_unmoved renderer ~closing:positioner
              trigger)
        0)
+
+let submenu_popup_container renderer current =
+  match current.retained_parent with
+  | Some trigger ->
+      (match Store.node renderer.web_store trigger with
+       | Some trigger_node when Store.menu_item_row trigger_node ->
+           (match trigger_node.retained_parent with
+            | Some parent -> Lui_web_nodes.popup_container renderer parent
+            | None -> None)
+       | _ -> None)
+  | None -> None
+
+let nested_submenu renderer current =
+  match submenu_popup_container renderer current with
+  | Some _ -> true
+  | None -> false
+
+let top_level_menu_trigger_owner renderer current =
+  match current.retained_parent with
+  | Some trigger ->
+      (match Store.node renderer.web_store trigger with
+       | Some trigger_node
+         when Store.standard_kind_is trigger_node MenuTrigger
+              && not (nested_submenu renderer current) -> Some trigger
+       | _ -> None)
+  | None -> None
+
+let menu_submenu renderer current =
+  match submenu_popup_container renderer current with
+  | Some (_, `Menu) -> true
+  | Some (_, `Listbox) | None -> false
 
 (* Ordinary pointer-open dropdowns focus their container. Keyboard opens
    highlight the first enabled row; pickers and submenus own their focus. *)
@@ -384,13 +430,18 @@ let initialize_menu_focus renderer container_id =
                 would steal focus from the parent menu's highlighted row.
                 Picker dropdowns place initial focus themselves in
                 mount_picker_dropdown. *)
+             let row_owner_controls_focus =
+               match container.retained_parent with
+               | Some parent ->
+                   (match Store.node renderer.web_store parent with
+                    | Some parent_node ->
+                        Store.menu_item_row parent_node
+                        && top_level_menu_trigger_owner renderer container = None
+                    | None -> false)
+               | None -> false
+             in
              let submenu_or_picker =
-               (match container.retained_parent with
-                 | Some parent -> (
-                     match Store.node renderer.web_store parent with
-                     | Some parent_node -> Store.menu_item_row parent_node
-                     | None -> false)
-                 | None -> false)
+               row_owner_controls_focus
                || picker_for_dropdown renderer container_id <> None
              in
              (* Keyboard input can reach the menu before this deferred
@@ -547,6 +598,7 @@ let rec set_dropdown_open renderer node open_ =
        | Some current -> current.retained_parent
        | None -> None);
     Lui_web_layers.open_layer renderer.web_layers renderer.web_document node;
+    sync_menu_trigger_expanded renderer node true;
     begin_popup_open popup;
     initialize_menu_focus renderer node;
     ignore (Lui_web_position.position_dropdown renderer node);
@@ -563,6 +615,7 @@ let rec set_dropdown_open renderer node open_ =
     let token =
       Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
     in
+    sync_menu_trigger_expanded renderer node false;
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
     restore_dropdown_focus renderer node positioner;
@@ -578,6 +631,12 @@ let rec set_dropdown_open renderer node open_ =
   end
 
 let set_dropdown_open_bang = set_dropdown_open
+
+let close_open_dropdown_if_present renderer node =
+  match Store.node renderer.web_store node with
+  | Some _ when Lui_web_layers.is_open renderer.web_layers node ->
+      set_dropdown_open renderer node false
+  | _ -> ()
 
 (* --- context menu core --- *)
 
@@ -749,8 +808,7 @@ let attach_picker_press_event renderer node dom_node =
                (* Menu-trigger hosts own their dropdown's open state
                    locally, so a model that registers no dismiss handler
                    leaves the layer open — close it directly. *)
-               if Lui_web_layers.is_open renderer.web_layers menu then
-                 set_dropdown_open renderer menu false
+               close_open_dropdown_if_present renderer menu
              end
            | _ -> ())
       end)
@@ -990,7 +1048,23 @@ let dismiss_picker renderer node restore =
          (if restore then "true" else "false")
          (picker_control_element renderer picker)
    | None -> ());
-  emit renderer (Dismiss node)
+  let trigger_dom =
+    match Store.node renderer.web_store node with
+    | Some current ->
+        Option.map (Lui_web_nodes.dom_node renderer)
+          (top_level_menu_trigger_owner renderer current)
+    | None -> None
+  in
+  emit renderer (Dismiss node);
+  match Store.node renderer.web_store node with
+  | Some current ->
+      (match top_level_menu_trigger_owner renderer current with
+       | Some _ -> close_open_dropdown_if_present renderer node
+       | None -> ())
+  | None ->
+      (match trigger_dom with
+       | Some trigger -> W.Element.setAttribute "aria-expanded" "false" trigger
+       | None -> ())
 
 let picker_tab renderer node picker event =
   let control = picker_control_element renderer picker in
@@ -1463,27 +1537,13 @@ let attach_context_menu_events_bang = attach_context_menu_events
 
 (* --- mount --- *)
 
-let nested_submenu renderer current =
-  match current.retained_parent with
-  | Some trigger ->
-      (match Store.node renderer.web_store trigger with
-       | Some trigger_node when Store.menu_item_row trigger_node ->
-           (match trigger_node.retained_parent with
-            | Some parent ->
-                (match Lui_web_nodes.popup_container renderer parent with
-                 | Some (_, `Menu) -> true
-                 | Some (_, `Listbox) | None -> false)
-            | None -> false)
-       | _ -> false)
-  | None -> false
-
 let attach_submenu_hover renderer node current trigger =
   let positioner = (Lazy.force current.platform_node) in
   let popup = Lui_web_util.child_element (Lazy.force current.platform_node) 0 in
   (match Store.property renderer.web_store node AnchorValue with
    | Some _ -> ()
    | None ->
-       if nested_submenu renderer current then
+       if menu_submenu renderer current then
          (* Base UI nested menus prefer logical inline-end, then fall back
             through popup collision. LTR stays on the right. *)
          let side =
@@ -1568,6 +1628,30 @@ let attach_submenu_hover renderer node current trigger =
       W.Element.removeEventListener "mouseleave" popup_leave popup;
       W.Document.removeEventListener "mousemove" pointer_move
         renderer.web_document);
+  Lui_web_position.position_dropdown renderer node
+
+let attach_menu_trigger_activation renderer node trigger_id trigger =
+  let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
+  let click event =
+    if
+      Lui_web_util.click_button event = 0
+      && Store.enabled_node renderer trigger_id
+    then begin
+      Lui_web_util.record_click_open_method trigger event;
+      set_dropdown_open renderer node
+        (not (Lui_web_layers.is_open renderer.web_layers node))
+    end
+  in
+  W.Element.setAttribute "aria-haspopup" "menu" trigger;
+  sync_menu_trigger_expanded renderer node
+    (Lui_web_layers.is_open renderer.web_layers node);
+  W.Element.addEventListener "click" click trigger;
+  Hashtbl.replace renderer.web_cleanups node (fun () ->
+      (match previous_cleanup with
+       | Some cleanup -> cleanup ()
+       | None -> ());
+      W.Element.removeEventListener "click" click trigger;
+      W.Element.setAttribute "aria-expanded" "false" trigger);
   Lui_web_position.position_dropdown renderer node
 
 (* The batch that mounts a picker dropdown can still be mid-flight, with
@@ -1677,13 +1761,16 @@ let mount_dropdown renderer node =
            (match Store.node renderer.web_store parent with
             | Some parent_node ->
                 if Store.menu_item_row parent_node then
-                  (* Submenus mount eagerly inside their parent menu and
-                     open later on hover/focus; the generic highlight must
-                     not steal focus from the parent menu's items. Keyboard
-                     entry (ArrowRight) focuses the first item directly. *)
-                  ignore
-                    (attach_submenu_hover renderer node current
-                       (Lazy.force parent_node.platform_node))
+                  (match top_level_menu_trigger_owner renderer current with
+                   | Some trigger ->
+                       attach_menu_trigger_activation renderer node trigger
+                         (Lazy.force parent_node.platform_node)
+                   | None ->
+                       (* Menu rows own submenu focus and hover. Keyboard
+                          entry (ArrowRight) focuses the first item directly. *)
+                       ignore
+                         (attach_submenu_hover renderer node current
+                            (Lazy.force parent_node.platform_node)))
                 else begin
                   (* Picker dropdowns place initial focus themselves
                      (mount_picker_dropdown lands on the selected item); the
