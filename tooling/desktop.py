@@ -210,8 +210,15 @@ def build(args):
         if target.startswith("darwin-"):
             link_flags = ["-lc++", "-framework", "WebKit", "-framework", "Cocoa"]
         elif target.startswith("linux-"):
-            compile_flags = shlex.split(capture(["pkg-config", "--cflags", "gtk+-3.0", "webkit2gtk-4.1"]))
-            link_flags = ["-lstdc++", "-ldl"] + shlex.split(capture(["pkg-config", "--libs", "gtk+-3.0", "webkit2gtk-4.1"]))
+            for libs in (["gtk+-3.0", "webkit2gtk-4.1"], ["gtk+-3.0", "webkit2gtk-4.0"]):
+                try:
+                    compile_flags = shlex.split(capture(["pkg-config", "--cflags", *libs]))
+                    link_flags = ["-lstdc++", "-ldl"] + shlex.split(capture(["pkg-config", "--libs", *libs]))
+                    break
+                except subprocess.CalledProcessError:
+                    continue
+            else:
+                raise ValueError("Linux builds require GTK 3 and WebKitGTK 4.1 (or 4.0) development files")
         elif target.startswith("windows-"):
             if not args.webview2_headers:
                 raise ValueError("Windows builds require --webview2-headers pointing to WebView2.h from Microsoft.Web.WebView2 1.0.1150.38")

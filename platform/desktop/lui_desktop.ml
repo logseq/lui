@@ -457,5 +457,7 @@ let () =
         raise error);
       Update.confirm installation;
       Update.remove_tree acknowledgement;
+      (* Windows cannot unlink the running helper executable and its DLLs. *)
+      if not Sys.win32 then (try Update.remove_tree helper_directory with _ -> ());
       exit 0
     with error -> Update.write_file log (Printexc.to_string error); exit 1)

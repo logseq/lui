@@ -35,7 +35,8 @@ Application identity, platform, version, build number and update public key
 are embedded in the executable. `lui-desktop.json` is a copy for tooling,
 not an application configuration loaded from the network.
 
-Linux needs `pkg-config`, `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` to build,
+Linux needs `pkg-config`, `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` (or
+`libwebkit2gtk-4.0-dev` on distributions without 4.1) to build,
 and GTK 3, WebKitGTK 4.1, `curl` and CA certificates at runtime. Windows needs
 the native OCaml/MinGW toolchain and WebView2 Runtime. Supply
 `--webview2-headers PATH` pointing to `WebView2.h` from
