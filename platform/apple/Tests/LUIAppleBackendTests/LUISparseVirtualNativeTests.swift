@@ -24,7 +24,7 @@
 
   @MainActor
   private final class SparseNativeHarness {
-    var backend = LUIAppleBackend()
+    let backend = LUIAppleBackend()
     let library: UnsafeMutableRawPointer
     let stop: SparseStop
     let press: SparseNode
@@ -94,19 +94,21 @@
     }
 
     func restoreAuthoritativeSnapshot() throws {
+      let previousSource = try #require(list)
+      let previousIDs = Set(ids)
+      let previousGeneration = backend.generation
       snapshotBatches = []
       #expect(resync() == 1)
       let batches = try #require(snapshotBatches)
       snapshotBatches = nil
       #expect(!batches.isEmpty)
-      let restored = LUIAppleBackend()
-      for batch in batches { try restored.apply(json: batch) }
-      backend.onEvent = nil
-      backend = restored
-      backend.onEvent = { [weak self] event in self?.dispatch(event) }
-      let root = try #require(backend.rootIDs.first)
-      hosting = NSHostingView(rootView: LUISwiftUIRoot(backend: backend, rootID: root))
-      window.contentView = hosting
+      // Recover through the production API while keeping the live host and
+      // backend. Replacing both tears down nested hosting graphs during reset.
+      for batch in batches { try backend.applySnapshot(json: batch) }
+      #expect(backend.generation == previousGeneration)
+      #expect(Set(ids) == previousIDs)
+      #expect(list !== previousSource)
+      #expect(window.contentView === hosting)
     }
 
     func dispatch(_ event: LUIEvent) {
