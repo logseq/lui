@@ -7,7 +7,7 @@ open Lui_web_types
 module W = Webapi.Dom
 module Store = Lui_web_store
 
-let create_with_extensions host app_icons registry adapters =
+let create_with_extensions ?(resolve_app_icon = fun _ -> None) host app_icons registry adapters =
   let document =
     match W.Element.ownerDocument host with
     | document -> document
@@ -41,6 +41,8 @@ let create_with_extensions host app_icons registry adapters =
     web_toast_viewport = toast_viewport;
     web_event_handler = ref (fun _event -> true);
     web_app_icons = app_icons;
+    web_resolve_app_icon = resolve_app_icon;
+    web_inline_icons = Hashtbl.create 8;
     web_images = Hashtbl.create 8;
     web_media_surfaces = Hashtbl.create 4;
     web_cleanups = Hashtbl.create 8;
@@ -70,8 +72,8 @@ let create_with_extensions host app_icons registry adapters =
     Lui_web_util.event_target_to_element;
   renderer
 
-let create_simulator_with_extensions host platform app_icons registry adapters =
-  let renderer = create_with_extensions host app_icons registry adapters in
+let create_simulator_with_extensions ?resolve_app_icon host platform app_icons registry adapters =
+  let renderer = create_with_extensions ?resolve_app_icon host app_icons registry adapters in
   ignore (Lui_web_simulator.set_simulator_platform renderer platform);
   ignore
     (Lui_web_simulator.set_simulator_device renderer
@@ -80,12 +82,12 @@ let create_simulator_with_extensions host platform app_icons registry adapters =
   ignore (Lui_web_simulator.attach_simulator_keyboard_events renderer);
   renderer
 
-let create_simulator ?(app_icons = String_map.empty) host platform =
-  create_simulator_with_extensions host platform app_icons
+let create_simulator ?resolve_app_icon ?(app_icons = String_map.empty) host platform =
+  create_simulator_with_extensions ?resolve_app_icon host platform app_icons
     (Lui_extension.registry ()) String_map.empty
 
-let create ?(app_icons = String_map.empty) host =
-  create_with_extensions host app_icons (Lui_extension.registry ())
+let create ?resolve_app_icon ?(app_icons = String_map.empty) host =
+  create_with_extensions ?resolve_app_icon host app_icons (Lui_extension.registry ())
     String_map.empty
 
 let extension_adapter = Lui_web_extensions.extension_adapter

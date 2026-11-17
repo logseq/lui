@@ -1,5 +1,33 @@
 # LUI API migration guide
 
+## On-demand Web application icons
+
+The Web renderer constructors (`create`, `create_with_extensions`, and their
+simulator variants) accept optional `~resolve_app_icon:(string -> Lui_web_types.web_app_icon option)`.
+It receives a bare `app:` name when a mounted icon needs an asset.
+Return `Icon_url url` or `Icon_svg descriptor`. The typed descriptor contains
+`svg_view_box`, `svg_filled` and `svg_shapes`. Shape tags (`Svg_path`, `Svg_rect`,
+`Svg_circle`, etc.) and attributes (`Svg_d`, `Svg_fill`, etc.) use closed
+constructors, excluding active elements and event/resource attributes.
+Dynamic paint values reject resource references. Shapes mount directly in
+the owning document and leave with their node, avoiding both cached SVG image
+documents and per-icon XML document parsing. Explicit
+`app_icons` entries retain precedence; `None` retains the missing-icon fallback.
+Omitting the resolver preserves existing behavior. There is no wire change.
+Resolver results are not retained by the renderer, so scrolling through a
+catalog does not create an unbounded application registry.
+
+Applications can replace an eagerly expanded SVG registry with:
+
+```ocaml
+Lui_web.create ~resolve_app_icon:(fun name ->
+  Option.map (fun descriptor -> Lui_web_types.Icon_svg descriptor)
+    (catalog_lookup name)) root
+```
+
+Only look up and decode the requested icon inside the callback. Static
+overrides can remain in `~app_icons`; native renderers are unchanged.
+
 ## Desktop WebAssembly capability
 
 The standalone builder also accepts repeated `--ocaml-package <findlib-name>`

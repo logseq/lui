@@ -493,7 +493,7 @@ let apply_inline_icon_name renderer node kind dom_node name =
   else
     Option.iter (fun icon ->
         W.Element.setAttribute "data-name" name icon;
-        Widgets.update_icon_name renderer icon name)
+        Widgets.update_icon_name renderer node icon name)
       (inline_icon_node renderer node kind dom_node)
 
 let apply_selected renderer node kind dom_node selected =
@@ -954,7 +954,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "data-size" size dom_node
   | IconName, StringValue name ->
       W.Element.setAttribute "data-name" name dom_node;
-      Widgets.update_icon_name renderer dom_node name
+      Widgets.update_icon_name renderer node dom_node name
   | VariantValue, StringValue variant ->
       W.Element.setAttribute "data-variant" variant dom_node
   | InlineIconName, StringValue name ->
@@ -1245,7 +1245,12 @@ let remove_property renderer queue_split node kind dom_node property =
        | SelectionPlacementValue ->
            W.Element.removeAttribute "data-selection-placement" dom_node;
            set_style (Util.menu_item_check_node dom_node) "order" ""
+       | IconName ->
+           Widgets.release_app_icon renderer node;
+           W.Element.removeAttribute "data-name" dom_node;
+           set_style dom_node "--lui-icon-image" ""
        | InlineIconName ->
+           Widgets.release_app_icon renderer node;
            if kind = TimelineItem then
              Widgets.update_timeline_indicator renderer node dom_node
            else

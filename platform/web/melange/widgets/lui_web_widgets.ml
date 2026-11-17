@@ -16,24 +16,84 @@ let set_style element property value =
     (W.HtmlElement.style (W.Element.unsafeAsHtmlElement element))
     property value
 
-let update_icon_name renderer dom_node name =
-  let element_style =
-    W.HtmlElement.style (W.Element.unsafeAsHtmlElement dom_node)
-  in
-  if String.starts_with ~prefix:"app:" name then begin
-    let bare_name = String.sub name 4 (String.length name - 4) in
-    let image =
+let svg_tag_name = function
+  | Svg_path -> "path" | Svg_rect -> "rect" | Svg_circle -> "circle"
+  | Svg_ellipse -> "ellipse" | Svg_line -> "line" | Svg_polyline -> "polyline"
+  | Svg_polygon -> "polygon"
+
+let svg_attribute_name = function
+  | Svg_d -> "d" | Svg_points -> "points" | Svg_x -> "x" | Svg_y -> "y"
+  | Svg_x1 -> "x1" | Svg_y1 -> "y1" | Svg_x2 -> "x2" | Svg_y2 -> "y2"
+  | Svg_cx -> "cx" | Svg_cy -> "cy" | Svg_r -> "r" | Svg_rx -> "rx" | Svg_ry -> "ry"
+  | Svg_width -> "width" | Svg_height -> "height" | Svg_fill -> "fill"
+  | Svg_stroke -> "stroke" | Svg_stroke_width -> "stroke-width"
+  | Svg_stroke_linecap -> "stroke-linecap" | Svg_stroke_linejoin -> "stroke-linejoin"
+  | Svg_stroke_miterlimit -> "stroke-miterlimit" | Svg_fill_rule -> "fill-rule"
+  | Svg_clip_rule -> "clip-rule" | Svg_opacity -> "opacity"
+  | Svg_fill_opacity -> "fill-opacity" | Svg_stroke_opacity -> "stroke-opacity"
+  | Svg_transform -> "transform" | Svg_stroke_dasharray -> "stroke-dasharray"
+  | Svg_stroke_dashoffset -> "stroke-dashoffset"
+
+let create_app_svg document source =
+  let element tag = W.Document.createElementNS "http://www.w3.org/2000/svg" tag document in
+  let root = element "svg" in
+  let set = fun (name, value) -> W.Element.setAttribute name value root in
+  List.iter set ["viewBox", source.svg_view_box;
+    "fill", (if source.svg_filled then "currentColor" else "none");
+    "stroke", (if source.svg_filled then "none" else "currentColor");
+    "stroke-width", "2"; "stroke-linecap", "round"; "stroke-linejoin", "round"];
+  List.iter (fun (tag, attributes) ->
+    let shape = element (svg_tag_name tag) in
+    List.iter (fun (attribute, value) ->
+      (* Paint is a color, not a URL. Geometry and transforms cannot load resources. *)
+      (match attribute with
+       | Svg_fill | Svg_stroke when String.contains value '(' ->
+         let color = String.lowercase_ascii (String.trim value) in
+         if not (List.exists (fun prefix -> String.starts_with ~prefix color)
+           ["rgb("; "rgba("; "hsl("; "hsla("; "color("; "lab("; "lch("; "oklab("; "oklch("]) then
+           invalid_arg "SVG icon paint must be a color without resource references"
+       | _ -> ());
+      W.Element.setAttribute (svg_attribute_name attribute) value shape) attributes;
+    W.Element.appendChild (W.Element.asNode shape) root) source.svg_shapes;
+  root
+
+let release_app_icon renderer node =
+  match Hashtbl.find_opt renderer.web_inline_icons node with
+  | None -> ()
+  | Some (parent, svg) ->
+    ignore (W.Element.removeChild (W.Element.asNode svg) parent);
+    let style = W.HtmlElement.style (W.Element.unsafeAsHtmlElement parent) in
+    List.iter (fun name -> ignore (W.CssStyleDeclaration.removeProperty name style))
+      ["mask-image"; "-webkit-mask-image"; "background-color"];
+    Hashtbl.remove renderer.web_inline_icons node
+
+let update_icon_name renderer node dom_node name =
+  release_app_icon renderer node;
+  let asset =
+    if String.starts_with ~prefix:"app:" name then begin
+      let bare_name = String.sub name 4 (String.length name - 4) in
       match String_map.find_opt bare_name renderer.web_app_icons with
-      | Some url -> Util.css_url url
-      | None -> "url(\"./icons/missing.svg\")"
-    in
-    W.CssStyleDeclaration.setProperty "--lui-icon-image" image ""
-      element_style
-  end
-  else
-    W.CssStyleDeclaration.setProperty "--lui-icon-image"
-      (Util.css_url ("./icons/" ^ name ^ ".svg"))
-      "" element_style
+      | Some url -> Some (Icon_url url)
+      | None -> renderer.web_resolve_app_icon bare_name
+    end
+    else Some (Icon_url ("./icons/" ^ name ^ ".svg"))
+  in
+  let image = match asset with
+    | Some (Icon_url url) -> Util.css_url url
+    | None -> "url(\"./icons/missing.svg\")"
+    | Some (Icon_svg source) ->
+      let svg = create_app_svg renderer.web_document source in
+      W.Element.setAttribute "aria-hidden" "true" svg;
+      W.Element.setAttribute "focusable" "false" svg;
+      List.iter (fun (name, value) -> set_style svg name value)
+        ["width", "100%"; "height", "100%"; "display", "block"; "pointer-events", "none"];
+      List.iter (fun name -> set_style dom_node name "none") ["mask-image"; "-webkit-mask-image"];
+      set_style dom_node "background-color" "transparent";
+      W.Element.appendChild (W.Element.asNode svg) dom_node;
+      Hashtbl.replace renderer.web_inline_icons node (dom_node, svg);
+      "none"
+  in
+  set_style dom_node "--lui-icon-image" image
 
 let update_icon_name_bang = update_icon_name
 
@@ -350,7 +410,7 @@ let update_stepper renderer node =
        (if state = "completed" then begin
           W.Element.setTextContent indicator "";
           W.Element.setAttribute "data-name" "check" indicator;
-          update_icon_name renderer indicator "check"
+          update_icon_name renderer child indicator "check"
         end
         else begin
           W.Element.removeAttribute "data-name" indicator;
@@ -463,7 +523,7 @@ let create_bottom_tab_trigger renderer tabs node index =
   W.Element.setAttribute "aria-labelledby" trigger_id panel;
   W.Element.setTextContent label title;
   W.Element.setAttribute "data-name" icon_name icon;
-  update_icon_name renderer icon icon_name;
+  update_icon_name renderer node icon icon_name;
   (if enabled then begin
      W.Element.removeAttribute "disabled" trigger;
      W.Element.setAttribute "aria-disabled" "false" trigger
@@ -511,13 +571,14 @@ let update_timeline renderer node =
 let update_timeline_bang = update_timeline
 
 let update_timeline_indicator renderer node dom_node =
+  release_app_icon renderer node;
   let indicator = Util.child_element (Util.child_element dom_node 0) 0 in
   let icon = string_property renderer node InlineIconName in
   let text = string_property renderer node IndicatorValue in
   if icon <> "" then begin
     W.Element.setTextContent indicator "";
     W.Element.setAttribute "data-name" icon indicator;
-    update_icon_name renderer indicator icon
+    update_icon_name renderer node indicator icon
   end
   else begin
     W.Element.removeAttribute "data-name" indicator;
