@@ -426,7 +426,7 @@ def package_windows(args, app, config):
     def sign(path):
         if args.thumbprint:
             run(["signtool", "sign", "/sha1", args.thumbprint, "/fd", "SHA256", "/tr",
-                 "https://timestamp.digicert.com", "/td", "SHA256", path])
+                 "http://timestamp.digicert.com", "/td", "SHA256", path])
             run(["signtool", "verify", "/pa", path])
     installer = args.output / f'{config["slug"]}-{config["version"]}-setup.exe'
     quote = nsis_string

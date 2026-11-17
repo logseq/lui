@@ -39,8 +39,6 @@ let run_with_commands ~commands ~config ~updater_html ~updater_js =
   let platform = text "platform" config in
   let macos = String.starts_with ~prefix:"darwin-" platform in
   let updater_mode = macos && Array.length Sys.argv = 3 && Sys.argv.(1) = "--lui-updater" in
-  let registry = match Lui_desktop_commands.create (if updater_mode then [] else commands ()) with
-    | Ok registry -> registry | Error message -> invalid_arg message in
   let owner_pid = if updater_mode then int_of_string Sys.argv.(2) else Unix.getpid () in
   let root = if macos then Filename.dirname (Filename.dirname (Filename.dirname executable))
     else Filename.dirname executable in
@@ -58,6 +56,21 @@ let run_with_commands ~commands ~config ~updater_html ~updater_js =
   in
   let storage = under storage app_id in
   directories storage;
+  if Sys.win32 && Array.length Sys.argv = 4 && Sys.argv.(1) = "--lui-cleanup" then (
+    let helper = Sys.argv.(2) in
+    let name = Filename.basename helper in
+    if Filename.dirname helper <> storage || String.length name <> 74
+       || not (String.ends_with ~suffix:".installer" name)
+       || not (String.for_all (function '0' .. '9' | 'a' .. 'f' -> true | _ -> false)
+         (String.sub name 0 64))
+    then failwith "Invalid update cleanup path";
+    if not (wait_for_process (int_of_string Sys.argv.(3))) then
+      failwith "Installation helper did not exit within 60 seconds";
+    Update.remove_tree helper;
+    Update.remove_tree (helper ^ ".ready");
+    exit 0);
+  let registry = match Lui_desktop_commands.create (if updater_mode then [] else commands ()) with
+    | Ok registry -> registry | Error message -> invalid_arg message in
   let acknowledgement =
     if Array.length Sys.argv = 3 && Sys.argv.(1) = "--lui-updated" then (
       let path = Sys.argv.(2) in
@@ -435,35 +448,41 @@ let () =
          && String.starts_with ~prefix:(target ^ ".lui-stage-") staged
          && List.mem Sys.argv.(5) ["app"; "app.exe"; "Contents/MacOS/app"]
       then () else failwith "Invalid update installation plan";
-      let installation = Update.install ~staged ~target in
       let executable = Filename.concat target Sys.argv.(5) in
       let helper_directory = Filename.dirname Sys.executable_name in
-      let acknowledgement = Filename.concat (Filename.dirname helper_directory)
-          (Filename.basename helper_directory ^ ".ready") in
-      Update.remove_tree acknowledgement;
-      let child = ref None in
-      (try
-        let pid = Unix.create_process executable [|executable; "--lui-updated"; acknowledgement|]
-            Unix.stdin Unix.stdout Unix.stderr in
-        child := Some pid;
-        let rec wait count =
-          if Sys.file_exists acknowledgement then (
-            if Update.read_file ~limit:32 acknowledgement <> Sys.argv.(6)
-            then failwith "The updated application started a different build")
-          else if count = 0 then failwith "The updated Web frontend did not start within 30 seconds"
-          else (Thread.delay 0.1; wait (count - 1)) in
-        wait 300
-       with error ->
-        Option.iter (fun pid ->
-          (try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ());
-          (try ignore (Unix.waitpid [] pid) with Unix.Unix_error _ -> ())) !child;
-        Update.rollback installation;
-        (try ignore (Unix.create_process executable [|executable|] Unix.stdin Unix.stdout Unix.stderr)
-         with Unix.Unix_error _ -> ());
-        raise error);
-      Update.confirm installation;
-      Update.remove_tree acknowledgement;
-      (* Windows cannot unlink the running helper executable and its DLLs. *)
-      if not Sys.win32 then (try Update.remove_tree helper_directory with _ -> ());
+      Fun.protect ~finally:(fun () ->
+        if Sys.win32 then
+          try ignore (Unix.create_process executable
+            [|executable; "--lui-cleanup"; helper_directory; string_of_int (Unix.getpid ())|]
+            Unix.stdin Unix.stdout Unix.stderr)
+          with Unix.Unix_error _ -> ()) (fun () ->
+        if Sys.win32 then Sys.chdir (Filename.dirname target);
+        let installation = Update.install ~staged ~target in
+        let acknowledgement = Filename.concat (Filename.dirname helper_directory)
+            (Filename.basename helper_directory ^ ".ready") in
+        Update.remove_tree acknowledgement;
+        let child = ref None in
+        (try
+          let pid = Unix.create_process executable [|executable; "--lui-updated"; acknowledgement|]
+              Unix.stdin Unix.stdout Unix.stderr in
+          child := Some pid;
+          let rec wait count =
+            if Sys.file_exists acknowledgement then (
+              if Update.read_file ~limit:32 acknowledgement <> Sys.argv.(6)
+              then failwith "The updated application started a different build")
+            else if count = 0 then failwith "The updated Web frontend did not start within 30 seconds"
+            else (Thread.delay 0.1; wait (count - 1)) in
+          wait 300
+         with error ->
+          Option.iter (fun pid ->
+            (try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ());
+            (try ignore (Unix.waitpid [] pid) with Unix.Unix_error _ -> ())) !child;
+          Update.rollback installation;
+          (try ignore (Unix.create_process executable [|executable|] Unix.stdin Unix.stdout Unix.stderr)
+           with Unix.Unix_error _ -> ());
+          raise error);
+        Update.confirm installation;
+        Update.remove_tree acknowledgement;
+        if not Sys.win32 then (try Update.remove_tree helper_directory with _ -> ()));
       exit 0
     with error -> Update.write_file log (Printexc.to_string error); exit 1)

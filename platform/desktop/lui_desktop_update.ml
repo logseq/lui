@@ -224,6 +224,19 @@ let stage ~package ~installed ~destination =
 
 type installation = { target : string; backup : string }
 
+let retry_windows_file_lock operation =
+  let rec attempt remaining =
+    try operation () with
+    | Unix.Unix_error ((Unix.EACCES | Unix.EPERM | Unix.EBUSY), _, _)
+      when Sys.win32 && remaining > 0 ->
+        Unix.sleepf 0.1;
+        attempt (remaining - 1)
+  in
+  attempt 100
+
+let rename source destination =
+  retry_windows_file_lock (fun () -> Unix.rename source destination)
+
 let install ~staged ~target =
   if Filename.dirname staged <> Filename.dirname target || staged = target
      || (Unix.lstat staged).Unix.st_kind <> Unix.S_DIR
@@ -231,17 +244,18 @@ let install ~staged ~target =
   then fail "replacement requires sibling directories";
   let backup = target ^ ".lui-previous" in
   if Sys.file_exists backup then fail "previous update needs recovery";
-  Unix.rename target backup;
-  (try Unix.rename staged target
-   with error -> Unix.rename backup target; raise error);
+  rename target backup;
+  (try rename staged target
+   with error -> rename backup target; raise error);
   { target; backup }
 
-let confirm installation = remove_tree installation.backup
+let confirm installation =
+  retry_windows_file_lock (fun () -> remove_tree installation.backup)
 
 let rollback installation =
   let failed = installation.target ^ ".lui-failed" in
   if Sys.file_exists failed then fail "failed update directory already exists";
-  Unix.rename installation.target failed;
-  (try Unix.rename installation.backup installation.target
-   with error -> Unix.rename failed installation.target; raise error);
-  remove_tree failed
+  rename installation.target failed;
+  (try rename installation.backup installation.target
+   with error -> rename failed installation.target; raise error);
+  retry_windows_file_lock (fun () -> remove_tree failed)

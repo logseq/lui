@@ -69,6 +69,17 @@ and its WebKit session; reopening starts a fresh helper. The main process closes
 the updater helper before shutdown or installation, releasing executable locks.
 On Windows this uses process termination (`Sys.sigkill`), since native OCaml
 does not support `Sys.sigterm`; application command APIs are unchanged.
+The Windows installation helper also leaves the application's working directory
+before replacing its tree, avoiding a directory lock inherited from shortcuts.
+Windows replacement and rollback retry transient file-lock errors for up to ten
+seconds while WebView2 children release their files. A headless cleanup child
+waits for the installation helper to exit, then removes only its token-named
+directory under the application's storage. The internal `--lui-cleanup` mode
+does not register application commands or open a WebView; application APIs and
+configuration are unchanged.
+Windows Authenticode packaging uses DigiCert's documented HTTP RFC3161 endpoint
+because SignTool rejects an HTTPS timestamp URL. The timestamp token remains
+cryptographically verified; update feeds and downloads still require HTTPS.
 Its native bridge exposes built-in update actions and explicitly registered
 application commands; it exposes no native reflection.
 On macOS the host loads packaged assets at `lui://localhost`, with no HTTP
