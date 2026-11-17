@@ -97,7 +97,7 @@ let run_with_commands ~commands ~config ~updater_html ~updater_js =
       quitting := true;
       let process = !updater_process in updater_process := None; process) in
     Option.iter (fun pid ->
-      (try Unix.kill pid Sys.sigterm with Unix.Unix_error _ -> ());
+      (try Unix.kill pid (if Sys.win32 then Sys.sigkill else Sys.sigterm) with Unix.Unix_error _ -> ());
       (try ignore (Unix.waitpid [] pid) with Unix.Unix_error _ -> ())) process in
   let skipped_path = under storage "skipped-build" in
   let skipped () =

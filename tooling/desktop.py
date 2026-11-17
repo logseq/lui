@@ -129,7 +129,14 @@ def tree_files(root):
 
 def windows_runtime_libraries(binary, compiler):
     """Bundle the native toolchain's non-system DLL closure, or fail the build."""
-    objdump = capture([compiler, "-print-prog-name=objdump"])
+    def native_path(path):
+        if path.startswith("/"):
+            cygpath = Path(shutil.which(compiler) or compiler).parent / "cygpath.exe"
+            if cygpath.is_file():
+                path = capture([cygpath, "-w", path])
+        return Path(path)
+
+    objdump = native_path(capture([compiler, "-print-prog-name=objdump"]))
     system = {name + ".dll" for name in [
         "advapi32", "bcrypt", "comctl32", "comdlg32", "crypt32", "d2d1", "d3d11",
         "dcomp", "dbghelp", "dnsapi", "dwmapi", "dxgi", "gdi32", "imm32", "iphlpapi",
@@ -147,7 +154,9 @@ def windows_runtime_libraries(binary, compiler):
             if folded in seen or folded in system or folded.startswith(("api-ms-", "ext-ms-")):
                 continue
             seen.add(folded)
-            candidates = [binary.parent / name, Path(capture([compiler, "-print-file-name=" + name]))]
+            candidates = [binary.parent / name]
+            candidates.extend(native_path(capture([compiler, "-print-file-name=" + relative]))
+                              for relative in (name, "../bin/" + name))
             candidates.extend(Path(directory) / name for directory in os.get_exec_path())
             source = next((item.resolve() for item in candidates if item.is_file()), None)
             if source is None:

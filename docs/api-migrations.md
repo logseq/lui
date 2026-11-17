@@ -39,6 +39,8 @@ OCaml helper process, created only when requested. Repeated requests reuse its
 live instance. Closing the window or choosing Remind Me Later exits that helper
 and its WebKit session; reopening starts a fresh helper. The main process closes
 the updater helper before shutdown or installation, releasing executable locks.
+On Windows this uses process termination (`Sys.sigkill`), since native OCaml
+does not support `Sys.sigterm`; application command APIs are unchanged.
 Its native bridge exposes built-in update actions and explicitly registered
 application commands; it exposes no native reflection.
 On macOS the host loads packaged assets at `lui://localhost`, with no HTTP

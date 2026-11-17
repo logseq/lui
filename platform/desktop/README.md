@@ -45,6 +45,14 @@ or vendored by this repository. macOS needs the Xcode command-line tools and
 uses its built-in WebKit. macOS and Windows provide `curl`; Linux packages
 declare it as a dependency. No OpenSSL executable is used at runtime.
 
+For an opam-managed Cygwin/MinGW installation on Windows, install the Cygwin
+`mingw64-x86_64-gcc-g++` package, put that installation's `bin` directory on
+`PATH`, and pass `--cxx x86_64-w64-mingw32-g++`. Point `--webview2-headers` at
+the NuGet package's `build/native/include` directory. The builder accepts the
+Cygwin paths reported by that compiler and bundles its native runtime DLLs;
+Cygwin itself is only a build dependency. Add the NSIS installation directory
+to `PATH` before running `package` so that `makensis` is available.
+
 macOS loads packaged assets directly at `lui://localhost`, with no local TCP
 listener. The native bridge accepts built-in desktop actions and explicitly
 registered application commands from the main frame of that origin. The update helper owns its own update state and
