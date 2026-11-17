@@ -1,5 +1,18 @@
 # LUI API migration guide
 
+## Experimental native transparent popup frames
+
+Native retained popup transitions now omit all paint operations at zero animated
+opacity, including modal backdrops. This prevents a fully painted blank shell
+from flashing before the first visible fade frame on native renderers.
+
+The existing low-level scene opacity defaults and nonzero transition behavior
+are preserved. No application migration is required; existing declarations work:
+
+```ocaml
+dialog ~transition:"opacity 200ms ease-out, transform 200ms ease-out" [content]
+```
+
 ## Experimental native hover includes ancestor controls
 
 Native hover styling now remains active on a control while the pointer covers

@@ -960,6 +960,9 @@ let capture_surface rt scene m surface =
   snapshot
 
 let emit_surface scene m viewport motion alpha zoom_progress =
+  (* Scene chrome uses zero as its legacy default opacity. A fully transparent
+     animation frame must therefore emit no operations, including its scrim. *)
+  if alpha <= 0. then () else
   let zoom = 0.95 +. (0.05 *. zoom_progress) in
   let cx = motion.bounds.x +. (motion.bounds.w /. 2.)
   and cy = motion.bounds.y +. (motion.bounds.h /. 2.) in
