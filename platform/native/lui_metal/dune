@@ -32,11 +32,11 @@
  (action
   (with-stdout-to %{target}
    (bash
-    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc %s)' \"$(pkg-config --cflags sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --cflags sdl2 2>/dev/null)\"; fi"))))
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc %s)' \"$(pkg-config --cflags sdl3 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --cflags sdl3 2>/dev/null)\"; fi"))))
 
 (rule
  (target c_libs.sexp)
  (action
   (with-stdout-to %{target}
    (bash
-    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework Metal -framework QuartzCore -framework CoreFoundation -framework Foundation %s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; fi"))))
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework Metal -framework QuartzCore -framework CoreFoundation -framework Foundation %s)' \"$(pkg-config --libs sdl3 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --libs sdl3 2>/dev/null)\"; fi"))))

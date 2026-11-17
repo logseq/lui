@@ -2,4 +2,4 @@
  (name lui_blit)
  (public_name lui.blit)
  (modules lui_blit)
- (libraries tsdl))
+ (libraries lui_sdl3))

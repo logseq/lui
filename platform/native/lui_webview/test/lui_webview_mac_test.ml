@@ -11,7 +11,7 @@
    destroy their own webviews inside this window instead of cycling
    windows. *)
 
-module Sdl = Tsdl.Sdl
+module Sdl = Lui_sdl3
 
 let window : Sdl.window option ref = ref None
 
@@ -26,7 +26,7 @@ let win () =
      | Ok () ->
        (match
           Sdl.create_window ~w:640 ~h:480 "lui_webview test"
-            Sdl.Window.windowed
+            Sdl.Window.none
         with
         | Error (`Msg e) ->
           Printf.printf "SKIP: sdl window: %s\n%!" e;

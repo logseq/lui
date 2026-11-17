@@ -1,0 +1,4 @@
+(library
+ (name lui_sdl3)
+ (public_name lui.sdl3)
+ (libraries sdl3 ctypes))

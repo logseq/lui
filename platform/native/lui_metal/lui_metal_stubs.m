@@ -12,7 +12,7 @@
 
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
-#import <SDL_metal.h>
+#import <SDL3/SDL_metal.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CADisplayLink.h>
 #include <stdatomic.h>

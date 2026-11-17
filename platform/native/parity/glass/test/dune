@@ -10,7 +10,7 @@
   lui_parity_glass
   lui_plugin_glass
   alcotest
-  tsdl
+  lui_sdl3
   tgls))
 
 (test

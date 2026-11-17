@@ -1,6 +1,6 @@
 (* SDL software present path for CPU-rendered frames. *)
 
-module Sdl = Tsdl.Sdl
+module Sdl = Lui_sdl3
 
 type pix_ba =
   (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
@@ -32,7 +32,7 @@ let make_texture renderer ~w ~h =
 
 let create win ~w ~h =
   match sdl_error "create_renderer"
-          (Sdl.create_renderer win ~flags:Sdl.Renderer.software) with
+          (Sdl.create_renderer win ~software:true) with
   | Error _ as e -> e
   | Ok renderer ->
     (match sdl_error "create_texture" (make_texture renderer ~w ~h) with

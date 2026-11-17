@@ -1,5 +1,60 @@
 # LUI API migration guide
 
+## Experimental native hosts use SDL3
+
+The experimental native host replaces `tsdl` and `tsdl-ttf` with the pinned
+`logseq/ocaml-sdl3` fork. Backend selection and maintained mobile/web defaults
+are unchanged. SDL2 pointers must never be passed to SDL3 functions, including
+`Lui_webview.host_of_sdl_window` and `Lui_metal.init_window`.
+
+- Link `lui.sdl3`, and use `module Sdl = Lui_sdl3`. `Lui_blit.create` now accepts
+  `Lui_sdl3.window`; distinct window/renderer/cursor types reject mismatched
+  resource calls during compilation.
+- Use `Window.high_pixel_density` instead of `Window.allow_highdpi`. Windows
+  are shown by default; remove `Window.shown`. Display identifiers are stable
+  nonzero IDs, rather than zero-based indices. Refresh rates retain fractions.
+- Text input and IME rectangles require the owning window:
+  `Sdl.start_text_input window`, `Sdl.stop_text_input window`, and
+  `Sdl.set_text_input_rect window (Some rect)`. One window no longer changes
+  another window's text-input state.
+- Events expose typed, owned snapshots. Replace raw union fields with
+  `match (Sdl.Event.value event).kind with Key_down key -> ... | ...`.
+  Mouse coordinates and wheel deltas remain floats; timestamps are
+  `timestamp_ns : int64`. Compute age using `get_ticks_ns`, not milliseconds.
+  Drop/text payloads are copied before the next dequeue; remove SDL2 drop
+  payload frees. Pixel-size/scale changes refresh backing density separately
+  from logical resize events.
+- Build test events with `Event.make` and `Event.of_event`. Push supported
+  native events through `push_key_event`, `push_quit_event`, and
+  `push_expose_event`; no mutable event-union setters are exposed.
+- Texture upload pitch is always bytes, including Int32 Bigarrays. Replace
+  `Sdl.update_texture texture None pixels width` with a byte pitch of
+  `width * 4` for 32-bit pixels. Renderer creation takes `~software:true` or
+  `~vsync:true`, instead of SDL2 renderer flags.
+- The SDL gamepad backend enumerates stable SDL3 joystick IDs. Virtual-device,
+  GUID and mapping helpers take those IDs, which must not be reused as list
+  indices. Linux audio uses SDL3 AudioStreams; macOS AVFoundation and Windows
+  XInput retain their platform implementations.
+- The spike demo uses SDL3 debug text and `--no-text`; it no longer needs
+  SDL_ttf or accepts `--no-ttf`.
+
+```ocaml
+module Sdl = Lui_sdl3
+
+let on_event event =
+  match (Sdl.Event.value event).kind with
+  | Key_down {scancode; keymod; repeat} -> handle_key scancode keymod repeat
+  | Mouse_motion {x; y; _} -> handle_pointer x y
+  | Text_input text -> insert_text text
+  | _ -> ()
+```
+
+Application packages must include the SDL3 runtime and its non-system
+shared-library dependencies. The binding searches the application's bundled
+runtime before system loader paths. Logseq's macOS builder embeds SDL3 in
+`Contents/Frameworks`, rejects SDL2 and unbundled absolute dependencies, and
+signs the resulting bundle. End users do not install SDL3.
+
 ## Experimental self-drawn OCaml native backend
 
 The self-drawn backend under `platform/native` is available again as
@@ -12,10 +67,10 @@ service registries.
 
 Applications opt in by linking the native renderer libraries and constructing
 their own window driver. No application is migrated automatically. Native
-development requires SDL2/SDL2_ttf and the OCaml dependencies declared in
-`dune-project` and both opam manifests. SDL dependencies are installed automatically on macOS and Linux. Windows
-portable-service consumers do not acquire SDL dependencies; experimental native
-Windows builds must install `tsdl` and `tsdl-ttf` explicitly after providing SDL2.
+development requires SDL3 and the OCaml dependencies declared in
+`dune-project` and both opam manifests. The `sdl3` binding is pinned to the
+Logseq fork. Portable services and the direct Win32 host do not require an SDL
+runtime; macOS and Linux native drivers bundle or install SDL3.
 Platform-specific runtime qualification must run on the actual target, including
 when a different target compiles stubs.
 

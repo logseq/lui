@@ -16,7 +16,7 @@ LUI patch_batch (typed, in-process)
   → renderers
       lui_raster   CPU evaluator, premultiplied BGRA (Domain-parallel rows)
       lui_gl       GPU evaluator: lui_gpu_builder → instances → tgls GL3
-  → lui_host       tsdl window/event loop, dirty → repaint → present
+  → lui_host       SDL3 window/event loop, dirty → repaint → present
 ```
 
 CPU and GPU renderers evaluate the same `Lui_scene` and must produce
@@ -35,8 +35,8 @@ path and the screenshot path.
 | `platform/native/lui_flex` | vendored flexbox layout | must build on OCaml 5.5.0 |
 | `platform/native/lui_store` | retained mirror of patch_batch | consumes `Lui_protocol.patch_op` |
 | `platform/native/lui_paint` | LUI node → scene ops | standard kinds + extension renderer registry |
-| `platform/native/lui_host` | tsdl window + event loop + backend glue | implements `Lui_protocol.backend` |
-| `platform/native/spike` | throwaway validation app | proves tsdl end-to-end |
+| `platform/native/lui_host` | SDL3 window + event loop + backend glue | implements `Lui_protocol.backend` |
+| `platform/native/spike` | throwaway validation app | proves SDL3 end-to-end |
 | `platform/native/test` | cross-module tests (pixel parity, e2e) | |
 
 ## Rules (hard)

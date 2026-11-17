@@ -18,7 +18,7 @@
   lui_blit
   lui_gl
   lui_vulkan
-  tsdl
+  lui_sdl3
   ocaml-signal
   unix)
  (preprocess (pps lui_ppx))
@@ -45,7 +45,7 @@
   lui_blit
   lui_gl
   lui_vulkan
-  tsdl
+  lui_sdl3
   ocaml-signal
   unix))
 

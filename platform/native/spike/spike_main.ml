@@ -1,5 +1,5 @@
 (* Throwaway validation app for the native backend substrate: opens an
-   SDL2 window via tsdl, runs an event loop (quit / resize / keyboard),
+   SDL3 window, runs an event loop (quit / resize / keyboard),
    renders an animated CPU framebuffer each frame, uploads it to a
    streaming texture and presents. No GL is used on the pixel path.
 
@@ -7,8 +7,7 @@
    Headless: SDL_VIDEODRIVER=dummy ./spike --headless renders a fixed
    number of frames on a virtual clock and prints a framebuffer checksum. *)
 
-module Sdl = Tsdl.Sdl
-module Ttf = Tsdl_ttf.Ttf
+module Sdl = Lui_sdl3
 
 let log fmt = Printf.eprintf (fmt ^^ "\n%!")
 
@@ -21,14 +20,14 @@ type config = {
   h : int;
   frames : int; (* -1 = run until quit *)
   headless : bool;
-  no_ttf : bool;
+  no_text : bool;
 }
 
 let default_config =
-  { w = 800; h = 500; frames = -1; headless = false; no_ttf = false }
+  { w = 800; h = 500; frames = -1; headless = false; no_text = false }
 
 let usage () =
-  log "usage: spike [--headless] [--frames N] [--size WxH] [--no-ttf]";
+  log "usage: spike [--headless] [--frames N] [--size WxH] [--no-text]";
   exit 2
 
 let parse_argv () =
@@ -60,64 +59,13 @@ let parse_argv () =
                 c := { !c with w = int_of_string w; h = int_of_string h }
             | _ -> usage ()
           end
-      | "--no-ttf" -> c := { !c with no_ttf = true }
+      | "--no-text" -> c := { !c with no_text = true }
       | "--help" | "-h" -> usage ()
       | _ -> usage ()
     end;
     incr i
   done;
   !c
-
-(* --- fonts ------------------------------------------------------------- *)
-
-let font_candidates () =
-  let env =
-    match Sys.getenv_opt "SPIKE_FONT" with Some p -> [ p ] | None -> []
-  in
-  env
-  @ [
-      "/System/Library/Fonts/SFNSMono.ttf";
-      "/System/Library/Fonts/Supplemental/Arial.ttf";
-      "/System/Library/Fonts/Supplemental/Andale Mono.ttf";
-      "/System/Library/Fonts/Geneva.ttf";
-      "/System/Library/Fonts/Helvetica.ttc";
-    ]
-
-let open_font () =
-  let rec try_paths = function
-    | [] -> None
-    | path :: rest -> (
-        match Ttf.open_font path 26 with
-        | Ok f ->
-            log "ttf: using font %s" path;
-            Some f
-        | Error _ -> try_paths rest)
-  in
-  try_paths (font_candidates ())
-
-(* Rasterize a string once into an ARGB8888 surface snapshot that the
-   framebuffer can source-over blend every frame. *)
-let render_label font text =
-  match
-    Ttf.render_utf8_blended font text
-      (Sdl.Color.create ~r:235 ~g:238 ~b:245 ~a:255)
-  with
-  | Error _ -> None
-  | Ok surf -> (
-      match Sdl.convert_surface_format surf Sdl.Pixel.format_argb8888 with
-      | Error _ ->
-          Sdl.free_surface surf;
-          None
-      | Ok conv ->
-          Sdl.free_surface surf;
-          let lw, lh = Sdl.get_surface_size conv in
-          Some
-            {
-              Spike_render.lw;
-              lh;
-              lpitch = Sdl.get_surface_pitch conv;
-              lpix = Sdl.get_surface_pixels conv Bigarray.int8_unsigned;
-            })
 
 (* --- main loop ---------------------------------------------------------- *)
 
@@ -147,25 +95,15 @@ let perf_s () =
 
 let handle_events st e =
   while Sdl.poll_event (Some e) do
-    match Sdl.Event.enum (Sdl.Event.get e Sdl.Event.typ) with
-    | `Quit -> st.quit <- true
-    | `Window_event -> (
-        let wid = Sdl.Event.get e Sdl.Event.window_event_id in
-        match Sdl.Event.window_event_enum wid with
-        | `Resized | `Size_changed ->
-            let w = Int32.to_int (Sdl.Event.get e Sdl.Event.window_data1) in
-            let h = Int32.to_int (Sdl.Event.get e Sdl.Event.window_data2) in
-            log "event: window resized to %dx%d" w h
-        | `Close -> st.quit <- true
-        | _ -> ())
-    | `Key_down -> (
-        match
-          Sdl.Scancode.enum (Sdl.Event.get e Sdl.Event.keyboard_scancode)
-        with
-        | `Escape | `Q -> st.quit <- true
-        | `Space -> st.paused <- not st.paused
-        | `R -> st.t_anim <- 0.
-        | _ -> ())
+    match (Sdl.Event.value e).kind with
+    | Sdl.Event.Quit | Window (Close_requested, _, _) -> st.quit <- true
+    | Window (Resized, w, h) -> log "event: window resized to %dx%d" w h
+    | Key_down key ->
+      (match key.scancode with
+       | 41 | 20 -> st.quit <- true
+       | 44 -> st.paused <- not st.paused
+       | 21 -> st.t_anim <- 0.
+       | _ -> ())
     | _ -> ()
   done
 
@@ -174,44 +112,22 @@ let make_renderer win =
      (software) renderer, which is the only one available under the dummy
      video driver. *)
   match
-    Sdl.create_renderer ~flags:Sdl.Renderer.(accelerated + presentvsync) win
+    Sdl.create_renderer ~vsync:true win
   with
   | Ok r -> (r, true)
   | Error _ -> (fail_of (Sdl.create_renderer win), false)
-
-let init_font cfg =
-  if cfg.no_ttf then (
-    log "ttf: disabled by --no-ttf (shapes only)";
-    None)
-  else
-    match Ttf.init () with
-    | Error (`Msg m) ->
-        log "ttf: Ttf.init failed: %s (shapes only)" m;
-        None
-    | Ok () -> (
-        match open_font () with
-        | None ->
-            log "ttf: no usable font found (shapes only)";
-            None
-        | Some _ as f -> f)
 
 let main () =
   let cfg = parse_argv () in
   try
     fail_of (Sdl.init Sdl.Init.(video + events));
-    let font = init_font cfg in
     let win =
       fail_of
         (Sdl.create_window "lui native spike" ~w:cfg.w ~h:cfg.h
-           Sdl.Window.(shown + resizable + allow_highdpi))
+           Sdl.Window.(resizable + high_pixel_density))
     in
     let rend, vsync = make_renderer win in
-    let info = fail_of (Sdl.get_renderer_info rend) in
-    log "renderer: %s (vsync flag %s)"
-      info.Sdl.ri_name
-      (if Sdl.Renderer.test info.Sdl.ri_flags Sdl.Renderer.presentvsync then
-         "set"
-       else "clear");
+    log "renderer: %s (vsync %b)" (Sdl.renderer_name rend) vsync;
     let out_w, out_h = fail_of (Sdl.get_renderer_output_size rend) in
     log "window %dx%d, renderer output %dx%d, vsync=%b" cfg.w cfg.h out_w
       out_h vsync;
@@ -221,17 +137,6 @@ let main () =
            Sdl.Texture.access_streaming ~w:cfg.w ~h:cfg.h)
     in
     let fb = Spike_render.create ~w:cfg.w ~h:cfg.h in
-    let title_label =
-      match font with
-      | Some f -> render_label f "lui native spike - tsdl ok"
-      | None -> None
-    in
-    let fps_label =
-      ref
-        (match (font, cfg.headless) with
-        | Some f, true -> render_label f "headless run"
-        | _ -> None)
-    in
     let e = Sdl.Event.create () in
     let st =
       {
@@ -255,7 +160,6 @@ let main () =
         last_ms = 0.;
       }
     in
-    let last_label = ref 0. in
     while (not st.quit) && (cfg.frames < 0 || st.frame < cfg.frames) do
       handle_events st e;
       let t0 = perf_s () in
@@ -263,25 +167,13 @@ let main () =
       st.prev_wall <- t0;
       if not st.paused then st.t_anim <- st.t_anim +. dt;
       Spike_render.render fb ~time:st.t_anim;
-      (match title_label with
-      | Some l -> Spike_render.blit_label fb ~x0:16 ~y0:12 l
-      | None -> ());
-      begin
-        match font with
-        | Some f when (not cfg.headless) && t0 -. !last_label > 0.25 ->
-            let text =
-              Printf.sprintf "fps %d   frame %.1f ms" stats.fps
-                stats.last_ms
-            in
-            last_label := t0;
-            fps_label := render_label f text
-        | _ -> ()
-      end;
-      (match !fps_label with
-      | Some l -> Spike_render.blit_label fb ~x0:16 ~y0:(cfg.h - l.lh - 12) l
-      | None -> ());
-      fail_of (Sdl.update_texture tex None fb.px fb.w);
+      fail_of (Sdl.update_texture tex None fb.px (fb.w * 4));
       fail_of (Sdl.render_copy rend tex);
+      if not cfg.no_text then begin
+        Sdl.render_debug_text rend ~x:16. ~y:12. "lui native spike - SDL3" |> fail_of;
+        Sdl.render_debug_text rend ~x:16. ~y:(float cfg.h -. 24.)
+          (Printf.sprintf "fps %d   frame %.1f ms" stats.fps stats.last_ms) |> fail_of
+      end;
       Sdl.render_present rend;
       let ms = (perf_s () -. t0) *. 1000. in
       stats.last_ms <- ms;
@@ -307,22 +199,20 @@ let main () =
       if (not cfg.headless) && not vsync then begin
         let remaining = 16.6 -. ((perf_s () -. t0) *. 1000.) in
         if remaining > 1. then
-          Sdl.delay (Int32.of_int (int_of_float remaining))
+          Sdl.delay (int_of_float remaining)
       end
     done;
     let checksum = Spike_render.fnv1a fb in
     Printf.printf
-      "done: frames=%d avg_render_ms=%.2f checksum=0x%08Lx ttf=%s vsync=%b\n%!"
+      "done: frames=%d avg_render_ms=%.2f checksum=0x%08Lx text=%s vsync=%b\n%!"
       stats.total_n
       (stats.total_ms /. float (max 1 stats.total_n))
       checksum
-      (if Option.is_some font then "on" else "off")
+      (if cfg.no_text then "off" else "on")
       vsync;
     Sdl.destroy_texture tex;
     Sdl.destroy_renderer rend;
     Sdl.destroy_window win;
-    (match font with Some f -> Ttf.close_font f | None -> ());
-    if Option.is_some font then Ttf.quit ();
     Sdl.quit ();
     exit 0
   with

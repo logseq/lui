@@ -4,7 +4,7 @@
    Usage: wv_demo.exe [out.png] [url]
    Defaults: out.png = /tmp/lui_wv_demo.png, url = an inline page. *)
 
-module Sdl = Tsdl.Sdl
+module Sdl = Lui_sdl3
 
 (* Pump the run loop until the view finished its current load or the
    deadline passes. *)
@@ -41,7 +41,7 @@ let () =
   | Ok () ->
     (match
        Sdl.create_window ~w:800 ~h:600 "lui_webview demo"
-         Sdl.Window.windowed
+         Sdl.Window.none
      with
      | Error (`Msg e) -> Printf.eprintf "sdl window: %s\n%!" e; exit 1
      | Ok win ->

@@ -103,23 +103,26 @@ Plugins (JSON-in/JSON-out services under the `plugin:<name>` namespace):
 ## Build & test
 
 ```sh
-OPAMSWITCH=5.5.0 opam exec -- dune build platform/native/
-OPAMSWITCH=5.5.0 opam exec -- dune runtest platform/native/ -j 1 --force
+OPAMSWITCH=5.5.1 opam exec -- dune build platform/native/
+OPAMSWITCH=5.5.1 opam exec -- dune runtest platform/native/ -j 1 --force
 ```
 
 Run tests with one Dune job so frame-budget measurements do not compete with
 other tests or compilation. The CLI scaffold test uses installed libraries,
 excluding Dune's temporary local install tree from its library search path.
 
-System deps (macOS): `brew install sdl2 sdl2_ttf`; opam: `tsdl tsdl-ttf tgls
-alcotest imagelib`. Platform libs build everywhere — real implementations are
+System deps (macOS): `brew install pkg-config sdl3`; opam dependencies include
+`sdl3 tgls alcotest imagelib`. Install this SDK with opam to activate its pinned
+SDL3 binding fork. For direct development runs, set
+`SDL3_LIBRARY="$(brew --prefix sdl3)/lib/libSDL3.dylib"`. Application bundles
+ship this runtime, so end users do not install SDL3. Platform libs build everywhere — real implementations are
 `#if defined(__APPLE__)/(__linux__)/(_WIN32)`; calls on the wrong platform
 raise `Failure`. Tests that need a real device/API are `enabled_if`-gated.
 
 ## Run the demo
 
 ```sh
-OPAMSWITCH=5.5.0 opam exec -- dune exec platform/native/lui_window/main.exe
+OPAMSWITCH=5.5.1 opam exec -- dune exec platform/native/lui_window/main.exe
 ```
 
 Interactive window with five sections (inputs / controls / lists / overlays /

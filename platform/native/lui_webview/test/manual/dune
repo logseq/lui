@@ -5,5 +5,5 @@
 (executable
  (name wv_demo)
  (modules wv_demo)
- (libraries lui_webview tsdl unix)
+ (libraries lui_webview lui_sdl3 unix)
  (enabled_if (= %{system} macosx)))

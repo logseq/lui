@@ -2,7 +2,7 @@
    mirrors patches into the store and schedules a repaint, plus the
    paint→render pipeline shared by the window loop and headless tests.
 
-   The window/event loop lives in the app driver (tsdl); this module is
+   The window/event loop lives in the app driver (SDL3); this module is
    the pure part: apply → layout → paint → pixels, so headless tests can
    drive it without a display. *)
 

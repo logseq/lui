@@ -25,7 +25,7 @@
 
 open Lui_window
 
-module Sdl = Tsdl.Sdl
+module Sdl = Lui_sdl3
 
 let log fmt = Printf.printf (fmt ^^ "\n%!")
 let warn fmt = Printf.eprintf (fmt ^^ "\n%!")
@@ -48,65 +48,24 @@ let mods_of_keymod km =
 (* One SDL event → at most one backend-neutral input. *)
 let input_of_event e =
   let open Input in
-  match Sdl.Event.enum (Sdl.Event.get e Sdl.Event.typ) with
-  | `Quit -> Some Quit_input
-  | `Window_event ->
-    (match
-       Sdl.Event.window_event_enum
-         (Sdl.Event.get e Sdl.Event.window_event_id)
-     with
-     | `Resized | `Size_changed ->
-       Some
-         (Resize
-            ( Int32.to_int (Sdl.Event.get e Sdl.Event.window_data1),
-              Int32.to_int (Sdl.Event.get e Sdl.Event.window_data2) ))
-     | `Close -> Some Quit_input
-     | _ -> None)
-  | `Key_down ->
-    Some
-      (Key_down
-         ( Input.key_of_sdl_scancode
-             (Sdl.Event.get e Sdl.Event.keyboard_scancode),
-           mods_of_keymod (Sdl.Event.get e Sdl.Event.keyboard_keymod),
-           Sdl.Event.get e Sdl.Event.keyboard_repeat <> 0 ))
-  | `Text_input ->
-    Some (Text_input (Sdl.Event.get e Sdl.Event.text_input_text))
-  | `Text_editing ->
-    Some
-      (Text_editing
-         ( Sdl.Event.get e Sdl.Event.text_editing_text,
-           Sdl.Event.get e Sdl.Event.text_editing_start,
-           Sdl.Event.get e Sdl.Event.text_editing_length ))
-  | `Mouse_motion ->
-    Some
-      (Move
-         ( float (Sdl.Event.get e Sdl.Event.mouse_motion_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_motion_y) ))
-  | `Mouse_button_down ->
-    Some
-      (Button_down
-         ( float (Sdl.Event.get e Sdl.Event.mouse_button_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_button_y),
-           Input.button_of_sdl
-             (Sdl.Event.get e Sdl.Event.mouse_button_button),
-           Sdl.Event.get e Sdl.Event.mouse_button_clicks,
-           mods_of_keymod (Sdl.get_mod_state ()) ))
-  | `Mouse_button_up ->
-    Some
-      (Button_up
-         ( float (Sdl.Event.get e Sdl.Event.mouse_button_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_button_y),
-           Input.button_of_sdl
-             (Sdl.Event.get e Sdl.Event.mouse_button_button),
-           mods_of_keymod (Sdl.get_mod_state ()) ))
-  | `Mouse_wheel ->
-    (* Same shape macOS feeds: wheel deltas carry the modifier state
-       so Shift turns the vertical delta horizontal. *)
-    Some
-      (Wheel_mods
-         ( float (Sdl.Event.get e Sdl.Event.mouse_wheel_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_wheel_y),
-           mods_of_keymod (Sdl.get_mod_state ()) ))
+  match (Sdl.Event.value e).kind with
+  | Sdl.Event.Quit -> Some Quit_input
+  | Window (Resized, w, h) -> Some (Resize (w, h))
+  | Window (Close_requested, _, _) -> Some Quit_input
+  | Key_down key -> Some (Key_down (Input.key_of_sdl_scancode key.scancode,
+                                   mods_of_keymod key.keymod, key.repeat))
+  | Text_input text -> Some (Text_input text)
+  | Text_editing (text, start, length) -> Some (Text_editing (text, start, length))
+  | Mouse_motion motion -> Some (Move (motion.x, motion.y))
+  | Mouse_button_down button ->
+    Some (Button_down (button.x, button.y, Input.button_of_sdl button.button,
+                       button.clicks, mods_of_keymod (Sdl.get_mod_state ())))
+  | Mouse_button_up button ->
+    Some (Button_up (button.x, button.y, Input.button_of_sdl button.button,
+                     mods_of_keymod (Sdl.get_mod_state ())))
+  | Mouse_wheel (x, y) -> Some (Wheel_mods (x, y, mods_of_keymod (Sdl.get_mod_state ())))
+  | Drop_file file -> Some (Drop_file file)
+  | Drop_text text -> Some (Drop_text text)
   | _ -> None
 
 type stats = {
@@ -169,7 +128,7 @@ let () =
      context — the opengl flag is only set when the first ladder rung
      will actually use it. *)
   let flags gl =
-    let base = Sdl.Window.(resizable + allow_highdpi + shown) in
+    let base = Sdl.Window.(resizable + high_pixel_density) in
     if gl then Sdl.Window.(base + opengl) else base
   in
   let first = match ladder with r :: _ -> r | [] -> Lui_linux.Noop in
@@ -190,7 +149,7 @@ let () =
   let gctx_cell = ref None in
   let mk_blit () =
     let dw, dh =
-      match Sdl.gl_get_drawable_size !win with
+      match Sdl.get_window_size_in_pixels !win with
       | 0, 0 -> (cfg.width, cfg.height)
       | d -> d
     in
@@ -238,7 +197,7 @@ let () =
           false)
     | Lui_linux.Vulkan -> (
       let dw, dh =
-        match Sdl.gl_get_drawable_size !win with
+        match Sdl.get_window_size_in_pixels !win with
         | 0, 0 -> (cfg.width, cfg.height)
         | d -> d
       in
@@ -394,7 +353,7 @@ let () =
   let drawable () =
     (* Under the dummy driver this may report 0x0; fall back to the
        window size so layout still gets a sane extent. *)
-    match Sdl.gl_get_drawable_size !win with
+    match Sdl.get_window_size_in_pixels !win with
     | 0, 0 -> (cfg.width, cfg.height)
     | d -> d
   in
@@ -447,13 +406,13 @@ let () =
   (match Assembly.first_autofocus asm with
    | Some id ->
      Ui.set_focused ui store id;
-     Sdl.start_text_input ()
+     Sdl.start_text_input !win
    | None -> ());
   let quit = ref false in
   (* SDL_SetTextInputRect works in window (logical) pixels. *)
   let set_ime_rect (r : Lui_scene.rect) =
     let s = !scale_cell in
-    Sdl.set_text_input_rect
+    Sdl.set_text_input_rect !win
       (Some
          (Sdl.Rect.create
             ~x:(int_of_float (r.Lui_scene.x /. s))
@@ -502,9 +461,9 @@ let () =
          if id = 0 then Lui_ax_linux.clear_focus ax
          else Lui_ax_linux.set_focus ax id
        | None -> ());
-      if id = 0 then Sdl.stop_text_input ()
+      if id = 0 then Sdl.stop_text_input !win
       else begin
-        Sdl.start_text_input ();
+        Sdl.start_text_input !win;
         set_ime_rect (Rects.get rects id)
       end
     | Ime_rect r -> set_ime_rect r
@@ -589,13 +548,18 @@ let () =
     let go = ref true in
     while !go do
       if Sdl.poll_event (Some e) then
-        let typ = Sdl.Event.get e Sdl.Event.typ in
+        let kind = (Sdl.Event.value e).kind in
         (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
            backend lost its resources — recover down the ladder. *)
-        if typ = 0x2000 || typ = 0x2001 then
+        if kind = Sdl.Event.Render_reset then
           demote "SDL render-target/device reset"
         else
-        match input_of_event e with
+        let input = match kind with
+          | Sdl.Event.Window ((Pixel_size_changed | Display_scale_changed | Display_changed | Moved), _, _) ->
+            let width, height = Sdl.get_window_size !win in
+            Some (Input.Resize (width, height))
+          | _ -> input_of_event e in
+        match input with
         | Some (Input.Resize (w, h)) ->
           win_w := w;
           win_h := h;
@@ -672,9 +636,9 @@ let () =
       if dirty && not vsync then begin
         let remaining = 16.6 -. ((perf_s () -. t0) *. 1000.) in
         if remaining > 0.5 then
-          Sdl.delay (Int32.of_int (int_of_float remaining))
+          Sdl.delay (int_of_float remaining)
       end
-      else if not dirty then Sdl.delay 4l
+      else if not dirty then Sdl.delay 4
     end
   done;
   stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name;

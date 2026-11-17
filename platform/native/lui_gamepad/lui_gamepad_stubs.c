@@ -2,12 +2,12 @@
 
    Two backends live behind the same OCaml externals:
 
-   - SDL path (macOS, Linux): SDL2 is resolved at run time with
+   - SDL path (macOS, Linux): SDL3 is resolved at run time with
      dlopen/dlsym so this stub links and runs on machines without SDL
-     development headers; hosts that already link SDL (tsdl) get the
+     hardware; hosts that already link SDL3 get the
      live library, others get a clean "not loaded" probe.  The path is
      state-polling only: it pumps the SDL event loop for fresh
-     hardware state and reads SDL_GameControllerGetAxis/GetButton —
+     hardware state and reads SDL_GetGamepadAxis/GetGamepadButton —
      it never consumes the SDL event queue, so window hosts keep
      owning event delivery.
 
@@ -39,6 +39,7 @@
 #include <caml/alloc.h>
 #include <caml/memory.h>
 #include <caml/fail.h>
+#include <caml/threads.h>
 
 #if defined(LUI_GP_POSIX)
 #include <dlfcn.h>
@@ -50,44 +51,37 @@
 
 #if defined(LUI_GP_POSIX)
 
-typedef struct SDL_GameController SDL_GameController;
-typedef struct SDL_Joystick SDL_Joystick;
-typedef struct { unsigned char data[16]; } SDL_JoystickGUID;
-
-#define SDL_INIT_GAMECONTROLLER 0x00002000u
-#define SDL_INIT_EVENTS         0x00004000u
+#include <SDL3/SDL.h>
 
 typedef struct {
-  int (*init_subsystem)(unsigned int);
-  unsigned int (*was_init)(unsigned int);
-  void (*pump_events)(void);
-  int (*num_joysticks)(void);
-  int (*is_controller)(int);
-  const char *(*gc_name_for_index)(int);
-  const char *(*joy_name_for_index)(int);
-  SDL_JoystickGUID (*joy_device_guid)(int);
-  int (*joy_guid_string)(SDL_JoystickGUID, char *, int);
-  int (*joy_device_instance)(int);
-  char *(*gc_mapping_for_index)(int);
-  SDL_GameController *(*gc_open)(int);
-  SDL_Joystick *(*gc_get_joystick)(SDL_GameController *);
-  int (*joy_instance_id)(SDL_Joystick *);
-  int (*gc_attached)(SDL_GameController *);
-  void (*gc_close)(SDL_GameController *);
-  short (*gc_axis)(SDL_GameController *, int);
-  unsigned char (*gc_button)(SDL_GameController *, int);
-  int (*gc_add_mapping)(const char *);
-  int (*gc_add_mappings_file)(const char *);
-  const char *(*get_error)(void);
-  void (*sdl_free)(void *);
-  /* Virtual joysticks (SDL >= 2.14): fake-event injection harness. */
-  int (*joy_attach_virtual)(int, int, int, int);
-  int (*joy_detach_virtual)(int);
-  SDL_Joystick *(*joy_open)(int);
-  void (*joy_close)(SDL_Joystick *);
-  SDL_Joystick *(*joy_from_instance)(int);
-  int (*joy_set_virtual_axis)(SDL_Joystick *, int, short);
-  int (*joy_set_virtual_button)(SDL_Joystick *, int, unsigned char);
+  __typeof__(&SDL_InitSubSystem) init_subsystem;
+  __typeof__(&SDL_WasInit) was_init;
+  __typeof__(&SDL_PumpEvents) pump_events;
+  __typeof__(&SDL_GetJoysticks) joysticks;
+  __typeof__(&SDL_IsGamepad) is_controller;
+  __typeof__(&SDL_GetGamepadNameForID) gc_name_for_index;
+  __typeof__(&SDL_GetJoystickNameForID) joy_name_for_index;
+  __typeof__(&SDL_GetJoystickGUIDForID) joy_device_guid;
+  __typeof__(&SDL_GUIDToString) joy_guid_string;
+  __typeof__(&SDL_GetGamepadMappingForID) gc_mapping_for_index;
+  __typeof__(&SDL_OpenGamepad) gc_open;
+  __typeof__(&SDL_GetGamepadJoystick) gc_get_joystick;
+  __typeof__(&SDL_GetJoystickID) joy_instance_id;
+  __typeof__(&SDL_GamepadConnected) gc_attached;
+  __typeof__(&SDL_CloseGamepad) gc_close;
+  __typeof__(&SDL_GetGamepadAxis) gc_axis;
+  __typeof__(&SDL_GetGamepadButton) gc_button;
+  __typeof__(&SDL_AddGamepadMapping) gc_add_mapping;
+  __typeof__(&SDL_AddGamepadMappingsFromFile) gc_add_mappings_file;
+  __typeof__(&SDL_GetError) get_error;
+  __typeof__(&SDL_free) sdl_free;
+  __typeof__(&SDL_AttachVirtualJoystick) joy_attach_virtual;
+  __typeof__(&SDL_DetachVirtualJoystick) joy_detach_virtual;
+  __typeof__(&SDL_OpenJoystick) joy_open;
+  __typeof__(&SDL_CloseJoystick) joy_close;
+  __typeof__(&SDL_GetJoystickFromID) joy_from_instance;
+  __typeof__(&SDL_SetJoystickVirtualAxis) joy_set_virtual_axis;
+  __typeof__(&SDL_SetJoystickVirtualButton) joy_set_virtual_button;
 } sdl_api;
 
 static void *sdl_lib;
@@ -95,7 +89,7 @@ static sdl_api S;
 static char sdl_load_err[256];
 static int sdl_resolved;
 
-static struct { int inst; SDL_GameController *gc; } pads[LUI_GP_MAX_PADS];
+static struct { int inst; SDL_Gamepad *gc; } pads[LUI_GP_MAX_PADS];
 static int npads;
 
 static void sdl_store_err(const char *fallback)
@@ -114,55 +108,54 @@ static void *sdl_sym(const char *name)
 
 static int sdl_resolve(void)
 {
-  if (sdl_resolved) return sdl_lib != NULL || S.init_subsystem != NULL;
+  if (sdl_resolved)
+    return S.init_subsystem && S.joysticks && S.gc_open && S.gc_axis && S.gc_button && S.sdl_free;
   sdl_resolved = 1;
 
-  static const char *names[] = {
-    "libSDL2-2.0.so.0", "libSDL2.so",
-    "libSDL2-2.0.0.dylib", "libSDL2.dylib",
-    "SDL2.framework/SDL2", NULL
-  };
-  for (int i = 0; names[i] && !sdl_lib; i++)
-    sdl_lib = dlopen(names[i], RTLD_NOW | RTLD_LOCAL);
-  /* No dlopen still allows resolution when the host already links
-     SDL (e.g. via tsdl): symbols land in RTLD_DEFAULT. */
-
+  const char *override = getenv("SDL3_LIBRARY");
+  if (override) sdl_lib = dlopen(override, RTLD_NOW | RTLD_GLOBAL);
+  else {
+    static const char *names[] = {
+      "libSDL3.so.0", "libSDL3.so", "libSDL3.dylib", "SDL3.framework/SDL3", NULL
+    };
+    for (int i = 0; names[i] && !sdl_lib; i++)
+      sdl_lib = dlopen(names[i], RTLD_NOW | RTLD_GLOBAL);
+  }
 #define R(name, field) S.field = sdl_sym(name)
   R("SDL_InitSubSystem", init_subsystem);
   R("SDL_WasInit", was_init);
   R("SDL_PumpEvents", pump_events);
-  R("SDL_NumJoysticks", num_joysticks);
-  R("SDL_IsGameController", is_controller);
-  R("SDL_GameControllerNameForIndex", gc_name_for_index);
-  R("SDL_JoystickNameForIndex", joy_name_for_index);
-  R("SDL_JoystickGetDeviceGUID", joy_device_guid);
-  R("SDL_JoystickGetGUIDString", joy_guid_string);
-  R("SDL_JoystickGetDeviceInstanceID", joy_device_instance);
-  R("SDL_GameControllerMappingForDeviceIndex", gc_mapping_for_index);
-  R("SDL_GameControllerOpen", gc_open);
-  R("SDL_GameControllerGetJoystick", gc_get_joystick);
-  R("SDL_JoystickGetInstanceID", joy_instance_id);
-  R("SDL_GameControllerGetAttached", gc_attached);
-  R("SDL_GameControllerClose", gc_close);
-  R("SDL_GameControllerGetAxis", gc_axis);
-  R("SDL_GameControllerGetButton", gc_button);
-  R("SDL_GameControllerAddMapping", gc_add_mapping);
-  R("SDL_GameControllerAddMappingsFromFile", gc_add_mappings_file);
+  R("SDL_GetJoysticks", joysticks);
+  R("SDL_IsGamepad", is_controller);
+  R("SDL_GetGamepadNameForID", gc_name_for_index);
+  R("SDL_GetJoystickNameForID", joy_name_for_index);
+  R("SDL_GetJoystickGUIDForID", joy_device_guid);
+  R("SDL_GUIDToString", joy_guid_string);
+  R("SDL_GetGamepadMappingForID", gc_mapping_for_index);
+  R("SDL_OpenGamepad", gc_open);
+  R("SDL_GetGamepadJoystick", gc_get_joystick);
+  R("SDL_GetJoystickID", joy_instance_id);
+  R("SDL_GamepadConnected", gc_attached);
+  R("SDL_CloseGamepad", gc_close);
+  R("SDL_GetGamepadAxis", gc_axis);
+  R("SDL_GetGamepadButton", gc_button);
+  R("SDL_AddGamepadMapping", gc_add_mapping);
+  R("SDL_AddGamepadMappingsFromFile", gc_add_mappings_file);
   R("SDL_GetError", get_error);
   R("SDL_free", sdl_free);
-  R("SDL_JoystickAttachVirtual", joy_attach_virtual);
-  R("SDL_JoystickDetachVirtual", joy_detach_virtual);
-  R("SDL_JoystickOpen", joy_open);
-  R("SDL_JoystickClose", joy_close);
-  R("SDL_JoystickFromInstanceID", joy_from_instance);
-  R("SDL_JoystickSetVirtualAxis", joy_set_virtual_axis);
-  R("SDL_JoystickSetVirtualButton", joy_set_virtual_button);
+  R("SDL_AttachVirtualJoystick", joy_attach_virtual);
+  R("SDL_DetachVirtualJoystick", joy_detach_virtual);
+  R("SDL_OpenJoystick", joy_open);
+  R("SDL_CloseJoystick", joy_close);
+  R("SDL_GetJoystickFromID", joy_from_instance);
+  R("SDL_SetJoystickVirtualAxis", joy_set_virtual_axis);
+  R("SDL_SetJoystickVirtualButton", joy_set_virtual_button);
 #undef R
 
-  if (!S.init_subsystem || !S.gc_open || !S.gc_axis || !S.gc_button)
+  if (!S.init_subsystem || !S.joysticks || !S.gc_open || !S.gc_axis || !S.gc_button || !S.sdl_free)
     snprintf(sdl_load_err, sizeof(sdl_load_err),
-             "SDL2 library not found or incomplete");
-  return S.init_subsystem != NULL;
+             "SDL3 library not found or incomplete");
+  return S.init_subsystem && S.joysticks && S.gc_open && S.gc_axis && S.gc_button && S.sdl_free;
 }
 
 static int sdl_ready(void)
@@ -170,14 +163,14 @@ static int sdl_ready(void)
   return sdl_resolve() && S.init_subsystem != NULL;
 }
 
-static SDL_GameController *pad_lookup(int inst)
+static SDL_Gamepad *pad_lookup(int inst)
 {
   for (int i = 0; i < npads; i++)
     if (pads[i].inst == inst) return pads[i].gc;
   return NULL;
 }
 
-static int pad_store(int inst, SDL_GameController *gc)
+static int pad_store(int inst, SDL_Gamepad *gc)
 {
   if (pad_lookup(inst)) return 1;
   if (npads >= LUI_GP_MAX_PADS) return 0;
@@ -216,7 +209,7 @@ CAMLprim value lui_gp_sdl_init(value unit)
   CAMLparam1(unit);
   int rc = 0;
   if (!sdl_ready()) rc = -1;
-  else if (S.init_subsystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
+  else if (!S.init_subsystem(SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
     sdl_store_err("SDL_InitSubSystem failed");
     rc = -2;
   }
@@ -226,15 +219,33 @@ CAMLprim value lui_gp_sdl_init(value unit)
 CAMLprim value lui_gp_sdl_pump(value unit)
 {
   CAMLparam1(unit);
-  if (sdl_ready() && S.pump_events) S.pump_events();
+  if (sdl_ready() && S.pump_events) {
+    caml_release_runtime_system();
+    S.pump_events();
+    caml_acquire_runtime_system();
+  }
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value lui_gp_sdl_num_devices(value unit)
+CAMLprim value lui_gp_sdl_devices(value unit)
 {
   CAMLparam1(unit);
-  CAMLreturn(Val_int((sdl_ready() && S.num_joysticks)
-                       ? S.num_joysticks() : 0));
+  CAMLlocal2(result, cell);
+  result = Val_emptylist;
+  if (sdl_ready() && S.joysticks) {
+    int count = 0;
+    SDL_JoystickID *ids = S.joysticks(&count);
+    if (ids) {
+      for (int i = count - 1; i >= 0; i--) {
+        cell = caml_alloc(2, 0);
+        Store_field(cell, 0, Val_long(ids[i]));
+        Store_field(cell, 1, result);
+        result = cell;
+      }
+      S.sdl_free(ids);
+    }
+  }
+  CAMLreturn(result);
 }
 
 CAMLprim value lui_gp_sdl_is_controller(value vidx)
@@ -262,7 +273,7 @@ CAMLprim value lui_gp_sdl_device_guid(value vidx)
   char buf[64];
   buf[0] = 0;
   if (sdl_ready() && S.joy_device_guid && S.joy_guid_string) {
-    SDL_JoystickGUID g = S.joy_device_guid(Int_val(vidx));
+    SDL_GUID g = S.joy_device_guid(Int_val(vidx));
     S.joy_guid_string(g, buf, (int) sizeof(buf));
   }
   CAMLreturn(caml_copy_string(buf));
@@ -271,10 +282,7 @@ CAMLprim value lui_gp_sdl_device_guid(value vidx)
 CAMLprim value lui_gp_sdl_device_instance(value vidx)
 {
   CAMLparam1(vidx);
-  int id = -1;
-  if (sdl_ready() && S.joy_device_instance)
-    id = S.joy_device_instance(Int_val(vidx));
-  CAMLreturn(Val_int(id));
+  CAMLreturn(vidx);
 }
 
 CAMLprim value lui_gp_sdl_device_mapping(value vidx)
@@ -297,7 +305,7 @@ CAMLprim value lui_gp_sdl_open(value vidx)
   CAMLparam1(vidx);
   int inst = -1;
   if (sdl_ready() && S.gc_open) {
-    SDL_GameController *gc = S.gc_open(Int_val(vidx));
+    SDL_Gamepad *gc = S.gc_open(Int_val(vidx));
     if (gc) {
       SDL_Joystick *j = S.gc_get_joystick ? S.gc_get_joystick(gc) : NULL;
       if (j && S.joy_instance_id) {
@@ -308,7 +316,7 @@ CAMLprim value lui_gp_sdl_open(value vidx)
         }
       }
     } else {
-      sdl_store_err("SDL_GameControllerOpen failed");
+      sdl_store_err("SDL_GamepadOpen failed");
     }
   }
   CAMLreturn(Val_int(inst));
@@ -318,7 +326,7 @@ CAMLprim value lui_gp_sdl_close(value vinst)
 {
   CAMLparam1(vinst);
   int inst = Int_val(vinst);
-  SDL_GameController *gc = pad_lookup(inst);
+  SDL_Gamepad *gc = pad_lookup(inst);
   if (gc && S.gc_close) S.gc_close(gc);
   pad_drop(inst);
   CAMLreturn(Val_unit);
@@ -327,7 +335,7 @@ CAMLprim value lui_gp_sdl_close(value vinst)
 CAMLprim value lui_gp_sdl_attached(value vinst)
 {
   CAMLparam1(vinst);
-  SDL_GameController *gc = pad_lookup(Int_val(vinst));
+  SDL_Gamepad *gc = pad_lookup(Int_val(vinst));
   int r = (gc && S.gc_attached) ? S.gc_attached(gc) : 0;
   CAMLreturn(Val_bool(r != 0));
 }
@@ -335,14 +343,14 @@ CAMLprim value lui_gp_sdl_attached(value vinst)
 CAMLprim value lui_gp_sdl_axis(value vinst, value vaxis)
 {
   CAMLparam2(vinst, vaxis);
-  SDL_GameController *gc = pad_lookup(Int_val(vinst));
+  SDL_Gamepad *gc = pad_lookup(Int_val(vinst));
   CAMLreturn(Val_int(gc ? S.gc_axis(gc, Int_val(vaxis)) : 0));
 }
 
 CAMLprim value lui_gp_sdl_button(value vinst, value vbtn)
 {
   CAMLparam2(vinst, vbtn);
-  SDL_GameController *gc = pad_lookup(Int_val(vinst));
+  SDL_Gamepad *gc = pad_lookup(Int_val(vinst));
   CAMLreturn(Val_bool(gc && S.gc_button(gc, Int_val(vbtn)) != 0));
 }
 
@@ -371,9 +379,17 @@ CAMLprim value lui_gp_sdl_attach_virtual(value vtype, value vnaxes,
 {
   CAMLparam4(vtype, vnaxes, vnbuttons, vnhats);
   int r = -1;
-  if (sdl_ready() && S.joy_attach_virtual)
-    r = S.joy_attach_virtual(Int_val(vtype), Int_val(vnaxes),
-                             Int_val(vnbuttons), Int_val(vnhats));
+  if (sdl_ready() && S.joy_attach_virtual) {
+    SDL_VirtualJoystickDesc desc = {0};
+    desc.version = sizeof(desc);
+    desc.type = Int_val(vtype);
+    desc.naxes = Int_val(vnaxes);
+    desc.nbuttons = Int_val(vnbuttons);
+    desc.nhats = Int_val(vnhats);
+    desc.name = "LUI virtual gamepad";
+    r = (int)S.joy_attach_virtual(&desc);
+    if (r == 0) r = -1;
+  }
   CAMLreturn(Val_int(r));
 }
 
@@ -382,7 +398,7 @@ CAMLprim value lui_gp_sdl_detach_virtual(value vidx)
   CAMLparam1(vidx);
   int r = -1;
   if (sdl_ready() && S.joy_detach_virtual)
-    r = S.joy_detach_virtual(Int_val(vidx));
+    r = S.joy_detach_virtual(Int_val(vidx)) ? 0 : -1;
   CAMLreturn(Val_int(r));
 }
 
@@ -403,7 +419,7 @@ CAMLprim value lui_gp_sdl_set_vaxis(value vinst, value vaxis, value vval)
   int r = -1;
   if (sdl_ready() && S.joy_from_instance && S.joy_set_virtual_axis) {
     SDL_Joystick *j = S.joy_from_instance(Int_val(vinst));
-    if (j) r = S.joy_set_virtual_axis(j, Int_val(vaxis), Int_val(vval));
+    if (j) r = S.joy_set_virtual_axis(j, Int_val(vaxis), Int_val(vval)) ? 0 : -1;
   }
   CAMLreturn(Val_int(r));
 }
@@ -416,7 +432,7 @@ CAMLprim value lui_gp_sdl_set_vbutton(value vinst, value vbtn, value vdown)
     SDL_Joystick *j = S.joy_from_instance(Int_val(vinst));
     if (j)
       r = S.joy_set_virtual_button(j, Int_val(vbtn),
-                                   Bool_val(vdown) ? 1 : 0);
+                                   Bool_val(vdown)) ? 0 : -1;
   }
   CAMLreturn(Val_int(r));
 }
@@ -433,7 +449,7 @@ CAMLprim value lui_gp_sdl_probe(value u) { return sdl_unsupported(); }
 CAMLprim value lui_gp_sdl_load_error(value u) { return sdl_unsupported(); }
 CAMLprim value lui_gp_sdl_init(value u) { return sdl_unsupported(); }
 CAMLprim value lui_gp_sdl_pump(value u) { return sdl_unsupported(); }
-CAMLprim value lui_gp_sdl_num_devices(value u) { return sdl_unsupported(); }
+CAMLprim value lui_gp_sdl_devices(value u) { return sdl_unsupported(); }
 CAMLprim value lui_gp_sdl_is_controller(value u) { return sdl_unsupported(); }
 CAMLprim value lui_gp_sdl_device_name(value u) { return sdl_unsupported(); }
 CAMLprim value lui_gp_sdl_device_guid(value u) { return sdl_unsupported(); }

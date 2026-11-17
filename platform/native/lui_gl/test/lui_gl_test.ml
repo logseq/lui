@@ -147,10 +147,10 @@ let test_effect_source () =
 (* A GL3 core context on a hidden SDL window, or None where that
    cannot be had (headless CI). *)
 let sdl_gl_context () =
-  match Tsdl.Sdl.init Tsdl.Sdl.Init.(video + events) with
+  match Lui_sdl3.init Lui_sdl3.Init.(video + events) with
   | Error _ -> None
   | Ok () -> (
-    let open Tsdl in
+    let module Sdl = Lui_sdl3 in
     ignore (Sdl.gl_set_attribute Sdl.Gl.context_major_version 3);
     ignore (Sdl.gl_set_attribute Sdl.Gl.context_minor_version 3);
     ignore
@@ -201,9 +201,9 @@ let sdl_gl_context () =
           else Some (win, ctx))))
 
 let release_gl (win, ctx) =
-  Tsdl.Sdl.gl_delete_context ctx;
-  Tsdl.Sdl.destroy_window win;
-  Tsdl.Sdl.quit ()
+  Lui_sdl3.gl_delete_context ctx;
+  Lui_sdl3.destroy_window win;
+  Lui_sdl3.quit ()
 
 (* A scene exercising fills, a clip, a hole, an image and a
    backdrop-reading effect. *)
@@ -278,7 +278,7 @@ let test_gl_render () =
       release_gl (win, ctx);
       Alcotest.failf "init failed: %s" e
     | Ok r ->
-      let dw, dh = Tsdl.Sdl.gl_get_drawable_size win in
+      let dw, dh = Lui_sdl3.get_window_size_in_pixels win in
       let s = gl_scene ~w:dw ~h:dh in
       Lui_gl.render r s;
       let f1 = Lui_gl.read_frame dw dh in

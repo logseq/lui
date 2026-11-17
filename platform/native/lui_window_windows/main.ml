@@ -1,5 +1,5 @@
 (* Win32 window driver: creates the host window through [Lui_win32]
-   (a Win32 CreateWindowW path — this build has no SDL/tsdl, so the
+   (a Win32 CreateWindowW path — this build has no SDL, so the
    window, the decoded event queue, the IMM32 hooks and the DIB
    present all live in lui_window_windows_stubs.c), wires [Lui_host]
    with the renderer ladder below, feeds decoded events through
@@ -183,7 +183,7 @@ let () =
       | Some v -> Some v
       | None -> try_offscreen ())
     | Lui_window_windows.Gl ->
-      (* This build carries no GL bindings (tsdl/tgls are not
+      (* This build carries no GL bindings (SDL3/OpenGL bindings are not
          installed on the VM), so the rung can only report and
          yield — a build that links Lui_gl would create a WGL
          context on the HWND here. *)

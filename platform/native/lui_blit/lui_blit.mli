@@ -10,7 +10,7 @@
 
 type t
 
-val create : Tsdl.Sdl.window -> w:int -> h:int -> (t, string) result
+val create : Lui_sdl3.window -> w:int -> h:int -> (t, string) result
 (** Software renderer + streaming BGRA texture, [w]x[h] device pixels. *)
 
 val resize : t -> w:int -> h:int -> (unit, string) result
