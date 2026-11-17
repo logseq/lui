@@ -63,10 +63,8 @@ let webapp ?(version = "1.0.0") ~web_dir () : W.spec =
     icon = None;
     permissions = W.default_permissions }
 
-(* Any real executable works as the packaged app's launch binary.
-   /bin/echo is POSIX-only; whoami.exe is present on every Windows. *)
-let spec_exe =
-  if Sys.win32 then "C:/Windows/System32/whoami.exe" else "/bin/echo"
+(* The running test binary is available inside Dune's sandbox on every host. *)
+let spec_exe = Sys.executable_name
 
 (* A launch-binary name that matches the app — linux/windows derive
    the installed exe name from the source basename. *)

@@ -21,8 +21,8 @@
   melange-webapi
   ocaml-signal
   yojson
-  tsdl
-  tsdl-ttf
+  (tsdl (<> :os "win32"))
+  (tsdl-ttf (<> :os "win32"))
   imagelib
   tgls
   cmdliner
