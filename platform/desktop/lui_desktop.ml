@@ -362,7 +362,7 @@ if (!updater) {
   let server = Option.map (fun socket -> Thread.create (fun () ->
       try while not (Atomic.get stopped) do
         let client, _ = Unix.accept socket in Unix.set_close_on_exec client; serve client
-      done with Unix.Unix_error ((Unix.EBADF | Unix.EINVAL), _, _) -> ()) ()) socket in
+      done with Unix.Unix_error _ when Atomic.get stopped -> ()) ()) socket in
   let open_updater () = synchronized (fun () ->
     if !quitting then false else if updater_mode then true else
     let live = match !updater_process with

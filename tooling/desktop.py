@@ -441,6 +441,7 @@ SectionEnd
         generator = Path(work) / "uninstaller.exe"
         generator_script = Path(work) / "uninstaller.nsi"
         generator_script.write_text(f'''Unicode true
+Name "{quote(config['name'])}"
 RequestExecutionLevel user
 SilentInstall silent
 OutFile "{quote(generator)}"
