@@ -46,6 +46,7 @@ let create_with_extensions ?(resolve_app_icon = fun _ -> None) host app_icons re
     web_images = Hashtbl.create 8;
     web_media_surfaces = Hashtbl.create 4;
     web_cleanups = Hashtbl.create 8;
+    web_menu_trigger_activation_cleanups = Hashtbl.create 4;
     web_virtual_lists = Hashtbl.create 4;
     web_lists = Hashtbl.create 4;
     web_mounted_roots = Hashtbl.create 4;

@@ -38,6 +38,7 @@ async function clickButton(name) {
 test("top-level runtime-owned MenuTrigger toggles on activation and preserves dismissal focus", async () => {
   await openLayerRegressionPage()
   await session.page.evaluate(() => window.audit.setupRuntimeOwnedMenu())
+  await session.page.evaluate(() => window.audit.runtimeOwnedMenu.reinsert())
 
   const trigger = session.page.locator(".lui-menu-item").filter({ hasText: "Runtime-owned menu" })
   const action = session.page.getByText("Run runtime-only action", { exact: true })

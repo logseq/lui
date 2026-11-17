@@ -210,6 +210,15 @@ function setupRuntimeOwnedMenu(){
   handlers.set(action,()=>window.audit.runtimeOwnedMenu.actionActivations++);
   window.audit.runtimeOwnedMenu.trigger=trigger;
   window.audit.runtimeOwnedMenu.menu=popup;
+  window.audit.runtimeOwnedMenu.reinsert=()=>{
+    const parent=window.audit.runtimeOwnedMenu.trigger;
+    const menu=window.audit.runtimeOwnedMenu.menu;
+    const index=nodes.get(parent).children.indexOf(menu);
+    backend.apply_batch({generation:++generation,ops:list([
+      Protocol.remove_child_op(parent,menu),
+      Protocol.insert_child_op(parent,menu,index)
+    ])});
+  };
   window.audit.runtimeOwnedMenu.removeOnDismiss=()=>handlers.set(popup,()=>{drop(popup);flush();});
   flush();
 }

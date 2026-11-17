@@ -131,6 +131,7 @@ type web_renderer = {
   web_images : (int, web_image_resource) Hashtbl.t;
   web_media_surfaces : (int, web_image_resource) Hashtbl.t;
   web_cleanups : (int, unit -> unit) Hashtbl.t;
+  web_menu_trigger_activation_cleanups : (int, (unit -> unit) ref) Hashtbl.t;
   web_virtual_lists : (int, web_virtual_list) Hashtbl.t;
   web_lists : (int, bool -> unit) Hashtbl.t;
   web_mounted_roots : (int, web_node) Hashtbl.t;

@@ -1630,8 +1630,31 @@ let attach_submenu_hover renderer node current trigger =
         renderer.web_document);
   Lui_web_position.position_dropdown renderer node
 
+let release_menu_trigger_activation renderer node =
+  match Hashtbl.find_opt renderer.web_menu_trigger_activation_cleanups node with
+  | Some cleanup ->
+      !cleanup ();
+      cleanup := (fun () -> ())
+  | None -> ()
+
 let attach_menu_trigger_activation renderer node trigger_id trigger =
-  let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
+  let cleanup =
+    match Hashtbl.find_opt renderer.web_menu_trigger_activation_cleanups node with
+    | Some cleanup ->
+        !cleanup ();
+        cleanup
+    | None ->
+        let cleanup = ref (fun () -> ()) in
+        let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
+        Hashtbl.add renderer.web_menu_trigger_activation_cleanups node cleanup;
+        Hashtbl.replace renderer.web_cleanups node (fun () ->
+            (match previous_cleanup with
+             | Some cleanup -> cleanup ()
+             | None -> ());
+            !cleanup ();
+            Hashtbl.remove renderer.web_menu_trigger_activation_cleanups node);
+        cleanup
+  in
   let click event =
     if
       Lui_web_util.click_button event = 0
@@ -1646,10 +1669,7 @@ let attach_menu_trigger_activation renderer node trigger_id trigger =
   sync_menu_trigger_expanded renderer node
     (Lui_web_layers.is_open renderer.web_layers node);
   W.Element.addEventListener "click" click trigger;
-  Hashtbl.replace renderer.web_cleanups node (fun () ->
-      (match previous_cleanup with
-       | Some cleanup -> cleanup ()
-       | None -> ());
+  cleanup := (fun () ->
       W.Element.removeEventListener "click" click trigger;
       W.Element.setAttribute "aria-expanded" "false" trigger);
   Lui_web_position.position_dropdown renderer node
@@ -1766,12 +1786,14 @@ let mount_dropdown renderer node =
                        attach_menu_trigger_activation renderer node trigger
                          (Lazy.force parent_node.platform_node)
                    | None ->
+                       release_menu_trigger_activation renderer node;
                        (* Menu rows own submenu focus and hover. Keyboard
                           entry (ArrowRight) focuses the first item directly. *)
                        ignore
                          (attach_submenu_hover renderer node current
                             (Lazy.force parent_node.platform_node)))
                 else begin
+                  release_menu_trigger_activation renderer node;
                   (* Picker dropdowns place initial focus themselves
                      (mount_picker_dropdown lands on the selected item); the
                      generic highlight would race it and read stale
