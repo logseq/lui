@@ -138,6 +138,20 @@ allows 256 pending requests and a five-minute timeout. Page close/navigation
 rejects pending calls and discards stale replies; already running handlers are
 not cancelled. Applications must manage their own cancellation and side effects.
 No migration is required for applications using only the existing update API.
+## macOS sparse-list animated scroll convergence
+
+Animated sparse virtual-list scroll requests now share one 250 ms animation
+deadline across viewport updates and variable-row measurements. Corrections
+after that deadline apply immediately, so repeated retargeting cannot keep
+restarting the animation before the destination row is reached. A new scroll
+token starts a new animation deadline.
+
+The `scroll-animated` default, wire properties and completion outcomes remain
+compatible. `succeeded` still requires stable native row geometry and visible
+alignment. Applications need no source changes: for example, an existing
+`virtual_list ~scroll_target:"row-99999" ~scroll_token:1 rows` now settles even
+when measured row heights differ from `item_extent`; keep waiting for its
+`ScrollCompleted` event rather than a fixed delay.
 
 ## Unreleased: macOS sparse rows use independent hosting graphs
 
