@@ -635,6 +635,32 @@ let test_hover_detail () =
    | _ -> Alcotest.fail "expected PointerLeave");
   Alcotest.(check int) "hovered" 4 (Ui.hovered ui)
 
+let test_hover_ancestors () =
+  let store = store_of
+    [CreateNode (1,Root); CreateNode (2,Button); CreateNode (3,Icon);
+     CreateNode (4,Text); CreateNode (5,Button);
+     InsertChild (1,2,0); InsertChild (2,3,0); InsertChild (2,4,1); InsertChild (1,5,1)] in
+  let rects = rects_of [1,rect 0. 0. 200. 100.; 2,rect 0. 0. 100. 40.;
+    3,rect 10. 10. 20. 20.; 4,rect 35. 10. 20. 20.; 5,rect 120. 0. 70. 40.] in
+  let ui = Ui.create () in
+  let move x = ignore (Ui.handle ui store rects (Input.Move (x,15.))) in
+  move 15.;
+  Alcotest.(check bool) "button stays hovered over its icon" true
+    (Ui.state_of ui store 2).Lui_paint.hovered;
+  let dirty,_ = Ui.paint_hints ui store in
+  Alcotest.(check bool) "entering a child invalidates the button background" true (Hashtbl.mem dirty 2);
+  move 40.;
+  Alcotest.(check bool) "button stays hovered over its label" true
+    (Ui.state_of ui store 2).Lui_paint.hovered;
+  let dirty,_ = Ui.paint_hints ui store in
+  Alcotest.(check bool) "moving within a button preserves its cached background" false (Hashtbl.mem dirty 2);
+  move 130.;
+  Alcotest.(check bool) "leaving the button clears ancestor hover" false
+    (Ui.state_of ui store 2).Lui_paint.hovered;
+  let dirty,_ = Ui.paint_hints ui store in
+  Alcotest.(check bool) "switching controls invalidates both backgrounds" true
+    (Hashtbl.mem dirty 2 && Hashtbl.mem dirty 5)
+
 let test_context_menu () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -4861,6 +4887,7 @@ let () =
           Alcotest.test_case "text revisions" `Quick
             test_text_revisions;
           Alcotest.test_case "hover detail" `Quick test_hover_detail;
+          Alcotest.test_case "hover ancestors" `Quick test_hover_ancestors;
           Alcotest.test_case "context menu" `Quick test_context_menu;
           Alcotest.test_case "disabled gate" `Quick test_disabled_gate ] );
       ( "ime",
