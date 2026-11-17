@@ -1252,7 +1252,7 @@ test("Nested menu corridor follows a submenu that flips to the left", async () =
     })
     host.setAttribute("data-flipped-corridor", "")
     document.body.append(host)
-    const renderer = Web.create(undefined, host)
+    const renderer = Web.create(undefined, undefined, host)
     const backend = Web.backend(renderer)
     const ops = []
     const childCounts = new Map()

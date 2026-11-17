@@ -20,7 +20,7 @@ import * as Web from "lui.web.dom/shell/lui_web.js"
 import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
 
 const host = document.querySelector("#host")
-const renderer = Web.create(undefined, host), backend = Web.backend(renderer)
+const renderer = Web.create(undefined, undefined, host), backend = Web.backend(renderer)
 const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
 let ops = [], generation = 0, id = 0, token = 0, first = 100, last = 199
 

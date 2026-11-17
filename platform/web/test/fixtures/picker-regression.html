@@ -36,7 +36,7 @@ document.addEventListener("keydown", event => {
     document.querySelector("#background-escapes").textContent = `Background Escape: ${backgroundEscapes}`;
   }
 });
-const renderer = Web.create(undefined, host);
+const renderer = Web.create(undefined, undefined, host);
 const backend = Web.backend(renderer);
 const list = values => values.reduceRight((tail, head) => ({ hd: head, tl: tail }), 0);
 const nodes = new Map();

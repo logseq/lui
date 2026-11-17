@@ -21,7 +21,7 @@ body {margin:24px;font:16px system-ui}
 import * as Web from "lui.web.dom/shell/lui_web.js";
 import {Protocol, properties, kinds} from "./protocol-fixture.mjs";
 const host = document.querySelector("#host");
-const renderer = Web.create(undefined, host);
+const renderer = Web.create(undefined, undefined, host);
 const backend = Web.backend(renderer);
 const linked = items => items.reduceRight((tl,hd) => ({hd,tl}),0);
 const children = new Map();
