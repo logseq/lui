@@ -122,6 +122,7 @@ type drv = {
   gl_live_cell : bool ref;
   vsync : bool;
   blit_cell : Lui_blit.t option ref;
+  popups : Lui_blit.Popups.t;
   metal : Lui_metal.t option;
   renderer_cell : Lui_host.renderer ref;
   app : (Demo_app.model, Demo_app.action) Lui_app.reducer_app;
@@ -257,6 +258,7 @@ let close_window id =
   match Multi.unregister windows id with
   | None -> ()
   | Some s ->
+    Lui_blit.Popups.clear s.driver.popups;
     ignore (Lui_app.dispose s.driver.app);
     (match !(s.driver.gctx_cell) with
      | Some c -> Sdl.gl_delete_context c
@@ -511,6 +513,8 @@ let rec demote (s : surf) reason =
    | None -> ());
   let next_gl = dead = "lui_metal" in
   if dead <> "noop" then begin
+    Lui_blit.Popups.clear d.popups;
+    Lui_host.invalidate_paint s.host;
     Sdl.destroy_window d.sdl;
     d.sdl <-
       sdl_ok
@@ -744,6 +748,7 @@ let open_window ~title ~idx =
   let id = Sdl.get_window_id !win in
   let d =
     { sdl = !win; gctx_cell; gl_live_cell; vsync; blit_cell; metal;
+      popups = Lui_blit.Popups.create ();
       renderer_cell; app; a11y; drop_seen = 0; toast_since = None;
       reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
       frame = 0;
@@ -753,6 +758,15 @@ let open_window ~title ~idx =
         ~displayed_frames:(Lui_metal.presented_frames m)) metal;
       idx; sched = Frame.create (); asm; caret_rect }
   in
+  if not !headless then
+    Lui_host.set_popup_presenter host (Some
+      ((fun id kind (r : Lui_scene.rect) scene ->
+        Lui_blit.Popups.present d.popups ~parent:d.sdl ~id
+          ~tooltip:(kind = "tooltip") ~scale:!scale_cell
+          ~rect:(r.x, r.y, r.w, r.h) (fun () ->
+            let img = Lui_raster.render ~scene:(scene ()) () in
+            img.pix, img.stride / 4)),
+       (fun () -> Lui_blit.Popups.finish d.popups)));
   let s =
     Multi.make_surface ~id ~host ~driver:d ~ui ~rects ~scale_cell
       ~w:!cfg.width ~h:!cfg.height
@@ -818,9 +832,16 @@ let handle_sdl_event e =
   | Window _ -> handle_window_event e
   | Display_changed -> Multi.iter windows refresh_scale
   | _ ->
-    let target = match window_id_of e with
-      | Some id -> Multi.find windows id
-      | None -> Multi.find_focused windows in
+    let target, e = match window_id_of e with
+      | Some id -> (match Multi.find windows id with
+          | Some s -> Some s, e
+          | None ->
+            let routed = ref (None, e) in
+            Multi.iter windows (fun s ->
+              Option.iter (fun e -> routed := Some s, e)
+                (Lui_blit.Popups.route s.driver.popups e));
+            !routed)
+      | None -> Multi.find_focused windows, e in
     (match target, input_of_event e with
      | Some s, Some input -> apply_actions s (Multi.dispatch s input)
      | _ -> ())

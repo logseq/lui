@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: SDL popup presentation
+
+Experimental macOS/Linux SDL hosts may now present menu, popover and tooltip
+nodes in child windows. Applications keep their existing retained nodes and event
+handlers; for example, a context menu's normal item handler and Escape dismissal
+still apply. A host embedding `Lui_host` can opt in via
+`Lui_host.set_popup_presenter host (Some (present, finish))`; return `false`
+from `present` to draw that overlay in the parent as before, or pass `None`
+to keep all overlays in-window. SDL lifecycle messages for a child do not resize
+or close its parent.
+
+SDL adapters that translate child coordinates can use
+`Lui_sdl3.Event.map_pointer (fun x y -> (x +. left, y +. top)) event`;
+keyboard, scroll and lifecycle events are not transformed.
+
 ## Unreleased: SDL3 native host text input
 
 Native SDL host code should replace `Lui_sdl3.set_text_input_rect window rect`

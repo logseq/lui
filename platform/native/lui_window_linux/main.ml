@@ -339,7 +339,7 @@ let () =
      scene store is untouched, so the next repaint re-uploads a full
      scene — identical pixels on the CPU path by the parity
      contract. *)
-  let demote reason = Renderer_ladder.demote ladder_t ~reason in
+  let popups = Lui_blit.Popups.create () in
   (* The host owns a stable record whose render delegates to the live
      rung, so a demote needs no host rebuild. *)
   let renderer_live = Renderer_ladder.renderer_live ladder_t in
@@ -385,6 +385,19 @@ let () =
   in
   host_cell := Some (Assembly.host asm);
   let host = Assembly.host asm in
+  let demote reason =
+    Lui_blit.Popups.clear popups;
+    Lui_host.invalidate_paint host;
+    Renderer_ladder.demote ladder_t ~reason in
+  if not headless then
+    Lui_host.set_popup_presenter host (Some
+      ((fun id kind (r : Lui_scene.rect) scene ->
+        Lui_blit.Popups.present popups ~parent:!win ~id
+          ~tooltip:(kind = "tooltip") ~scale:!scale_cell
+          ~rect:(r.x, r.y, r.w, r.h) (fun () ->
+            let img = Lui_raster.render ~scene:(scene ()) () in
+            img.pix, img.stride / 4)),
+       (fun () -> Lui_blit.Popups.finish popups)));
   let ui = Assembly.ui asm in
   let rects = Assembly.rects asm in
   let store = Assembly.store asm in
@@ -554,11 +567,18 @@ let () =
     (Lui_shell_linux.gui_available ());
   let e = Sdl.Event.create () in
   let handle_sdl_event () =
-    let kind = (Sdl.Event.value e).kind in
+    let event = Sdl.Event.value e in
+    let kind = event.kind in
     (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
        backend lost its resources — recover down the ladder. *)
     if kind = Sdl.Event.Render_reset then
       demote "SDL render-target/device reset"
+    else if event.window_id <> 0 && event.window_id <> Sdl.get_window_id !win then
+      (match kind with
+       | Sdl.Event.Window _ -> ()
+       | _ -> Option.iter (fun e ->
+         Option.iter (fun input -> apply_actions (Assembly.handle asm input))
+           (input_of_event e)) (Lui_blit.Popups.route popups e))
     else
       let input = match kind with
         | Sdl.Event.Window ((Pixel_size_changed | Display_scale_changed | Display_changed | Moved), _, _) ->
@@ -675,5 +695,6 @@ let () =
   (match !gctx_cell with
    | Some c -> Sdl.gl_delete_context c
    | None -> ());
+  Lui_blit.Popups.clear popups;
   Sdl.destroy_window !win;
   Sdl.quit ()

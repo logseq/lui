@@ -108,6 +108,11 @@ work that accesses that state. Posting is asynchronous from another
 domain; on the UI thread the work runs immediately. Start posting only
 after SDL initialization and stop producers before SDL shutdown.
 
+The experimental SDL hosts present promoted menus, popovers and tooltips
+in parent-owned SDL popup windows when available. Their retained nodes stay
+in the parent tree; popup input uses the parent's existing hit testing and
+focus handling. The original in-window presentation remains the fallback.
+
 ```sh
 OPAMSWITCH=5.5.1 opam exec -- dune build platform/native/
 OPAMSWITCH=5.5.1 opam exec -- dune runtest platform/native/ -j 1 --force

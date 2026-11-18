@@ -96,6 +96,9 @@ val create_window :
   string ->
   w:int ->
   h:int -> int64 -> Sdl3.T.window Sdl3.T.result
+val create_popup_window :
+  window -> tooltip:bool -> x:int -> y:int -> w:int -> h:int ->
+  window Sdl3.T.result
 val destroy_window : Sdl3.T.window -> unit
 val show_window : Sdl3.T.window -> unit
 val raise_window : Sdl3.T.window -> unit
@@ -210,6 +213,7 @@ module Event :
     val create : unit -> t
     val of_event : event -> t
     val value : t -> event
+    val map_pointer : (float -> float -> float * float) -> t -> t
   end
 val poll_event : Event.t option -> bool
 val wait_event : Event.t option -> bool

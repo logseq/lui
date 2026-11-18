@@ -111,6 +111,16 @@ val store : t -> Lui_store.t
 val scene : t -> Lui_scene.t
 val wants_repaint : t -> bool
 
+val set_popup_presenter :
+  t ->
+  ((int -> string -> Lui_scene.rect -> (unit -> Lui_scene.t) -> bool)
+   * (unit -> unit)) option ->
+  unit
+(** Present a promoted popup outside the parent. The scene is local
+    to the popup and shares the parent's atlases. Return [false] to
+    retain in-window presentation. The second callback completes each
+    updated frame, even when no popups were painted. *)
+
 val set_hidden : t -> (int -> bool) option -> unit
 (** Host-owned transient visibility: [pred id] returns true for store
     nodes the layout engine should skip entirely (closed menu panels).

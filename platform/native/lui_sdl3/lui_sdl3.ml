@@ -163,6 +163,11 @@ let get_mod_state = S.get_mod_state
 let set_mod_state = S.set_mod_state
 let get_scancode_name = S.Scancode.get_name
 let create_window title ~w ~h flags = S.Window.create title w h flags
+let create_popup_window parent ~tooltip ~x ~y ~w ~h =
+  let kind = if tooltip then S.window_tooltip else S.window_popup_menu in
+  let flags = Window.(kind + hidden + high_pixel_density + S.window_not_focusable
+    + S.window_transparent) in
+  S.Window.create_popup (Some parent) x y w h flags
 let destroy_window = S.Window.destroy
 let show_window window = require (S.Window.show window)
 let raise_window window = require (S.Window.raise_ window)
@@ -281,6 +286,19 @@ module Event = struct
   let create () = {raw=S.Event.create (); event=make (Other 0)}
   let of_event event = {raw=S.Event.create (); event}
   let value event = event.event
+  let map_pointer f event =
+    let e = value event in
+    let button (b : button) =
+      let x, y = f b.x b.y in { b with x; y } in
+    match e.kind with
+    | Mouse_motion m ->
+      let x, y = f m.x m.y in
+      of_event { e with kind = Mouse_motion { m with x; y } }
+    | Mouse_button_down b ->
+      of_event { e with kind = Mouse_button_down (button b) }
+    | Mouse_button_up b ->
+      of_event { e with kind = Mouse_button_up (button b) }
+    | _ -> event
 
   let window_change : int -> window_change = function
     | n when n = S.event_window_resized -> Resized
