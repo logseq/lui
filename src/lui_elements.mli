@@ -177,9 +177,13 @@ val enable :
 val mount_children : 'a -> 'b -> ('a -> 'b option -> 'c) list -> unit
 val dynamic : (Lui_ui.ui_context -> int -> 'a) -> t
 
+(** Physical equality followed by structural equality, treating incomparable
+    functional values as changed. Used by children-position [reactive]. *)
+val default_subtree_equal : 'a -> 'a -> bool
+
 (** [dyn ?equal f source] mounts [f model] under the parent node and
     remounts it whenever the published model differs under [equal]
-    (default [(=)]). A remount reconciles the new branch against the old
+    (default [default_subtree_equal]). A remount reconciles the new branch against the old
     one: nodes of the same kind at the same position keep their ids
     (platform views stay alive, scroll/focus state survives) and receive
     prop diffs instead of drop+create churn. Structural changes remount

@@ -1,5 +1,44 @@
 # LUI API migration guide
 
+## Unreleased: OCaml runtime resilience
+
+Children-position `reactive` now compares physically identical values first,
+then attempts structural equality. If structural equality raises
+`Invalid_argument` (for example on a record containing a closure), the value
+is treated as changed. Explicit `~equal` comparators keep their existing
+semantics. For example, `reactive (fun model -> pane model) model_s` can now
+receive fresh closure-bearing records repeatedly; use
+`reactive ~equal:(fun a b -> a.id = b.id) pane model_s` when identity alone
+should retain the branch.
+The comparator is also available as `Lui_elements.default_subtree_equal` for
+low-level `Lui_dynamic.switch` integrations; replace an unguarded `(=)` argument
+with this function to use the same closure-safe policy.
+
+`keyed` and `virtual_rows` business keys now use occurrence order to distinguish
+duplicates instead of rejecting the publication. The first occurrence retains
+the original identity; later occurrences retain identity by `(key, occurrence)`
+across publications. For example, `[a; a; b]` reordered to `[a; b; a]` moves
+the second `a` row without remounting it. Unique keys behave as before and
+remain recommended: inserting a duplicate before another duplicate changes
+which item owns each occurrence's local state. Diagnostics on stderr identify
+the polymorphic key by `key_hash`, the parent node, and the duplicate occurrence
+(starting at 1). Arbitrary polymorphic keys have no public text printer.
+Virtual rows' separate semantic `scroll_key` uniqueness and nonempty shared
+viewport key requirements remain enforced; use unique semantic keys for shared
+viewports even if business keys repeat.
+
+After `apply_batch` returns `false`, the rejected delta is no longer requeued.
+The rejection is still reported as `Invalid_argument "backend rejected patch
+batch"`. On the next flush, even without new pending operations, the runtime
+sends an authoritative `resync_batch` snapshot of the latest retained state
+under the next host generation. Later successful turns resume incremental
+delivery. For example, catch a rejected flush, restore/reset the host through
+its existing resync mechanism, then flush again rather than manually retrying
+the rejected delta. The backend's `apply_batch` callback must accept that full
+snapshot against its reset mirror; the OCaml backend interface does not itself
+provide a host-reset callback. Exceptions from `apply_batch` retain the existing
+uncertain-commit semantics. There is no wire-format change.
+
 ## Unreleased: Web top-level MenuTrigger activation
 
 On Web, a top-level `MenuTrigger` that owns a `DropdownMenu` opens on activation

@@ -93,6 +93,7 @@ type application = {
   (* Per-node echo baselines for text / toggle / slider channels. *)
   runtime_echo : (int, echo_state) Hashtbl.t;
   runtime_generation : int ref;
+  runtime_resync_required : bool ref;
   runtime_diagnostics : flush_diagnostics ref;
   next_handler_id : int ref;
   event_handlers : (int, event_handler list) Hashtbl.t;
@@ -213,6 +214,7 @@ let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler 
     elision_edges = Hashtbl.create 16;
     runtime_echo = Hashtbl.create 16;
     runtime_generation = ref 0;
+    runtime_resync_required = ref false;
     runtime_diagnostics = ref (empty_diagnostics ());
     next_handler_id = ref 0;
     event_handlers = Hashtbl.create 16;
@@ -2505,14 +2507,8 @@ let record_diagnostics application status operation_count
     };
   true
 
-(* Commit outcomes are not all equal. A backend that returns [false] has
-   atomically rejected the batch: nothing was applied host-side, so the ops
-   stay queued and the generation stays unconsumed — the next flush re-sends
-   them (plus anything newer) under the same generation the host still
-   expects. An exception means the commit state is unknown: ops may be
-   partially applied store-side, so the batch is consumed rather than
-   re-applied under a stale generation (which would also break the retained
-   store's sequential-generation check and wedge every later flush). *)
+(* Exceptions consume the uncertain generation. Rejection instead schedules
+   an authoritative snapshot under the generation the host still expects. *)
 let apply_pending_batch application batch operation_count next_generation =
   let committed =
     try application.runtime_backend.apply_batch batch
@@ -2527,13 +2523,7 @@ let apply_pending_batch application batch operation_count next_generation =
     record_diagnostics application Applied operation_count 0
   end
   else begin
-    (* nothing applied host-side — the ops stay queued for the next
-       flush, which re-sends them under the generation the host still
-       expects. Ops queued while the backend applied this batch stay
-       queued behind them. *)
-    application.pending_ops :=
-      !(application.pending_ops) @ List.rev batch.ops;
-    List.iter (remember_pending_create application) batch.ops;
+    application.runtime_resync_required := true;
     ignore (record_diagnostics application Rejected operation_count 0);
     invalid_arg "backend rejected patch batch"
   end
@@ -2582,8 +2572,14 @@ let rec flush application =
           validate_extension_nodes application;
           application.runtime_extension_dirty := false
         end;
+        let recovering = !(application.runtime_resync_required) in
         let operations =
-          if Hashtbl.length application.elision_ghosts = 0 then
+          if recovering then begin
+            if Hashtbl.length application.elision_ghosts > 0 then
+              ignore (elide_pending_ops application);
+            (resync_batch application).ops
+          end
+          else if Hashtbl.length application.elision_ghosts = 0 then
             List.rev !(application.pending_ops)
           else elide_pending_ops application
         in
@@ -2595,10 +2591,11 @@ let rec flush application =
            generation *)
         application.pending_ops := [];
         Hashtbl.clear application.pending_creates;
-        if operations = [] then record_diagnostics application NoBatch 0 0
+        if operations = [] && not recovering then record_diagnostics application NoBatch 0 0
         else begin
           let next_generation = !(application.runtime_generation) + 1 in
           let batch = { generation = next_generation; ops = operations } in
+          application.runtime_resync_required := false;
           apply_pending_batch application batch (List.length operations)
             next_generation
         end

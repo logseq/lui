@@ -5130,17 +5130,18 @@ let test_virtual_rows_requires_exclusive_virtual_list_parent () =
   check (fun structural -> structural ())
 
 let test_duplicate_business_keys_are_checked_offscreen () =
-  let fixture = fixture ~count:20 ~height:100 () in
+  let fixture = fixture ~resolver:false ~count:20 ~height:100 () in
   Fun.protect (fun () ->
-    let before = direct_rows (runtime fixture) fixture.list in
     let old_generation = generation fixture in
     let next = rows 1000 @ [{ identity = 999; text = "duplicate-offscreen" }] in
-    invalid "duplicate keys rejected outside requested viewport" (fun () ->
-      ignore (Lui_app.send fixture.app (Replace next)); flush fixture);
-    Alcotest.(check (list int)) "duplicate source preserves previous UI identities"
-      before (direct_rows (runtime fixture) fixture.list);
-    Alcotest.(check int) "duplicate source preserves previous epoch"
-      old_generation (generation fixture))
+    ignore (Lui_app.send fixture.app (Replace next)); flush fixture;
+    Alcotest.(check bool) "duplicate source advances epoch" true
+      (generation fixture > old_generation);
+    window fixture 999 1001;
+    let mounted = direct_rows (runtime fixture) fixture.list in
+    Alcotest.(check int) "both duplicate occurrences mount" 2 (List.length mounted);
+    Alcotest.(check bool) "duplicates have distinct nodes" true
+      (List.nth mounted 0 <> List.nth mounted 1))
     ~finally:(fun () -> dispose fixture)
 
 let test_invalid_window_is_rejected_without_mutation () =
@@ -5221,7 +5222,7 @@ let test_comparator_identity_accepts_function_valued_items () =
 
 let tests = tests @ [
   "virtual_rows requires exclusive virtual-list ownership", test_virtual_rows_requires_exclusive_virtual_list_parent;
-  "offscreen duplicate business keys reject atomically", test_duplicate_business_keys_are_checked_offscreen;
+  "offscreen duplicate business keys mount deterministically", test_duplicate_business_keys_are_checked_offscreen;
   "malformed ranges reject and valid ranges clamp", test_invalid_window_is_rejected_without_mutation;
   "source handshake remains bounded before host acknowledgement", test_source_handshake_remains_bounded_before_host_acknowledgement;
   "legacy hosts keep eager compatibility", test_legacy_hosts_keep_eager_compatibility;

@@ -444,7 +444,10 @@ let dynamic mount : t =
     ignore (mount context anchor);
     anchor
 
-let dyn ?(equal = ( = )) f (source : 'a Signal.signal) : t =
+let default_subtree_equal left right =
+  left == right || (try left = right with Invalid_argument _ -> false)
+
+let dyn ?(equal = default_subtree_equal) f (source : 'a Signal.signal) : t =
  fun context parent ->
   dynamic
     (fun context node ->
