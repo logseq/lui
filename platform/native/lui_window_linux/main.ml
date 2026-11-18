@@ -619,6 +619,7 @@ let () =
        completions, visible-range reports, modal focus save/restore —
        the same post-flush pass macOS and Windows run. *)
     ignore (Lui_app.flush app);
+    let lifecycle_revision = Lui_store.revision store in
     apply_actions (Assembly.store_changed asm);
     (* Shell event pump: menu selections, status activations,
        notification activations and opened URLs dispatch to their
@@ -656,10 +657,12 @@ let () =
         stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name
     end;
     if not headless && continue () then begin
+      ignore (Lui_app.flush app);
       let now = perf_s () *. 1000. in
       let next = Ui.next_input_deadline ui -. now in
       let next =
-        if Ui.want_frame ui host then begin
+        if Lui_store.revision store <> lifecycle_revision then 0.
+        else if Ui.want_frame ui host then begin
           if vsync then 0.
           else
             let hz = match Sdl.get_window_display_id !win with
