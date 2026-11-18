@@ -4575,6 +4575,29 @@ let test_assembly_autofocus () =
   Alcotest.(check (option int)) "autofocus id" (Some 2)
     (Assembly.first_autofocus asm)
 
+let test_native_ime_positioned_field () =
+  let rects props =
+    let asm = assembly_of
+        ([ CreateNode (1, Root); CreateNode (2, TextField);
+           InsertChild (1, 2, 0);
+           SetProp (1, HeightValue, IntValue 200);
+           SetProp (2, HeightValue, IntValue 24);
+           SetProp (2, TextValue, StringValue "editor") ] @ props) in
+    Ui.set_focused (Assembly.ui asm) (Assembly.store asm) 2;
+    let r = { Lui_ime.start = 3; stop = 4 } in
+    match Assembly.ime_range_rect asm r with
+    | Some range -> Assembly.caret_rect asm, range
+    | None -> Alcotest.fail "focused field has no geometry"
+  in
+  let before_caret, before_range = rects [] in
+  let after_caret, after_range = rects
+      [ SetProp (2, Position, StringValue "relative");
+        SetProp (2, InsetLeft, FloatValue 25.) ] in
+  Alcotest.(check (float 0.01)) "caret follows paint x" 25.
+    (after_caret.Lui_scene.x -. before_caret.Lui_scene.x);
+  Alcotest.(check (float 0.01)) "range follows paint x" 25.
+    (after_range.Lui_scene.x -. before_range.Lui_scene.x)
+
 let test_native_ime_committed_range () =
   let asm = assembly_of
       [ CreateNode (1, Root); CreateNode (2, TextField);
@@ -5048,6 +5071,7 @@ let () =
       ( "assembly",
         [ Alcotest.test_case "resize scroll clamp" `Quick test_assembly_resize_scroll_clamp;
           Alcotest.test_case "native IME committed range" `Quick test_native_ime_committed_range;
+          Alcotest.test_case "native IME positioned field" `Quick test_native_ime_positioned_field;
           Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;

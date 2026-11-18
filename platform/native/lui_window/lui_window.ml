@@ -3027,8 +3027,8 @@ module Assembly = struct
        the candidate-window anchor while composing. *)
     let caret_layout text =
       let id = Ui.focused ui in
-      let r = shifted_rect id in
-      if Lui_scene.rect_empty (Rects.get rects id) || Lui_scene.rect_empty r then None
+      let r = Rects.get rects id in
+      if Lui_scene.rect_empty r then None
       else Some (r, caret_ops id text ~lw:r.w ~lh:r.h)
     in
     let caret_at ((r : rect), ops) i =
