@@ -201,11 +201,21 @@ let refresh_hz_of (s : surf) =
     | Ok hz -> hz
     | Error _ -> 0.
 
+let update_display_link d =
+  Option.iter (fun metal ->
+    let hz = max 1 (int_of_float (Float.round (Frame.refresh_hz d.sched))) in
+    d.display_link <-
+      try Lui_metal.set_frame_rate metal hz; true
+      with Failure _ -> false) d.metal
+
 let refresh_scale (s : surf) =
   (match Sdl.get_window_display_id s.driver.sdl with
    | Ok di when di <> s.Multi.display -> s.Multi.display <- di
    | _ -> ());
-  Frame.set_refresh_hz s.driver.sched (refresh_hz_of s);
+  let sched = s.driver.sched in
+  let previous = Frame.refresh_hz sched in
+  Frame.set_refresh_hz sched (refresh_hz_of s);
+  if Frame.refresh_hz sched <> previous then update_display_link s.driver;
   let dw, dh = drawable s in
   if Multi.apply_drawable s ~dw ~dh then
     log "win=%d: drawable %dx%d scale %.2f (display %d)" s.driver.idx
@@ -790,12 +800,7 @@ let open_window ~title ~idx =
    | Ok di -> s.Multi.display <- di
    | Error _ -> ());
   Frame.set_refresh_hz d.sched (refresh_hz_of s);
-  Option.iter (fun metal ->
-    try
-      let hz = max 1 (int_of_float (Float.round (Frame.refresh_hz d.sched))) in
-      Lui_metal.set_frame_rate metal hz;
-      d.display_link <- true
-    with Failure _ -> ()) d.metal;
+  update_display_link d;
   log "lui_window[%d]: %dx%d drawable (scale %.2f), renderer=%s%s"
     idx dw dh scale (!(renderer_cell)).Lui_host.name
     (if !headless then " [headless]" else "");
