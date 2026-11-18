@@ -1,5 +1,48 @@
 # LUI API migration guide
 
+## Unreleased: Subtree error boundaries
+
+`Lui_elements.error_boundary ~fallback child` isolates exceptions raised while
+mounting a child or running its owned reactive view updates. For example:
+
+```ocaml
+error_boundary
+  ~fallback:(fun diagnostic -> text ~value:diagnostic.message [])
+  (reactive (fun model -> render model) model_s)
+```
+
+The diagnostic contains `exception_`, `message`, `state_path`, and `phase`
+(`Mount` or `Update`). A stderr diagnostic is logged once. The failed content
+scope is disposed, its runtime checkpoint restored, and its prior children
+replaced by the fallback. Partial writes and creates from the failing update
+are discarded; unrelated pending operations are preserved. External side
+effects and signal state changes are not transactional.
+
+Fallbacks **latch**: later publications do not retry the failed child. Remount
+the boundary (for example through an enclosing reactive switch) to retry with
+fresh subscriptions. A fallback is outside its own boundary, so a failing
+fallback reaches the nearest enclosing boundary, or propagates to the caller
+when none exists. An inner boundary handles errors before its enclosing one.
+
+The construct uses existing boxes with `display=contents` as a stable outer
+anchor and a disposable content anchor; no wire kind or host changes are
+required. As with other transparent anchors, use it where a box is an admissible child, not in
+restricted slots such as direct menu-item lists. It protects owned reactive
+subtree switches, collections, conditionals, and PPX-owned property projections.
+External signal producers, event/timer callbacks, disposal callbacks, backend
+rejections, and explicit reentrant flushes are not error-boundary transactions.
+Outside a boundary, exceptions retain their existing propagation behavior.
+OCaml eagerly evaluates constructor arguments: exceptions raised before a
+child's mount closure runs must be deferred with `scoped` or `reactive` to be
+inside the boundary.
+
+Low-level `Lui_ui.ui_context` records now include an inherited `ui_protect`
+callback. Prefer the context constructors; custom record literals must supply
+`ui_protect = (fun action -> action ())` outside a boundary. PPX-generated
+mount-owned projections use the scope-owning `Lui_ui.map`/`map2` helpers to
+route update failures to this callback. Runtime property binding helpers accept
+an optional `~protect` callback; existing callers retain exception propagation.
+
 ## Unreleased: Shared Android admission and native web-only hints
 
 Android main/cross alignment and modal-surface kind sets are now generated

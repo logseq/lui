@@ -12,6 +12,7 @@ type ui_context = {
   ui_state_path : string;
   ui_next_owner_id : int ref;
   ui_profile : Lui_protocol.platform_profile;
+  ui_protect : (unit -> unit) -> unit;
 }
 val make_context :
   Lui_runtime.application ->
@@ -28,6 +29,8 @@ val context_with_state_registry :
   Signal.scope ->
   (string, Signal.scope) Hashtbl.t -> (string, bool) Hashtbl.t -> ui_context
 val child_context : ui_context -> string -> ui_context
+val map : ui_context -> ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
+val map2 : ui_context -> ('a -> 'b -> 'c) -> 'a Signal.signal -> 'b Signal.signal -> 'c Signal.signal
 val owner_name : ui_context -> string -> string
 
 (** The application clock. Prefer {!after} and {!every} in views. *)

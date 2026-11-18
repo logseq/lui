@@ -472,6 +472,13 @@ and apply_roots ?(detached = false) fuel scope fn args =
                   ~some:(value_roots ~detached fuel)
                   (last values)
             | Some "scoped", fn :: _ -> function_roots ~detached fuel fn
+            | Some "error_boundary", child :: _ ->
+                List.iter (check_edge Schema.Box) (value_roots ~detached:true fuel child);
+                Option.iter (fun fallback ->
+                  List.iter (check_edge Schema.Box)
+                    (function_roots ~detached:true fuel fallback))
+                  (List.assoc_opt (Labelled "fallback") args);
+                [ (Schema.Box, fn.pexp_loc) ]
             | Some "if_", values ->
                 dynamic_roots detached fn.pexp_loc
                   (Option.fold ~none:[]

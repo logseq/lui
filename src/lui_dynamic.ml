@@ -129,7 +129,7 @@ let switch context parent source equal mount =
   let current_scope = ref initial_context.Lui_ui.ui_scope in
   let current_retired = ref initial_retired in
   let subscription =
-    Signal.subscribe ~emit_initial:false source (fun next_key ->
+    Signal.subscribe ~emit_initial:false source (fun next_key -> context.Lui_ui.ui_protect (fun () ->
         if !disposed || equal !current_key next_key
         then ()
         else
@@ -192,7 +192,7 @@ let switch context parent source equal mount =
                  (try Signal.dispose_scope branch_context.Lui_ui.ui_scope with _ -> ())
                | None -> ());
                end;
-               raise failure))
+               raise failure)))
   in
   ignore (Signal.own context.Lui_ui.ui_scope subscription);
   let dispose_callback =
@@ -225,6 +225,7 @@ let conditional context parent source mount =
            Lui_ui.child_context context branch_name
          in
          let branch_scope = branch_context.Lui_ui.ui_scope in
+         context.Lui_ui.ui_protect (fun () ->
          let was_mounted = !mounted_visible in
          mounted_visible := visible;
          (if visible && Lui_runtime.node_live application parent then
@@ -254,6 +255,7 @@ let conditional context parent source mount =
                      teardown_branch_node application parent node;
                    node_ref := None)
              | None -> ()));
+         Signal.mount branch_scope);
          branch_scope)
   in
   let dispose_callback =
@@ -524,7 +526,8 @@ let keyed context parent source key_fn compare mount =
   let segment = Lui_runtime.register_dynamic_segment context.Lui_ui.ui_application parent in
   let reconcile, keyed, _ = keyed_controller context parent segment key_fn compare mount in
   reconcile (Signal.sample source);
-  let subscription = Signal.subscribe ~emit_initial:false source (fun items -> reconcile items) in
+  let subscription = Signal.subscribe ~emit_initial:false source (fun items ->
+    context.Lui_ui.ui_protect (fun () -> reconcile items)) in
   ignore (Signal.own context.Lui_ui.ui_scope subscription);
   { keyed with dispose_dynamic_keyed = (fun () ->
       Signal.dispose_subscription subscription;
@@ -544,7 +547,8 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
   let reconcile, keyed, identities_by_node = keyed_controller context parent segment key_fn compare mount in
   if not application.Lui_runtime.runtime_virtual_rows then begin
     reconcile (Signal.sample source);
-    let subscription = Signal.subscribe ~emit_initial:false source (fun items -> reconcile items) in
+    let subscription = Signal.subscribe ~emit_initial:false source (fun items ->
+      context.Lui_ui.ui_protect (fun () -> reconcile items)) in
     ignore (Signal.own context.Lui_ui.ui_scope subscription);
     { keyed with dispose_dynamic_keyed = (fun () ->
         Signal.dispose_subscription subscription;
@@ -678,15 +682,17 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         adopted_pins := List.sort_uniq Int.compare (List.rev_append pins !adopted_pins))) viewport in
     let unsubscribe_retention = Option.map (fun viewport ->
       Lui_virtual.Internal.on_change viewport (fun () ->
+        context.Lui_ui.ui_protect (fun () ->
         if not !stopped && Lui_runtime.node_live application parent then begin
           let selected = visible_indices !positions in
           reconcile_indices !dataset !positions !scroll_positions !revision selected
-        end)) viewport in
+        end))) viewport in
     segment.Lui_runtime.dynamic_segment_on_property := Some (fun name value ->
       if name = Lui_protocol.ScrollTarget && not !stopped then
         Lui_runtime.set_prop application parent Lui_protocol.VirtualScrollIndex
           (Lui_protocol.IntValue (target !scroll_positions value)));
-    let subscription = Signal.subscribe ~emit_initial:false source update_source in
+    let subscription = Signal.subscribe ~emit_initial:false source (fun items ->
+      context.Lui_ui.ui_protect (fun () -> update_source items)) in
     ignore (Signal.own context.Lui_ui.ui_scope subscription);
     Lui_ui.on_event context parent (function
       | Lui_protocol.VirtualWindow (_, epoch, first, last, pins)
@@ -699,7 +705,8 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
            removal, until the next current-generation window replaces it. *)
         let pins = List.filter (Lui_runtime.node_live application) pins in
         let selected = List.init (last - first) (fun index -> first + index) in
-        reconcile_indices ~window_pins:pins !dataset !positions !scroll_positions !revision selected
+        context.Lui_ui.ui_protect (fun () ->
+          reconcile_indices ~window_pins:pins !dataset !positions !scroll_positions !revision selected)
       | _ -> ());
     let dispose () =
       if not !stopped then begin

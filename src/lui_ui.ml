@@ -13,6 +13,7 @@ type ui_context = {
   ui_state_path : string;
   ui_next_owner_id : int ref;
   ui_profile : platform_profile;
+  ui_protect : (unit -> unit) -> unit;
 }
 
 let make_context application scope state_scope state_scopes
@@ -28,6 +29,7 @@ let make_context application scope state_scope state_scopes
     ui_next_owner_id = ref 0;
     ui_profile =
       application.Lui_runtime.runtime_backend.backend_profile;
+    ui_protect = (fun action -> action ());
   }
 
 let context application scope =
@@ -57,8 +59,30 @@ let child_context parent name =
       created
   in
   Hashtbl.replace active_state_paths path true;
-  make_context parent.ui_application scope state_scope state_scopes
-    active_state_paths path
+  { (make_context parent.ui_application scope state_scope state_scopes
+    active_state_paths path) with ui_protect = parent.ui_protect }
+
+let guarded_projection context project =
+  let previous = ref None in
+  fun value ->
+    match !previous with
+    | None ->
+        let result = project value in
+        previous := Some result;
+        result
+    | Some old ->
+        let result = ref old in
+        context.ui_protect (fun () -> result := project value);
+        previous := Some !result;
+        !result
+
+let map context project source =
+  Signal.own_signal context.ui_scope
+    (Signal.map (guarded_projection context project) source)
+
+let map2 context project left right =
+  let project = guarded_projection context (fun (left, right) -> project left right) in
+  Signal.own_signal context.ui_scope (Signal.map2 (fun left right -> project (left, right)) left right)
 
 let owner_name context name =
   let index = !(context.ui_next_owner_id) in
@@ -101,7 +125,7 @@ let extension_property context node property value =
 
 let extension_property_signal context node property source =
   ignore
-    (Lui_runtime.bind_extension_prop context.ui_scope
+    (Lui_runtime.bind_extension_prop ~protect:context.ui_protect context.ui_scope
        context.ui_application node property source)
 
 let create context kind = Lui_runtime.create_node context.ui_application kind
@@ -184,7 +208,7 @@ let switch_control context = create context SwitchControl
 
 let bind_float_prop context node property source =
   ignore
-    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop_map ~protect:context.ui_protect context.ui_scope context.ui_application node
        property (fun value -> FloatValue value) source)
 
 let split context source =
@@ -220,7 +244,7 @@ let heading context level text =
 
 let bind_string_prop context node property source =
   ignore
-    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop_map ~protect:context.ui_protect context.ui_scope context.ui_application node
        property (fun text -> StringValue text) source)
 
 let heading_value context level source =
@@ -228,7 +252,7 @@ let heading_value context level source =
   Lui_runtime.set_prop context.ui_application node HeadingLevel
     (IntValue level);
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop ~protect:context.ui_protect context.ui_scope context.ui_application node
        TextValue source);
   node
 
@@ -247,7 +271,7 @@ let paragraph context text =
 let paragraph_value context source =
   let node = create context Paragraph in
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop ~protect:context.ui_protect context.ui_scope context.ui_application node
        TextValue source);
   node
 
@@ -265,7 +289,7 @@ let label context text =
 let label_value context source =
   let node = create context Label in
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop ~protect:context.ui_protect context.ui_scope context.ui_application node
        TextValue source);
   node
 
@@ -277,7 +301,7 @@ let label_signal context source =
 let text_value context source =
   let node = create context Text in
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop ~protect:context.ui_protect context.ui_scope context.ui_application node
        TextValue source);
   node
 
@@ -310,7 +334,7 @@ let bool_property context node property value =
 
 let bool_property_signal context node property source =
   ignore
-    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop_map ~protect:context.ui_protect context.ui_scope context.ui_application node
        property (fun value -> BoolValue value) source)
 
 let float_property context node property value =
@@ -322,7 +346,7 @@ let float_property_signal context node property source =
 
 let int_property_signal context node property source =
   ignore
-    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop_map ~protect:context.ui_protect context.ui_scope context.ui_application node
        property (fun value -> IntValue value) source)
 
 let int_property context node property value =
@@ -334,7 +358,7 @@ let value_property context node property value =
 
 let value_property_signal context node property source =
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop ~protect:context.ui_protect context.ui_scope context.ui_application node
        property source)
 
 let disabled context node disabled =
@@ -342,7 +366,7 @@ let disabled context node disabled =
 
 let disabled_signal context node source =
   ignore
-    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+    (Lui_runtime.bind_prop_map ~protect:context.ui_protect context.ui_scope context.ui_application node
        Enabled (fun disabled -> BoolValue (not disabled)) source)
 
 let checked_signal context node source =
@@ -554,12 +578,12 @@ let theme context node tokens =
   string_property context node ThemeValue (theme_tokens_json tokens)
 
 let theme_signal context node source =
-  ignore (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+  ignore (Lui_runtime.bind_prop_map ~protect:context.ui_protect context.ui_scope context.ui_application node
     ThemeValue (fun tokens -> StringValue (theme_tokens_json tokens)) source)
 
 let theme_mode context node mode =
   string_property context node ThemeMode (theme_mode_value mode)
 
 let theme_mode_signal context node source =
-  ignore (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+  ignore (Lui_runtime.bind_prop_map ~protect:context.ui_protect context.ui_scope context.ui_application node
     ThemeMode (fun mode -> StringValue (theme_mode_value mode)) source)

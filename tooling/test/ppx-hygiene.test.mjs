@@ -33,6 +33,8 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["context_menu [keyed ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> button [])]", "context-menu", "button"],
       ["context_menu [align `center (button [])]", "context-menu", "button"],
       ["context_menu [scoped (fun _ -> button [])]", "context-menu", "button"],
+      ['context_menu [error_boundary ~fallback:(fun _ -> text ~value:"error" []) (menu_item [])]', "context-menu", "box"],
+      ['column [error_boundary ~fallback:(fun _ -> text ~value:"error" []) (reactive (fun _ -> text ~value:"ok" []) source)]'],
       ["context_menu (List.map (fun _ -> button []) [1])", "context-menu", "button"],
       ["context_menu ([menu_item []] @ [button []])", "context-menu", "button"],
       ["context_menu [if true then menu_item [] else button []]", "context-menu", "button"],
@@ -327,6 +329,37 @@ let () =
       "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
       join(dir, "ownership.ml"), "-o", join(dir, "ownership")])
     assert.equal(run([join(dir, "ownership")]).trim(), "owned")
+
+    writeFileSync(join(dir, "boundary.ml"), `
+open Lui_elements
+let () =
+  List.iter (fun property ->
+    let errors = ref 0 in
+    let backend = { Lui_protocol.backend_profile = Lui_protocol.generic_profile ();
+      apply_batch = (fun _ -> true) } in
+    let render value = if value = 1 then failwith "view failed" else string_of_int value in
+    let view _ source _ =
+      error_boundary ~fallback:(fun diagnostic ->
+        incr errors;
+        assert (diagnostic.phase = \x60Update);
+        text ~value:"fallback" [])
+        (if property then text ~value:(reactive render source) []
+         else reactive (fun value -> text ~value:(render value) []) source) in
+    let app = Lui_app.create backend 0 (fun _ next -> next) view in
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    ignore (Lui_app.send app 1); ignore (Lui_app.flush app);
+    assert (!errors = 1);
+    ignore (Lui_app.send app 2); ignore (Lui_app.flush app);
+    assert (!errors = 1);
+    ignore (Lui_app.dispose app)
+  ) [false; true];
+  print_endline "isolated"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "boundary.ml"), "-o", join(dir, "boundary")])
+    assert.equal(run([join(dir, "boundary")]).trim(), "isolated")
 
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })

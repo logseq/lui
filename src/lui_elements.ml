@@ -420,6 +420,69 @@ let attach context parent node =
   | Some parent -> Lui_ui.append context parent node
   | None -> ()
 
+type error_diagnostic = {
+  exception_ : exn;
+  message : string;
+  state_path : string;
+  phase : [ `Mount | `Update ];
+}
+
+let error_boundary ~fallback child : t =
+ fun context parent ->
+  let application = context.Lui_ui.ui_application in
+  let anchor = Lui_ui.box context in
+  Lui_ui.string_property context anchor DisplayValue "contents";
+  attach context parent anchor;
+  let content = Lui_ui.child_context context (Lui_ui.owner_name context "error-boundary") in
+  let failed = ref false and running = ref false and mounted = ref false in
+  let protect action =
+    context.Lui_ui.ui_protect (fun () ->
+      if not !failed then
+        if !running then action ()
+        else begin
+          let saved = Lui_runtime.checkpoint_subtree application anchor anchor in
+          running := true;
+          Fun.protect ~finally:(fun () -> running := false) (fun () ->
+            try action () with exception_ ->
+              failed := true;
+              (try Signal.dispose_scope content.Lui_ui.ui_scope with _ -> ());
+              Lui_runtime.restore application saved;
+              application.Lui_runtime.pending_ops := saved.Lui_runtime.checkpoint_pending_ops;
+              List.iter (fun node ->
+                match Hashtbl.find_opt application.Lui_runtime.event_handlers node with
+                | None -> ()
+                | Some handlers ->
+                    application.Lui_runtime.runtime_handler_count :=
+                      !(application.Lui_runtime.runtime_handler_count) - List.length handlers;
+                    Hashtbl.remove application.Lui_runtime.event_handlers node)
+                (Lui_runtime.collect_subtree_nodes application.Lui_runtime.runtime_children
+                  (Lui_runtime.canonical_node application anchor));
+              List.iter (Lui_runtime.drop_subtree application)
+                (Lui_runtime.children application anchor);
+              let diagnostic = {
+                exception_; message = Printexc.to_string exception_;
+                state_path = content.Lui_ui.ui_state_path;
+                phase = if !mounted then `Update else `Mount;
+              } in
+              Printf.eprintf "LUI error boundary: path=%s phase=%s exception=%s\n%!"
+                diagnostic.state_path (if !mounted then "update" else "mount") diagnostic.message;
+              let recovery = Lui_ui.child_context context
+                (Lui_ui.owner_name context "error-fallback") in
+              ignore (fallback diagnostic recovery (Some anchor));
+              Signal.mount recovery.Lui_ui.ui_scope)
+        end)
+  in
+  let content = { content with Lui_ui.ui_protect = protect } in
+  Signal.on_dispose context.Lui_ui.ui_scope (fun () -> failed := true);
+  protect (fun () ->
+    let container = Lui_ui.box content in
+    Lui_ui.string_property content container DisplayValue "contents";
+    attach content (Some anchor) container;
+    ignore (child content (Some container));
+    Signal.mount content.Lui_ui.ui_scope);
+  mounted := true;
+  anchor
+
 let enable context node property =
   if Lui_protocol.property_supported (Lui_ui.node_kind context node) property
   then Lui_ui.bool_property context node property true

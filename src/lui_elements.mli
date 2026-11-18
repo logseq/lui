@@ -172,6 +172,22 @@ val get : 'a Signal.signal -> 'a
     {!Signal.value} [st]. *)
 val get_state : 'a Signal.state -> 'a
 val attach : Lui_ui.ui_context -> int option -> int -> unit
+
+type error_diagnostic = {
+  exception_ : exn;
+  message : string;
+  state_path : string;
+  phase : [ `Mount | `Update ];
+}
+
+(** Isolate mount and owned reactive view failures behind a transparent box.
+    The failed child scope is disposed and runtime writes are rolled back
+    before mounting [fallback]. The fallback is latched until this boundary
+    is remounted; later source publications do not retry the failed child.
+    Fallback failures propagate to an enclosing boundary (or the caller).
+    External signal producers, event handlers and backend failures are not
+    intercepted. *)
+val error_boundary : fallback:(error_diagnostic -> t) -> t -> t
 val enable :
   Lui_ui.ui_context -> int -> Lui_protocol.Property_map.key -> unit
 val mount_children : 'a -> 'b -> ('a -> 'b option -> 'c) list -> unit

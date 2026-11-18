@@ -165,17 +165,15 @@ let signal_only_labels = [ "test"; "source" ]
 
 let scoped_expression ~loc build =
   let context = gen_symbol ~prefix:"__lui_context_" () in
-  let scope = B.pexp_field ~loc (evar ~loc context)
-    { txt = Ldot (Lident "Lui_ui", "ui_scope"); loc } in
   let own_generated = object
     inherit Ast_traverse.map as super
     method! expression expression =
       let expression = super#expression expression in
       match expression.pexp_desc with
       | Pexp_apply ({ pexp_desc = Pexp_ident
-          { txt = Ldot (Lident "Signal", ("map" | "map2")); _ }; _ }, _) ->
-        apply ~loc (B.pexp_ident ~loc
-          { txt = Ldot (Lident "Signal", "own_signal"); loc }) [scope; expression]
+          { txt = Ldot (Lident "Signal", (("map" | "map2") as name)); _ }; _ }, args) ->
+        B.pexp_apply ~loc (B.pexp_ident ~loc
+          { txt = Ldot (Lident "Lui_ui", name); loc }) ((Nolabel, evar ~loc context) :: args)
       | _ -> expression
   end in
   let scoped = B.pexp_ident ~loc

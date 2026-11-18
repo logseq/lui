@@ -7,6 +7,121 @@ let check_failure label result = Alcotest.(check bool) label true (Option.is_som
 
 type closure_model = { callback : unit -> string }
 
+let boundary_fixture () =
+  let emitted = ref [] in
+  let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun batch ->
+    emitted := batch.ops; true)) in
+  let scope = Signal.scope "boundary-tests" in
+  app, scope, Lui_ui.context app scope, emitted
+
+let text_values app =
+  Hashtbl.fold (fun _ properties values ->
+    match Property_map.find_opt TextValue properties with
+    | Some (StringValue value) -> value :: values
+    | _ -> values) app.Lui_runtime.runtime_properties []
+
+let partial_view context parent =
+  ignore (Lui_elements.text ~value:"partial" [] context parent);
+  failwith "view failed"
+
+let boundary_initial_mount () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let sibling = Lui_ui.text context "sibling" in
+  let diagnostic = ref None in
+  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
+    diagnostic := Some error;
+    Lui_elements.text ~value:"fallback" []) partial_view context None);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "failed mount reports its exception and phase" true
+    (match !diagnostic with
+     | Some { exception_ = Failure message; phase = `Mount; state_path; _ } ->
+         message = "view failed" && state_path <> ""
+     | _ -> false);
+  Alcotest.(check bool) "unrelated pending node survives rollback" true
+    (Lui_runtime.node_live app sibling);
+  Alcotest.(check (list string)) "only sibling and fallback survive" ["fallback"; "sibling"]
+    (List.sort String.compare (text_values app));
+  Alcotest.(check bool) "partial writes do not reach the batch" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_reactive_update () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let source = Signal.state context.ui_scheduler 0 in
+  let mounts = ref 0 and failures = ref 0 in
+  let child context parent =
+    let parent = Option.get parent in
+    ignore (Lui_dynamic.switch context parent (Signal.value source) Int.equal
+      (fun context value ->
+        incr mounts;
+        if value = 1 then partial_view context None
+        else begin
+          let node = Lui_ui.text context (string_of_int value) in
+          Lui_ui.on_event context node (fun _ -> ());
+          node
+        end));
+    parent in
+  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
+    incr failures;
+    Alcotest.(check bool) "update diagnostic" true (error.phase = `Update);
+    Lui_elements.text ~value:"fallback" []) child context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "successful initial view" ["0"] (text_values app);
+  Signal.set source 2;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "successful reactive update" ["2"] (text_values app);
+  Signal.set source 1;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "failed branch replaced" ["fallback"] (text_values app);
+  Alcotest.(check bool) "partial reactive writes discarded" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+  Signal.set source 3;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "failed child is not retried" 3 !mounts;
+  Alcotest.(check int) "diagnostic emitted once" 1 !failures;
+  Alcotest.(check int) "failed subscriptions released" 0 (Lui_runtime.dynamic_segment_count app);
+  Alcotest.(check int) "rolled-back handlers are released" 0 !(app.runtime_handler_count);
+  Alcotest.(check (list string)) "fallback stays latched" ["fallback"] (text_values app);
+  Signal.dispose_scope scope
+
+let boundary_nested () =
+  List.iter (fun broken_fallback ->
+    let app, scope, context, _ = boundary_fixture () in
+    let outer_errors = ref 0 and inner_errors = ref 0 in
+    let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr inner_errors;
+      if broken_fallback then partial_view
+      else Lui_elements.text ~value:"inner" []) partial_view in
+    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr outer_errors;
+      Lui_elements.text ~value:"outer" []) inner context None);
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "nearest boundary handles the child" 1 !inner_errors;
+    Alcotest.(check int) "fallback failure reaches enclosing boundary"
+      (if broken_fallback then 1 else 0) !outer_errors;
+    Alcotest.(check (list string)) "no partial nested view survives"
+      [if broken_fallback then "outer" else "inner"] (text_values app);
+    Signal.dispose_scope scope) [false; true]
+
+let boundary_property_projection () =
+  let app, scope, context, _ = boundary_fixture () in
+  let source = Signal.state context.ui_scheduler "ok" in
+  let child context parent =
+    let projected = Lui_ui.map context (fun value ->
+      if value = "bad" then failwith "projection failed" else value) (Signal.value source) in
+    let node = Lui_ui.text_signal context projected in
+    Lui_elements.attach context parent node;
+    node in
+  ignore (Lui_elements.error_boundary
+    ~fallback:(fun _ -> Lui_elements.text ~value:"fallback" []) child context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Signal.set source "bad";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "owned projection failures are isolated" ["fallback"] (text_values app);
+  Signal.dispose_scope scope
+
 let numeric_normalization () =
   List.iter (fun property ->
     List.iter (fun number ->
@@ -424,6 +539,10 @@ let sequence_ordering () =
 
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["keyed state isolation and lifetime", keyed_states;
+   "boundary initial mount rollback", boundary_initial_mount;
+   "boundary reactive failure and latched fallback", boundary_reactive_update;
+   "nested boundaries and fallback failures", boundary_nested;
+   "boundary owned property projection", boundary_property_projection;
    "closure-bearing subtree publications", closure_subtree_publication;
    "numeric normalization and runtime emission", numeric_normalization;
    "duplicate keyed publications", duplicate_keyed_publication;
