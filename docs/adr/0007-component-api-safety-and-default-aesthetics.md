@@ -1,4 +1,4 @@
-# ADR 0006: Component API safety and default aesthetics
+# ADR 0007: Component API safety and default aesthetics
 
 Status: proposed
 
