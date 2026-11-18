@@ -106,6 +106,7 @@ import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.LaunchedEffect
@@ -297,8 +298,8 @@ private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long, stretch: B
 /** Applies `grow` to a child inside a Column. */
 @Composable
 private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boundedHeight: Boolean) {
-    val grow = backend.node(childId)?.prop("grow")?.numberValue ?: 0.0
-    if (grow > 0 && boundedHeight) {
+    val grow = if (boundedHeight) backend.node(childId)?.prop("grow")?.numberValue ?: 0.0 else 0.0
+    if (grow > 0) {
         Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)), propagateMinConstraints = true) {
             LuiNodeView(backend, childId)
         }
@@ -309,15 +310,29 @@ private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boun
 
 @Composable
 private fun LuiColumn(
+    backend: LuiBackend,
+    children: List<Long>,
     modifier: Modifier = Modifier,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     content: @Composable ColumnScope.(Boolean) -> Unit,
 ) {
-    BoxWithConstraints(modifier, propagateMinConstraints = true) {
-        val boundedHeight = constraints.hasBoundedHeight
-        Column(verticalArrangement = verticalArrangement, horizontalAlignment = horizontalAlignment) {
-            content(boundedHeight)
+    // Only weighted children need to distinguish bounded from natural height.
+    // Nested subcompositions repeatedly invalidate their ancestors, and a
+    // subcomposed column cannot answer the intrinsic queries of a stretch row.
+    val hasGrowingChild by remember(backend, children) {
+        derivedStateOf { children.any { (backend.node(it)?.prop("grow")?.numberValue ?: 0.0) > 0 } }
+    }
+    if (hasGrowingChild) {
+        BoxWithConstraints(modifier, propagateMinConstraints = true) {
+            val boundedHeight = constraints.hasBoundedHeight
+            Column(verticalArrangement = verticalArrangement, horizontalAlignment = horizontalAlignment) {
+                content(boundedHeight)
+            }
+        }
+    } else {
+        Column(modifier, verticalArrangement, horizontalAlignment) {
+            content(false)
         }
     }
 }
@@ -369,6 +384,8 @@ private fun LuiNodeContent(
         LuiNodeKind.tree,
         LuiNodeKind.timeline,
         -> LuiColumn(
+            backend = backend,
+            children = children,
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
@@ -405,6 +422,8 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.table -> LuiColumn(
+            backend = backend,
+            children = children,
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
@@ -466,7 +485,7 @@ private fun LuiNodeContent(
 
         LuiNodeKind.bubble -> LuiBubble(backend, node, modifier, children)
 
-        LuiNodeKind.box -> LuiColumn(modifier) { boundedHeight ->
+        LuiNodeKind.box -> LuiColumn(backend, children, modifier) { boundedHeight ->
             children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight) }
         }
 
@@ -2367,7 +2386,11 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                         sheetState.expand()
                     }
                 }
-                LuiColumn(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) { boundedHeight ->
+                LuiColumn(
+                    backend,
+                    node.children,
+                    Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity),
+                ) { boundedHeight ->
                     if (node.text().isNotEmpty()) {
                         Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.headlineSmall)
