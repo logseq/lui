@@ -33,10 +33,15 @@ batch"`. On the next flush, even without new pending operations, the runtime
 sends an authoritative `resync_batch` snapshot of the latest retained state
 under the next host generation. Later successful turns resume incremental
 delivery. For example, catch a rejected flush, restore/reset the host through
-its existing resync mechanism, then flush again rather than manually retrying
-the rejected delta. The backend's `apply_batch` callback must accept that full
-snapshot against its reset mirror; the OCaml backend interface does not itself
-provide a host-reset callback. Exceptions from `apply_batch` retain the existing
+its existing resync mechanism when using an explicit bridge snapshot. For a
+synchronous backend returning `false`, simply flush again: recovery now prefixes
+the snapshot with `DetachSubtree` for every root acknowledged by that backend,
+including roots removed from the runtime in the rejected delta. This clears
+the old mirror before recreating live nodes without a new host-reset callback.
+Explicit bridge snapshots remain create/set/insert-only: Apple's
+`applySnapshot` and Android's replacement-store path still perform their own
+reset. The Web backend reports apply errors as exceptions rather than `false`;
+this rejection policy does not change its DOM error recovery. Exceptions from `apply_batch` retain the existing
 uncertain-commit semantics. There is no wire-format change.
 
 ## Unreleased: Web top-level MenuTrigger activation

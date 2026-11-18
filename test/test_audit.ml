@@ -62,13 +62,13 @@ let rejected_batch_resync () =
   Lui_runtime.set_prop app node TextValue (StringValue "rejected");
   check_failure "rejection reported" (attempt (fun () -> ignore (Lui_runtime.flush app)));
   Alcotest.(check bool) "rejected delta not requeued" true (!(app.pending_ops) = []);
-  let snapshot = (Lui_runtime.resync_batch app).ops in
+  let snapshot = DetachSubtree node :: (Lui_runtime.resync_batch app).ops in
   check_failure "rejected recovery remains scheduled"
     (attempt (fun () -> ignore (Lui_runtime.flush app)));
   Alcotest.(check bool) "recovery runs without new pending operations" true
     ((List.hd !batches).ops = snapshot);
   Lui_runtime.set_prop app node TextValue (StringValue "latest");
-  let expected = (Lui_runtime.resync_batch app).ops in
+  let expected = DetachSubtree node :: (Lui_runtime.resync_batch app).ops in
   reject := false;
   ignore (Lui_runtime.flush app);
   let recovered = List.hd !batches in

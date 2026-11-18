@@ -9,6 +9,8 @@
 
 open Lui_protocol
 
+module Root_set = Set.Make (Int)
+
 type event_handler = {
   handler_id : int;
   handler_callback : event -> unit;
@@ -94,6 +96,7 @@ type application = {
   runtime_echo : (int, echo_state) Hashtbl.t;
   runtime_generation : int ref;
   runtime_resync_required : bool ref;
+  runtime_host_roots : Root_set.t ref;
   runtime_diagnostics : flush_diagnostics ref;
   next_handler_id : int ref;
   event_handlers : (int, event_handler list) Hashtbl.t;
@@ -215,6 +218,7 @@ let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler 
     runtime_echo = Hashtbl.create 16;
     runtime_generation = ref 0;
     runtime_resync_required = ref false;
+    runtime_host_roots = ref Root_set.empty;
     runtime_diagnostics = ref (empty_diagnostics ());
     next_handler_id = ref 0;
     event_handlers = Hashtbl.create 16;
@@ -2510,6 +2514,12 @@ let record_diagnostics application status operation_count
 (* Exceptions consume the uncertain generation. Rejection instead schedules
    an authoritative snapshot under the generation the host still expects. *)
 let apply_pending_batch application batch operation_count next_generation =
+  let roots = List.fold_left (fun roots -> function
+    | CreateNode (node, _) | CreateExtension (node, _, _)
+    | RemoveChild (_, node) -> Root_set.add node roots
+    | InsertChild (_, node, _) | DropNode node | DetachSubtree node ->
+        Root_set.remove node roots
+    | _ -> roots) !(application.runtime_host_roots) batch.ops in
   let committed =
     try application.runtime_backend.apply_batch batch
     with failure ->
@@ -2519,6 +2529,7 @@ let apply_pending_batch application batch operation_count next_generation =
       raise failure
   in
   if committed then begin
+    application.runtime_host_roots := roots;
     application.runtime_generation := next_generation;
     record_diagnostics application Applied operation_count 0
   end
@@ -2577,7 +2588,10 @@ let rec flush application =
           if recovering then begin
             if Hashtbl.length application.elision_ghosts > 0 then
               ignore (elide_pending_ops application);
-            (resync_batch application).ops
+            List.rev_append
+              (List.rev_map (fun node -> DetachSubtree node)
+                (Root_set.elements !(application.runtime_host_roots)))
+              (resync_batch application).ops
           end
           else if Hashtbl.length application.elision_ghosts = 0 then
             List.rev !(application.pending_ops)
