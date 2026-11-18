@@ -144,7 +144,8 @@ let replace_committed st (range : Lui_ime.range) text =
   else
     let ime, _ = Lui_ime.feed_event st.ime (`Commit "") in
     let next, actions = splice_at { st with ime } ~lo:range.start ~hi:range.stop text in
-    if st.ime.active && actions = [] then next, [`Repaint] else next, actions
+    if actions = [] && (st.ime.active || st.caret <> next.caret || st.anchor <> next.anchor)
+    then next, [`Repaint] else next, actions
 
 let insert st s = splice st s
 
