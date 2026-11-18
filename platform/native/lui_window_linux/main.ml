@@ -565,6 +565,7 @@ let () =
     (Lui_shell_linux.gui_available ());
   let e = Sdl.Event.create () in
   let handle_sdl_event () =
+    Ui.tick_scrollbars ui ~now_ms:(perf_s () *. 1000.);
     let event = Sdl.Event.value e in
     let kind = event.kind in
     (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the

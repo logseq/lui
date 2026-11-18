@@ -866,7 +866,9 @@ let handle_sdl_event e =
             !routed)
       | None -> Multi.find_focused windows, e in
     (match target, input_of_event e with
-     | Some s, Some input -> apply_actions s (Multi.dispatch s input)
+     | Some s, Some input ->
+       Ui.tick_scrollbars s.ui ~now_ms:(perf_s () *. 1000.);
+       apply_actions s (Multi.dispatch s input)
      | _ -> ())
 
 let drain_events e =
