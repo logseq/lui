@@ -39,6 +39,12 @@ and apply its actions as for `Assembly.handle`. Ranges use UTF-8 byte
 offsets in the current committed text, not UTF-16 indices or preedit
 offsets. Secure fields do not expose committed text to these requests.
 
+The experimental Win32 driver now handles IMM32 reconversion and document
+feed requests for normal editable fields. A confirmed reconversion replaces
+the requested committed range, instead of inserting the result at the
+current caret. Existing text-change handlers, including those for normal
+IME composition, do not need to change.
+
 ## Unreleased: Web top-level MenuTrigger activation
 
 On Web, a top-level `MenuTrigger` that owns a `DropdownMenu` opens on activation

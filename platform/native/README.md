@@ -117,6 +117,10 @@ On macOS 14 and newer, Metal uses the view's display link to schedule dirty
 frames. The main-run-loop callback wakes SDL and can service drawable changes
 while Cocoa owns the event loop for a live resize.
 
+The experimental Win32 host uses the focused editor's committed text and
+caret geometry for IMM32 requests. This protocol excludes secure fields;
+ordinary composition and commit messages still follow the existing path.
+
 ```sh
 OPAMSWITCH=5.5.1 opam exec -- dune build platform/native/
 OPAMSWITCH=5.5.1 opam exec -- dune runtest platform/native/ -j 1 --force

@@ -347,6 +347,7 @@ let () =
   (* Caret rect of the focused field, device px — the candidate-window
      anchor while composing. *)
   let caret_rect () = Assembly.caret_rect asm in
+  let reconversion = ref None in
   let rec apply_actions acts = List.iter (function
     | Dispatch ev ->
       (try ignore (Lui_app.dispatch_event app ev)
@@ -368,6 +369,7 @@ let () =
       Lui_host.resize host ~width:dw ~height:dh ~scale:!scale_cell;
       Lui_ax_windows.refresh_frames ax
     | Focus_changed id ->
+      reconversion := None;
       if id = 0 then Lui_ax_windows.clear_focused ax
       else Lui_ax_windows.set_focused ax id;
       if id = 0 then Lui_win32.set_ime_enabled hwnd false
@@ -379,6 +381,29 @@ let () =
     | Quit -> quit := true)
     acts
   in
+  if not headless then begin
+    Callback.register "lui_win32_ime_surrounding"
+      (fun () -> Assembly.ime_surrounding asm);
+    Callback.register "lui_win32_ime_geometry" (fun at ->
+      Option.map (fun (r : Lui_scene.rect) ->
+        int_of_float r.x, int_of_float r.y, max 1 (int_of_float r.h))
+        (Assembly.ime_range_rect asm { Lui_ime.start = at; stop = at }));
+    Callback.register "lui_win32_ime_confirm" (fun start stop ->
+      let range = { Lui_ime.start; stop } in
+      match Assembly.ime_surrounding asm with
+      | Some { text; _ } when Lui_ime.valid_range text range ->
+        reconversion := Some (Ui.focused ui, text, range);
+        true
+      | _ -> reconversion := None; false);
+    Callback.register "lui_win32_ime_replace" (fun replacement ->
+      let expected = !reconversion in
+      reconversion := None;
+      match expected, Assembly.ime_surrounding asm with
+      | Some (id, original, range), Some { text; _ }
+        when text = original && id = Ui.focused ui ->
+        apply_actions (Assembly.ime_replace asm range replacement)
+      | _ -> apply_actions (Assembly.handle asm (Input.Text_input "")))
+  end;
   (* UIA actions from assistive tech route through the same dispatch
      path as pointer input. [drain_actions] is pumped once per frame. *)
   let apply_ax_actions () =
