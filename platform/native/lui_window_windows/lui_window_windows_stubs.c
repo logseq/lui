@@ -126,6 +126,57 @@ static int valid_utf16_offset(const wchar_t *w, DWORD n, DWORD i)
   return i <= n && (i == n || !(w[i] >= 0xdc00 && w[i] <= 0xdfff));
 }
 
+static LRESULT ime_char_position(HWND hwnd, IMECHARPOSITION *pos,
+                                 const wchar_t *marked, DWORD n)
+{
+  CAMLparam0();
+  CAMLlocal2(text, answer);
+  const value *geometry = caml_named_value("lui_win32_ime_geometry");
+  if (!geometry || !valid_utf16_offset(marked, n, pos->dwCharPos))
+    CAMLreturnT(LRESULT, 0);
+  char *utf8 = n ? utf16_to_8(marked, n) : NULL;
+  if (n && !utf8) CAMLreturnT(LRESULT, 0);
+  text = caml_copy_string(utf8 ? utf8 : "");
+  free(utf8);
+  int at = pos->dwCharPos ? utf16_prefix_utf8_len(marked, pos->dwCharPos) : 0;
+  answer = caml_callback2_exn(*geometry, text,
+      Val_int(at));
+  if (Is_exception_result(answer) || Is_long(answer)) CAMLreturnT(LRESULT, 0);
+  answer = Field(answer, 0);
+  POINT point = {Int_val(Field(answer, 0)), Int_val(Field(answer, 1))};
+  RECT area;
+  if (!ClientToScreen(hwnd, &point) || !GetClientRect(hwnd, &area))
+    CAMLreturnT(LRESULT, 0);
+  MapWindowPoints(hwnd, NULL, (POINT *)&area, 2);
+  pos->pt = point;
+  pos->cLineHeight = Int_val(Field(answer, 2));
+  pos->rcDocument = area;
+  CAMLreturnT(LRESULT, 1);
+}
+
+static LRESULT ime_query_char_position(HWND hwnd, IMECHARPOSITION *pos)
+{
+  if (!pos || pos->dwSize < sizeof(*pos)) return 0;
+  if (!ime_composing) return ime_char_position(hwnd, pos, L"", 0);
+  HIMC himc = ImmGetContext(hwnd);
+  if (!himc) return 0;
+  LONG bytes = ImmGetCompositionStringW(himc, GCS_COMPSTR, NULL, 0);
+  wchar_t *marked = NULL;
+  if (bytes > 0 && bytes % sizeof(*marked) == 0) {
+    marked = malloc((size_t)bytes);
+    if (marked && ImmGetCompositionStringW(himc, GCS_COMPSTR, marked, bytes) != bytes) {
+      free(marked);
+      marked = NULL;
+    }
+  }
+  ImmReleaseContext(hwnd, himc);
+  LRESULT result = marked ? ime_char_position(hwnd, pos, marked, bytes / sizeof(*marked))
+                          : bytes == 0 || bytes == IMM_ERROR_NODATA
+                            ? ime_char_position(hwnd, pos, L"", 0) : 0;
+  free(marked);
+  return result;
+}
+
 static LRESULT ime_request(HWND hwnd, WPARAM request, LPARAM payload)
 {
   CAMLparam0();
@@ -182,28 +233,6 @@ static LRESULT ime_request(HWND hwnd, WPARAM request, LPARAM payload)
           Val_int(utf16_prefix_utf8_len(wide, lo)),
           Val_int(utf16_prefix_utf8_len(wide, lo + r->dwCompStrLen)));
       result = reconverting = !Is_exception_result(answer) && Bool_val(answer);
-      break;
-    }
-    case IMR_QUERYCHARPOSITION: {
-      const value *geometry = caml_named_value("lui_win32_ime_geometry");
-      IMECHARPOSITION *pos = (IMECHARPOSITION *)payload;
-      if (!geometry || !pos || pos->dwSize < sizeof(*pos)) break;
-      int caret = utf8_prefix_utf16_len(text, Int_val(Field(record, 2)));
-      int base = ime_composing ? start : caret;
-      if (pos->dwCharPos > (DWORD)(n - base)) break;
-      DWORD i = base + pos->dwCharPos;
-      if (!valid_utf16_offset(wide, n, i)) break;
-      answer = caml_callback_exn(*geometry, Val_int(utf16_prefix_utf8_len(wide, i)));
-      if (Is_exception_result(answer) || Is_long(answer)) break;
-      record = Field(answer, 0);
-      POINT point = {Int_val(Field(record, 0)), Int_val(Field(record, 1))};
-      RECT area;
-      if (!ClientToScreen(hwnd, &point) || !GetClientRect(hwnd, &area)) break;
-      MapWindowPoints(hwnd, NULL, (POINT *)&area, 2);
-      pos->pt = point;
-      pos->cLineHeight = Int_val(Field(record, 2));
-      pos->rcDocument = area;
-      result = 1;
       break;
     }
   }
@@ -412,9 +441,10 @@ static LRESULT CALLBACK lww_wndproc(HWND hwnd, UINT msg, WPARAM wp,
     switch (wp) {
       case IMR_RECONVERTSTRING:
       case IMR_DOCUMENTFEED:
-      case IMR_QUERYCHARPOSITION:
       case IMR_CONFIRMRECONVERTSTRING:
         return ime_request(hwnd, wp, lp);
+      case IMR_QUERYCHARPOSITION:
+        return ime_query_char_position(hwnd, (IMECHARPOSITION *)lp);
       default:
         return DefWindowProcW(hwnd, msg, wp, lp);
     }
@@ -805,6 +835,13 @@ CAMLprim value lww_test_ime_requests(value vhwnd)
   if (SendMessageW(hwnd, WM_IME_REQUEST, IMR_QUERYCHARPOSITION, (LPARAM)&pos) &&
       pos.cLineHeight == 19)
     checks |= 8;
+  const wchar_t marked[] = {0xd83d, 0xde00, L'x'};
+  pos.dwCharPos = 2;
+  if (ime_char_position(hwnd, &pos, marked, 3) && pos.cLineHeight == 20)
+    checks |= 16;
+  pos.dwCharPos = 1;
+  if (!ime_char_position(hwnd, &pos, marked, 3))
+    checks |= 32;
   SendMessageW(hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
   free(r);
   CAMLreturn(Val_int(checks));

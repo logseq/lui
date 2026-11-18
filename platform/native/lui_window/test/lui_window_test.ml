@@ -4598,6 +4598,24 @@ let test_native_ime_positioned_field () =
   Alcotest.(check (float 0.01)) "range follows paint x" 25.
     (after_range.Lui_scene.x -. before_range.Lui_scene.x)
 
+let test_native_ime_marked_position () =
+  let asm = assembly_of
+      [ CreateNode (1, Root); CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (1, HeightValue, IntValue 200);
+        SetProp (2, HeightValue, IntValue 24);
+        SetProp (2, TextValue, StringValue "") ] in
+  Ui.set_focused (Assembly.ui asm) (Assembly.store asm) 2;
+  let marked = "😀x" in
+  let position at =
+    match Assembly.ime_marked_caret_rect asm marked at with
+    | Some r -> r.Lui_scene.x
+    | None -> Alcotest.fail "valid marked offset has no position" in
+  Alcotest.(check (float 0.01)) "geometry follows the preedit, not empty committed text"
+    32. (position 4 -. position 0);
+  Alcotest.(check bool) "split UTF-8 rejected" true
+    (Option.is_none (Assembly.ime_marked_caret_rect asm marked 2))
+
 let test_native_ime_committed_range () =
   let asm = assembly_of
       [ CreateNode (1, Root); CreateNode (2, TextField);
@@ -5072,6 +5090,7 @@ let () =
         [ Alcotest.test_case "resize scroll clamp" `Quick test_assembly_resize_scroll_clamp;
           Alcotest.test_case "native IME committed range" `Quick test_native_ime_committed_range;
           Alcotest.test_case "native IME positioned field" `Quick test_native_ime_positioned_field;
+          Alcotest.test_case "native IME marked position" `Quick test_native_ime_marked_position;
           Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;

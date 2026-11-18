@@ -39,6 +39,11 @@ and apply its actions as for `Assembly.handle`. Ranges use UTF-8 byte
 offsets in the current committed text, not UTF-16 indices or preedit
 offsets. Secure fields do not expose committed text to these requests.
 
+For a character position inside an active preedit, use
+`Lui_window.Assembly.ime_marked_caret_rect asm marked byte_offset`, not
+`ime_range_rect`. Pass the native marked string and an offset in that
+string; query `ime_range_rect` only for committed text.
+
 Input preferences are optional: for example, use
 `Lui_sdl3.start_text_input ~autocorrect:false ~capitalization:Lui_sdl3.None_ window`
 for an identifier field. Omitting the options keeps the SDL defaults.

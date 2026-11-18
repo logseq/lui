@@ -384,10 +384,10 @@ let () =
   if not headless then begin
     Callback.register "lui_win32_ime_surrounding"
       (fun () -> Assembly.ime_surrounding asm);
-    Callback.register "lui_win32_ime_geometry" (fun at ->
+    Callback.register "lui_win32_ime_geometry" (fun marked at ->
       Option.map (fun (r : Lui_scene.rect) ->
         int_of_float r.x, int_of_float r.y, max 1 (int_of_float r.h))
-        (Assembly.ime_range_rect asm { Lui_ime.start = at; stop = at }));
+        (Assembly.ime_marked_caret_rect asm marked at));
     Callback.register "lui_win32_ime_confirm" (fun start stop ->
       let range = { Lui_ime.start; stop } in
       match Assembly.ime_surrounding asm with

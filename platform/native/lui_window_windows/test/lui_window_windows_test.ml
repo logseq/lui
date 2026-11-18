@@ -644,9 +644,12 @@ let test_win32_ime_requests () =
       Some { Lui_ime.text = "a😀z"; selection = { start = 1; stop = 5 }; caret = 5 });
     Callback.register "lui_win32_ime_confirm" (fun start stop ->
       start = 1 && stop = 5);
-    Callback.register "lui_win32_ime_geometry" (fun at ->
-      if at = 5 then Some (10, 12, 19) else None);
-    Alcotest.(check int) "reconvert, confirm, document feed, geometry" 15
+    Callback.register "lui_win32_ime_geometry" (fun marked at ->
+      match marked, at with
+      | "", 0 -> Some (10, 12, 19)
+      | "😀x", 4 -> Some (10, 12, 20)
+      | _ -> None);
+    Alcotest.(check int) "reconvert, confirm, document feed, marked geometry" 63
       (test_ime_requests hwnd))
 
 let test_win32_window () =

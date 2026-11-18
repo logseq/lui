@@ -864,6 +864,10 @@ module Assembly : sig
   val ime_range_rect : t -> Lui_ime.range -> rect option
   (** Bounding rectangle in surface device pixels for a committed range. *)
 
+  val ime_marked_caret_rect : t -> string -> int -> rect option
+  (** Device-pixel caret at a UTF-8 byte offset in the native marked string,
+      which can arrive before the corresponding editing event. *)
+
   val ime_replace : t -> Lui_ime.range -> string -> action list
   (** Replace a committed range in the current field, if valid. Apply
       the returned actions as for {!handle}. *)

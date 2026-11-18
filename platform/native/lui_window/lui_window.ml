@@ -2594,6 +2594,7 @@ module Assembly = struct
         (** Focused field's caret rect, device px — candidate-window
             anchor while composing. *)
     ime_range_rect : Lui_ime.range -> rect option;
+    ime_marked_caret_rect : string -> int -> rect option;
     spatial_hit : unit -> Lui_spatial.t option;
         (** Fresh subtree-bound index for {!Ui.handle} — [None] until
             the first {!populate} has produced rects. *)
@@ -2609,6 +2610,7 @@ module Assembly = struct
   let store t = Lui_host.store t.host
   let ime_surrounding t = Ui.ime_surrounding t.ui (store t)
   let ime_range_rect t range = t.ime_range_rect range
+  let ime_marked_caret_rect t text at = t.ime_marked_caret_rect text at
   let ime_replace t range text = Ui.ime_replace t.ui (store t) range text
   let handle t input =
     Ui.handle ?spatial:(t.spatial_hit ()) t.ui (store t) t.rects input
@@ -3041,6 +3043,20 @@ module Assembly = struct
       | None -> Rects.zero
       | Some layout -> caret_at layout (min (Ui.caret ui) (String.length text))
     in
+    let ime_marked_caret_rect marked at =
+      match Ui.ime_surrounding ui store with
+      | Some { text; caret; _ }
+        when Lui_ime.valid_range marked { start = at; stop = at } ->
+        Option.map (fun (((r : rect), _) as layout) ->
+          let anchor = caret_at layout caret in
+          if marked = "" then anchor
+          else
+            let r = { r with x = anchor.x } in
+            let ops = caret_ops (Ui.focused ui) marked ~lw:r.w ~lh:r.h in
+            caret_at (r, ops) at)
+          (caret_layout text)
+      | _ -> None
+    in
     let ime_range_rect (range : Lui_ime.range) =
       match Ui.ime_surrounding ui store with
       | Some { text; _ } when Lui_ime.valid_range text range ->
@@ -3104,5 +3120,6 @@ module Assembly = struct
              | None -> r)
            | None -> r);
     { host; ui; rects; scale_cell; engine_rect; populate; caret_rect; ime_range_rect;
+      ime_marked_caret_rect;
       spatial_hit = spatial_for_hit }
 end
