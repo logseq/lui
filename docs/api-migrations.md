@@ -39,6 +39,16 @@ and apply its actions as for `Assembly.handle`. Ranges use UTF-8 byte
 offsets in the current committed text, not UTF-16 indices or preedit
 offsets. Secure fields do not expose committed text to these requests.
 
+Input preferences are optional: for example, use
+`Lui_sdl3.start_text_input ~autocorrect:false ~capitalization:Lui_sdl3.None_ window`
+for an identifier field. Omitting the options keeps the SDL defaults.
+Send native-window work from another domain with
+`Lui_sdl3.run_on_main_thread (fun () -> Lui_sdl3.show_window window)`
+after SDL initialization; posted work is asynchronous off the UI thread.
+Use `Lui_sdl3.native_handle window` to query the backend instead of using
+SDL2 WM-info calls; for example, match `Some (Lui_sdl3.Wayland_surface ptr)`
+for a Wayland-only integration and leave other drivers unchanged.
+
 The experimental Win32 driver now handles IMM32 reconversion and document
 feed requests for normal editable fields. A confirmed reconversion replaces
 the requested committed range, instead of inserting the result at the
