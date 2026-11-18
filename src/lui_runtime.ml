@@ -1910,7 +1910,14 @@ let notify_segment_property application node property value =
         Option.iter (fun notify -> notify property value)
           !(segment.dynamic_segment_on_property)) segments
 
+let ignored_property application property =
+  Lui_wire_schema.property_web_only property &&
+  match application.runtime_backend.backend_profile.profile_host with
+  | SwiftUIHost | KotlinHost -> true
+  | WebHost | GenericHost -> false
+
 let set_prop application node property value =
+  if ignored_property application property then () else begin
   let value = normalize_property_value property value in
   if property = FocusWithinEnabled then
     (match application.runtime_backend.backend_profile.profile_host with
@@ -1954,8 +1961,10 @@ let set_prop application node property value =
     note_sent_echo application node property value;
     enqueue application (set_prop_op node property value)
   end
+  end
 
 let remove_prop application node property =
+  if ignored_property application property then () else begin
   let node = canonical_node application node in
   let kind = require_standard_node_kind application node in
   if not (property_supported kind property) then
@@ -1973,6 +1982,7 @@ let remove_prop application node property =
       (Property_map.remove property current);
     note_removed_echo application node property;
     enqueue application (remove_prop_op node property)
+  end
   end
 
 let set_extension_prop application node property value =

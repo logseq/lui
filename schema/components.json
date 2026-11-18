@@ -1854,11 +1854,13 @@
     },
     {
       "lg": "FocusWithinEnabled",
+      "webOnly": true,
       "wire": "focus-within-enabled",
       "swift": "focusWithinEnabled"
     },
     {
       "lg": "ShrinkValue",
+      "webOnly": true,
       "wire": "shrink",
       "swift": "shrink"
     },

@@ -31,6 +31,24 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("Schema web-only hints are ignored on native batches")
+    func ignoresWebOnlyHints() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"set-prop","id":1,"property":"shrink","value":0},
+          {"op":"set-prop","id":1,"property":"focus-within-enabled","value":true},
+          {"op":"remove-prop","id":1,"property":"shrink"},
+          {"op":"remove-prop","id":1,"property":"focus-within-enabled"}
+        ]}
+        """)
+        let model = try #require(backend.model(id: 1))
+        for property in LUISchemaMatrix.webOnly {
+            #expect(model.property(property) == nil)
+        }
+    }
+
     @Test("Atomic subtree recreation publishes fresh models and child links")
     func atomicSubtreeRecreation() throws {
         let backend = LUIAppleBackend()

@@ -45,6 +45,11 @@ function validate(schema) {
   unique(schema.properties, 'wire', 'property wire name');
   unique(schema.properties, 'swift', 'property Swift name');
   unique(schema.events, 'lg', 'event LG name');
+  for (const property of schema.properties) {
+    if (property.webOnly !== undefined && typeof property.webOnly !== 'boolean') {
+      fail(`invalid webOnly annotation: ${property.wire}`);
+    }
+  }
 
   const kindWires = new Set(schema.nodeKinds.map(({ wire }) => wire));
   const propertyWires = new Set(schema.properties.map(({ wire }) => wire));
@@ -231,6 +236,9 @@ val transition_segments : string -> string list list
 val anchor_rect_of_string : string -> (float * float * float * float) option
 val virtual_indices_of_string : string -> int list option
 val virtual_indices_to_string : int list -> string
+val normalize_property_value : property -> wire_value -> wire_value
+val size_properties : property list
+val normalize_size_properties : wire_value Property_map.t -> wire_value Property_map.t
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int
@@ -307,6 +315,8 @@ let all_node_kinds = [ ${schema.nodeKinds.map(({ lg }) => lg).join('; ')} ]
 
 let all_properties = [ ${schema.properties.map(({ lg }) => lg).join('; ')} ]
 
+let property_web_only property = List.mem property [ ${schema.properties.filter(p => p.webOnly).map(p => p.lg).join('; ')} ]
+
 ${typedViewSchema(schema,
   readFileSync(resolve(repository, 'src/lui_elements.mli'), 'utf8'),
   readFileSync(resolve(repository, 'src/lui_elements.ml'), 'utf8')).trimEnd()}
@@ -329,6 +339,7 @@ val kind_property_matrix : node_kind -> property list option
 val kind_extra_properties : node_kind -> property list
 val all_node_kinds : node_kind list
 val all_properties : property list
+val property_web_only : property -> bool
 
 ${typedViewSignature}
 val view_contract : node_kind -> property view_contract option
@@ -374,6 +385,7 @@ ${properties}
 }
 
 enum LUISchemaMatrix {
+    static let webOnly: Set<LUIProperty> = [${schema.properties.filter(p => p.webOnly).map(p => `.${p.swift}`).join(', ')}]
     // Evaluated from Lui_protocol.property_supported, independent of rendering.
     static let admitted: [LUINodeKind: Set<LUIProperty>] = [
 ${admissionEntries}
@@ -391,6 +403,7 @@ ${extraEntries}
 }
 
 function renderKotlin(schema) {
+  const admission = JSON.parse(readFileSync(resolve(repository, 'schema/apple-property-admission.json'), 'utf8'));
   // Kotlin enum entry names reuse the `swift` schema field: the camelCase
   // names are legal Kotlin identifiers, so no separate `kotlin` name set
   // is needed. The only exception is `name`, which collides with
@@ -444,6 +457,9 @@ ${properties}
  * kind follows the common-property rules in the backend.
  */
 object LuiSchemaMatrix {
+    val webOnly: Set<String> = setOf(${schema.properties.filter(p => p.webOnly).map(p => JSON.stringify(p.wire)).join(', ')})
+    val mainCrossKinds: Set<LuiNodeKind> = setOf(${Object.entries(admission.kinds).filter(([, props]) => props.includes('main')).map(([kind]) => `LuiNodeKind.${kindSwift.get(kind)}`).join(', ')})
+    val modalSurfaceKinds: Set<LuiNodeKind> = setOf(${admission.modalKinds.map(kind => `LuiNodeKind.${kindSwift.get(kind)}`).join(', ')})
     val restrictive: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
 ${matrixEntries}
     )

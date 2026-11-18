@@ -1,5 +1,22 @@
 # LUI API migration guide
 
+## Unreleased: Shared Android admission and native web-only hints
+
+Android main/cross alignment and modal-surface kind sets are now generated
+from the canonical OCaml admission export by `generate_component_schema.mjs`.
+Grid, checkbox, and radio accept main/cross alignment; drawer follows the
+same modal property restrictions as dialog and sheet.
+
+The shared component schema now marks `shrink` and `focus-within-enabled`
+(the wire property behind `on_focus_within`) as web-only. SwiftUIHost and
+KotlinHost ignore their writes/removals instead of rejecting them, including
+direct native host batches. For example, a shared `row ~shrink:0.` view can
+mount on native hosts without a platform guard; native layout defaults remain
+unchanged and no focus-within callback is generated there. Web behavior and
+GenericHost's existing strict admission remain unchanged. There were no other
+web-only property annotations in the schema; future annotations feed these
+same generated host filters. No wire names or formats changed.
+
 ## Unreleased: Numeric clamping and Apple bottom-tabs resilience
 
 The OCaml runtime emit path and Web, Apple, and Android retained stores now

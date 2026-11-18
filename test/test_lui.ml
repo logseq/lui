@@ -1759,7 +1759,18 @@ let test_shrink_contract () =
     Alcotest.check_raises "unsupported host rejects opt-in"
       (Invalid_argument "shrink is unsupported by backend profile")
       (fun () -> ignore (mount ~shrink:0. host (fun _ _ -> ()))))
-    [GenericHost; SwiftUIHost; KotlinHost]
+    [GenericHost];
+  List.iter (fun host ->
+    let app = mount ~shrink:0. host (fun context node ->
+      Lui_runtime.set_prop context.Lui_ui.ui_application node FocusWithinEnabled (BoolValue true);
+      Lui_runtime.remove_prop context.Lui_ui.ui_application node FocusWithinEnabled) in
+    flush_app app;
+    Alcotest.(check bool) "native hosts ignore schema web-only hints" false
+      (List.exists (function
+        | SetProp (_, p, _) | RemoveProp (_, p) -> Lui_wire_schema.property_web_only p
+        | _ -> false) (all_ops ()));
+    ignore (Lui_app.dispose app))
+    [SwiftUIHost; KotlinHost]
 
 let test_float_encoding_rejects_non_finite () =
   let open Lui_protocol in

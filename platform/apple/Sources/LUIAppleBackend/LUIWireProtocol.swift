@@ -860,6 +860,7 @@ struct LUIRetainedTree {
             }
         case let .setProp(id, property, value):
             guard var node = nodes[id] else { throw invalid("unknown node") }
+            if LUISchemaMatrix.webOnly.contains(property) { break }
             let normalizedValue = value.normalized(for: property)
             guard Self.supports(property, on: node.kind),
                   normalizedValue.matches(property, on: node.kind) else {
@@ -869,6 +870,7 @@ struct LUIRetainedTree {
             nodes[id] = node
         case let .removeProp(id, property):
             guard var node = nodes[id] else { throw invalid("unknown node") }
+            if LUISchemaMatrix.webOnly.contains(property) { break }
             guard Self.supports(property, on: node.kind) else {
                 throw invalid("unsupported property")
             }

@@ -227,6 +227,7 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
             }
             is LuiPatchOp.SetProp -> {
                 val node = requireNode(nodes, op.id)
+                if (op.property in LuiSchemaMatrix.webOnly) return
                 val value = op.value.normalized(op.property)
                 if (!LuiKindRules.supports(node.kind, op.property, value)) {
                     throw LuiBackendException(
@@ -237,6 +238,7 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
             }
             is LuiPatchOp.RemoveProp -> {
                 val node = requireNode(nodes, op.id)
+                if (op.property in LuiSchemaMatrix.webOnly) return
                 if (!node.properties.containsKey(op.property)) {
                     throw LuiBackendException(
                         "unsupported property: ${node.kind}.${op.property}",

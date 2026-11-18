@@ -10,6 +10,31 @@ import org.junit.Test
 class LuiStoreTest {
 
     @Test
+    fun `generated alignment and modal predicates match shared admission`() {
+        for (kind in listOf(LuiNodeKind.grid, LuiNodeKind.checkbox, LuiNodeKind.radio)) {
+            assertEquals(true, LuiKindRules.isMainCrossKind(kind))
+            assertEquals(true, LuiKindRules.supports(kind, "main", LuiWireValue.Str("center")))
+            assertEquals(true, LuiKindRules.supports(kind, "cross", LuiWireValue.Str("center")))
+        }
+        assertEquals(true, LuiKindRules.isModalSurface(LuiNodeKind.drawer))
+        assertEquals(false, LuiKindRules.supports(LuiNodeKind.drawer, "grow", LuiWireValue.DoubleValue(1.0)))
+        assertEquals(false, LuiKindRules.isMainCrossKind(LuiNodeKind.text))
+    }
+
+    @Test
+    fun `web-only writes and removals leave native properties absent`() {
+        val tree = tree()
+        tree.apply(batch(1, LuiPatchOp.CreateNode(1L, LuiNodeKind.row)))
+        for (property in LuiSchemaMatrix.webOnly) {
+            tree.apply(batch(tree.generation + 1,
+                LuiPatchOp.SetProp(1L, property, LuiWireValue.Str("ignored")),
+                LuiPatchOp.RemoveProp(1L, property),
+            ))
+            assertEquals(false, tree.node(1L)!!.properties.containsKey(property))
+        }
+    }
+
+    @Test
     fun `numeric properties clamp and size conflicts resolve before validation`() {
         val tree = tree()
         tree.apply(batch(1,
