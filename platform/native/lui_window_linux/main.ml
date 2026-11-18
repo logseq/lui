@@ -305,6 +305,8 @@ let () =
               None))
   in
   let vk_state = vk_cell in
+  let popups = Lui_blit.Popups.create () in
+  let host_cell = ref None in
   let ladder_t =
     Renderer_ladder.create
       ~warn:(fun m -> warn "%s" m)
@@ -318,6 +320,8 @@ let () =
         blit_cell := None)
       ~before_walk:(fun rest ->
         (* Re-flag the window for the rung about to be tried. *)
+        Lui_blit.Popups.clear popups;
+        Option.iter Lui_host.invalidate_paint !host_cell;
         let next_gl =
           match rest with Lui_linux.Gl :: _ -> true | _ -> false
         in
@@ -339,7 +343,6 @@ let () =
      scene store is untouched, so the next repaint re-uploads a full
      scene — identical pixels on the CPU path by the parity
      contract. *)
-  let popups = Lui_blit.Popups.create () in
   (* The host owns a stable record whose render delegates to the live
      rung, so a demote needs no host rebuild. *)
   let renderer_live = Renderer_ladder.renderer_live ladder_t in
@@ -366,7 +369,6 @@ let () =
      The text engine's scene/store accessors are cell-reads because it
      must exist before the assembly hands the host back. *)
   let scale_cell = ref scale in
-  let host_cell = ref None in
   let text_engine =
     Lui_window_text.create
       ~scene:(fun () -> Lui_host.scene (Option.get !host_cell))
@@ -385,10 +387,6 @@ let () =
   in
   host_cell := Some (Assembly.host asm);
   let host = Assembly.host asm in
-  let demote reason =
-    Lui_blit.Popups.clear popups;
-    Lui_host.invalidate_paint host;
-    Renderer_ladder.demote ladder_t ~reason in
   if not headless then
     Lui_host.set_popup_presenter host (Some
       ((fun id kind (r : Lui_scene.rect) scene ->
@@ -572,7 +570,7 @@ let () =
     (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
        backend lost its resources — recover down the ladder. *)
     if kind = Sdl.Event.Render_reset then
-      demote "SDL render-target/device reset"
+      Renderer_ladder.demote ladder_t ~reason:"SDL render-target/device reset"
     else if event.window_id <> 0 && event.window_id <> Sdl.get_window_id !win then
       (match kind with
        | Sdl.Event.Window _ -> ()
