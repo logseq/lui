@@ -4555,6 +4555,30 @@ let test_assembly_autofocus () =
   Alcotest.(check (option int)) "autofocus id" (Some 2)
     (Assembly.first_autofocus asm)
 
+let test_native_ime_committed_range () =
+  let asm = assembly_of
+      [ CreateNode (1, Root); CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (1, HeightValue, IntValue 200);
+        SetProp (2, HeightValue, IntValue 24);
+        SetProp (2, TextValue, StringValue "a日本z") ] in
+  Ui.set_focused (Assembly.ui asm) (Assembly.store asm) 2;
+  let snapshot = match Assembly.ime_surrounding asm with
+    | Some snapshot -> snapshot
+    | None -> Alcotest.fail "focused text unavailable" in
+  Alcotest.(check string) "committed text" "a日本z" snapshot.Lui_ime.text;
+  Alcotest.(check int) "caret byte offset" 8 snapshot.caret;
+  let range = { Lui_ime.start = 1; stop = 7 } in
+  Alcotest.(check bool) "committed range has geometry" true
+    (Option.is_some (Assembly.ime_range_rect asm range));
+  let actions = Assembly.ime_replace asm { start = 2; stop = 7 } "に" in
+  Alcotest.(check bool) "split UTF-8 rejected" true (actions = []);
+  let actions = Assembly.ime_replace asm range "に" in
+  Alcotest.(check bool) "replacement dispatched" true
+    (List.mem (Dispatch (TextChanged (2, "aにz"))) actions);
+  Alcotest.(check string) "committed text after replacement" "aにz"
+    (Ui.shadow (Assembly.ui asm))
+
 (* ---------- Win32 key parity ---------- *)
 
 let test_win32_key_parity () =
@@ -5002,6 +5026,7 @@ let () =
           Alcotest.test_case "two windows" `Quick test_headless_multi ] );
       ( "assembly",
         [ Alcotest.test_case "resize scroll clamp" `Quick test_assembly_resize_scroll_clamp;
+          Alcotest.test_case "native IME committed range" `Quick test_native_ime_committed_range;
           Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;

@@ -119,11 +119,22 @@ val gl_make_current :
 val gl_delete_context : Sdl3.T.gl_context -> unit
 val gl_set_swap_interval : int -> unit Sdl3.T.result
 val gl_swap_window : Sdl3.T.window -> unit
-val start_text_input : Sdl3.T.window -> unit
+type capitalization = None_ | Sentences | Words | Letters
+val start_text_input :
+  ?multiline:bool -> ?secure:bool -> ?autocorrect:bool ->
+  ?capitalization:capitalization -> Sdl3.T.window -> unit
 val stop_text_input : Sdl3.T.window -> unit
 val is_text_input_active : Sdl3.T.window -> bool
-val set_text_input_rect :
-  Sdl3.T.window -> Sdl3.T.rect option -> unit
+val set_text_input_area :
+  Sdl3.T.window -> Sdl3.T.rect option -> cursor:int -> unit
+val run_on_main_thread : (unit -> unit) -> unit
+
+type native_handle =
+  | Cocoa_window of nativeint
+  | X11_window of int
+  | Wayland_surface of nativeint
+
+val native_handle : Sdl3.T.window -> native_handle option
 val create_system_cursor :
   Sdl3.T.system_cursor -> Sdl3.T.cursor Sdl3.T.result
 val set_cursor : Sdl3.T.cursor -> unit
@@ -201,6 +212,7 @@ module Event :
     val value : t -> event
   end
 val poll_event : Event.t option -> bool
+val wait_event : Event.t option -> bool
 val wait_event_timeout : Event.t option -> int -> bool
 val pump_events : unit -> unit
 val push_key_event :

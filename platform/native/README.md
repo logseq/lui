@@ -102,6 +102,12 @@ Plugins (JSON-in/JSON-out services under the `plugin:<name>` namespace):
 
 ## Build & test
 
+The SDL hosts own windows, input, and renderer state on the UI thread.
+Other threads or domains must use `Lui_sdl3.run_on_main_thread` to post
+work that accesses that state. Posting is asynchronous from another
+domain; on the UI thread the work runs immediately. Start posting only
+after SDL initialization and stop producers before SDL shutdown.
+
 ```sh
 OPAMSWITCH=5.5.1 opam exec -- dune build platform/native/
 OPAMSWITCH=5.5.1 opam exec -- dune runtest platform/native/ -j 1 --force

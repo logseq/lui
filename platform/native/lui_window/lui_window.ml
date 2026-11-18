@@ -708,6 +708,13 @@ module Ui = struct
 
   let scrollbar_visible t id = Hashtbl.mem t.scrollbar_deadlines id
 
+  let next_input_deadline t =
+    let initial =
+      if t.menu_typeahead_deadline > 0. then t.menu_typeahead_deadline
+      else Float.infinity in
+    Hashtbl.fold (fun _ deadline next -> Float.min deadline next)
+      t.scrollbar_deadlines initial
+
   (* Install the next scroll state, recording which containers'
      offsets moved (a moved offset shifts every descendant rect, so
      the subtree re-derives) and which caps changed (thumb metrics
@@ -894,6 +901,24 @@ module Ui = struct
       perform_all t store m
   and perform_all t store m_acts =
     List.concat_map (perform t store) m_acts
+
+  let ime_surrounding t store =
+    let id = focused t in
+    if not (Lui_text_input.editable store id && node_enabled store id)
+       || kind_name store id = "secure-field"
+       || bool_prop store id "read-only" then None
+    else
+      let text = shadow t and caret = caret t and anchor = sel_anchor t in
+      Some { Lui_ime.text; caret;
+             selection = { start = min caret anchor; stop = max caret anchor } }
+
+  let ime_replace t store range text =
+    match ime_surrounding t store with
+    | None -> []
+    | Some _ ->
+      let session, actions = Lui_text_input.replace_committed t.session range text in
+      t.session <- session;
+      perform_all t store actions
 
   (* The text a copy/cut puts on the clipboard: the static
      selection's joined string, else the focused editable's
@@ -2553,6 +2578,7 @@ module Assembly = struct
     caret_rect : unit -> rect;
         (** Focused field's caret rect, device px — candidate-window
             anchor while composing. *)
+    ime_range_rect : Lui_ime.range -> rect option;
     spatial_hit : unit -> Lui_spatial.t option;
         (** Fresh subtree-bound index for {!Ui.handle} — [None] until
             the first {!populate} has produced rects. *)
@@ -2566,6 +2592,9 @@ module Assembly = struct
   let populate t = t.populate ()
   let caret_rect t = t.caret_rect ()
   let store t = Lui_host.store t.host
+  let ime_surrounding t = Ui.ime_surrounding t.ui (store t)
+  let ime_range_rect t range = t.ime_range_rect range
+  let ime_replace t range text = Ui.ime_replace t.ui (store t) range text
   let handle t input =
     Ui.handle ?spatial:(t.spatial_hit ()) t.ui (store t) t.rects input
   let store_changed t = Ui.store_changed t.ui (store t)
@@ -2981,19 +3010,39 @@ module Assembly = struct
        rect shifted to the caret's real position inside the laid-out
        text — wrap, line pitch, alignment and insets included. This is
        the candidate-window anchor while composing. *)
-    let caret_rect () =
+    let caret_layout text =
       let id = Ui.focused ui in
-      let r = Rects.get rects id in
-      if Lui_scene.rect_empty r then r
-      else begin
-        let text' = Ui.shadow ui in
-        let ops = caret_ops id text' ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h in
-        let cx, cy, ch =
-          ops.Ui.c_rect (min (Ui.caret ui) (String.length text'))
-        in
-        Lui_scene.rect (r.Lui_scene.x +. cx) (r.Lui_scene.y +. cy) 2.
-          (Float.max 2. ch)
-      end
+      let r = shifted_rect id in
+      if Lui_scene.rect_empty (Rects.get rects id) || Lui_scene.rect_empty r then None
+      else Some (r, caret_ops id text ~lw:r.w ~lh:r.h)
+    in
+    let caret_at ((r : rect), ops) i =
+      let x, y, h = ops.Ui.c_rect i in
+      Lui_scene.rect (r.x +. x) (r.y +. y) 2. (Float.max 2. h)
+    in
+    let caret_rect () =
+      let text = Ui.shadow ui in
+      match caret_layout text with
+      | None -> Rects.zero
+      | Some layout -> caret_at layout (min (Ui.caret ui) (String.length text))
+    in
+    let ime_range_rect (range : Lui_ime.range) =
+      match Ui.ime_surrounding ui store with
+      | Some { text; _ } when Lui_ime.valid_range text range ->
+        Option.map (fun ((_, ops) as layout) ->
+            let rec bounds i (r : rect) =
+              if i = range.stop then r
+              else
+                let next = max (i + 1) (ops.Ui.c_after i) |> min range.stop in
+                let c = caret_at layout next in
+                let x = Float.min r.x c.x and y = Float.min r.y c.y in
+                let w = Float.max (r.x +. r.w) (c.x +. c.w) -. x
+                and h = Float.max (r.y +. r.h) (c.y +. c.h) -. y in
+                bounds next (Lui_scene.rect x y w h)
+            in
+            bounds range.start (caret_at layout range.start))
+          (caret_layout text)
+      | _ -> None
     in
     (* Ui driver hooks: real glyph measurement for caret/selection
        math, unshifted engine rects for scroll_show/visible-range. *)
@@ -3039,6 +3088,6 @@ module Assembly = struct
                  (Lui_host.layout_virtual_item host p ~index:i)
              | None -> r)
            | None -> r);
-    { host; ui; rects; scale_cell; engine_rect; populate; caret_rect;
+    { host; ui; rects; scale_cell; engine_rect; populate; caret_rect; ime_range_rect;
       spatial_hit = spatial_for_hit }
 end

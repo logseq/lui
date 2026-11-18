@@ -260,6 +260,7 @@ CAMLprim value lui_metal_create_layer(value vwin)
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     layer.framebufferOnly = NO;
     layer.maximumDrawableCount = 2;
+    layer.displaySyncEnabled = YES;
     CGSize sz = layer.drawableSize;
     int w = sz.width > 1 ? (int)sz.width : 1;
     int h = sz.height > 1 ? (int)sz.height : 1;

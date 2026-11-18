@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: SDL3 native host text input
+
+Native SDL host code should replace `Lui_sdl3.set_text_input_rect window rect`
+with `Lui_sdl3.set_text_input_area window rect ~cursor:0` for the old
+positioning, or pass the horizontal caret offset in window pixels relative
+to the area's left edge. `start_text_input window` still starts ordinary
+single-line input; use `start_text_input ~multiline:true window` for a text
+area or `~secure:true` for a password field. No wire changes are required.
+Native drivers can query a focused field with `Lui_window.Assembly.ime_surrounding`.
+For example, pass the returned `selection` to `ime_range_rect` to locate
+it in device pixels, or call `ime_replace assembly selection replacement`
+and apply its actions as for `Assembly.handle`. Ranges use UTF-8 byte
+offsets in the current committed text, not UTF-16 indices or preedit
+offsets. Secure fields do not expose committed text to these requests.
+
 ## Unreleased: Web top-level MenuTrigger activation
 
 On Web, a top-level `MenuTrigger` that owns a `DropdownMenu` opens on activation

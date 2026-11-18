@@ -166,17 +166,24 @@ let drawable (s : surf) =
   | 0, 0 -> (s.Multi.logical_w, s.Multi.logical_h)
   | d -> d
 
-(* SDL_SetTextInputRect works in window (logical) pixels; the surface's
-   backing scale converts the device-px rect. *)
 let set_ime_rect (s : surf) (r : Lui_scene.rect) =
   let sc = Multi.scale s in
-  Sdl.set_text_input_rect s.driver.sdl
+  let field = Rects.get s.Multi.rects (Ui.focused s.Multi.ui) in
+  let x = int_of_float (Float.min field.Lui_scene.x r.Lui_scene.x /. sc) in
+  let cursor = int_of_float (r.Lui_scene.x /. sc) - x in
+  Sdl.set_text_input_area s.driver.sdl
     (Some
        (Sdl.Rect.create
-          ~x:(int_of_float (r.Lui_scene.x /. sc))
+          ~x
           ~y:(int_of_float (r.Lui_scene.y /. sc))
-          ~w:(max 1 (int_of_float (r.Lui_scene.w /. sc)))
+          ~w:(max (cursor + 1) (int_of_float (field.Lui_scene.w /. sc)))
           ~h:(max 1 (int_of_float (r.Lui_scene.h /. sc)))))
+    ~cursor
+
+let start_ime window store id =
+  let kind = kind_name store id in
+  if Sdl.is_text_input_active window then Sdl.stop_text_input window;
+  Sdl.start_text_input ~multiline:(kind = "textarea") ~secure:(kind = "secure-field") window
 
 (* Re-read a window's drawable size and backing scale: on [Moved] the
    window may have crossed onto a monitor with a different scale, on
@@ -237,8 +244,8 @@ let rec apply_actions (s : surf) acts =
            windows' focused fields. *)
         if id = 0 then Sdl.stop_text_input d.sdl
         else begin
-          Sdl.start_text_input d.sdl;
-          set_ime_rect s (Rects.get s.Multi.rects id)
+          start_ime d.sdl (Assembly.store d.asm) id;
+          set_ime_rect s (d.caret_rect ())
         end
       | Ime_rect r -> set_ime_rect s r
       | Quit -> quit := true)
@@ -340,7 +347,7 @@ let poll_driver (s : surf) =
        the driver owns the clock and dismisses after 2.5 s. *)
     (match m.Demo_app.toast_open, d.toast_since with
      | true, None -> d.toast_since <- Some (perf_s ())
-     | true, Some t0 when perf_s () -. t0 > 2.5 ->
+     | true, Some t0 when perf_s () -. t0 >= 2.5 ->
        ignore (Lui_app.send d.app (Demo_app.Close Demo_app.P_toast));
        d.toast_since <- None
      | false, _ -> d.toast_since <- None
@@ -382,6 +389,7 @@ let tick (s : surf) ~t0 =
   ignore (Lui_app.flush d.app);
   poll_driver s;
   poll_drop s;
+  ignore (Lui_app.flush d.app);
   (* Report the caret once per frame: while a composition is open
      the state machine emits Ime_rect on movement so the candidate
      window tracks the caret; idle, the rect is only remembered. *)
@@ -731,7 +739,7 @@ let open_window ~title ~idx =
     (match Assembly.first_autofocus asm with
      | Some id ->
        Ui.set_focused ui store id;
-       Sdl.start_text_input !win
+       start_ime !win store id
      | None -> ());
   let id = Sdl.get_window_id !win in
   let d =
@@ -751,6 +759,7 @@ let open_window ~title ~idx =
   in
   Multi.register windows s;
   surf_cell := Some s;
+  if Ui.focused ui <> 0 then set_ime_rect s (caret_rect ());
   (match Sdl.get_window_display_id !win with
    | Ok di -> s.Multi.display <- di
    | Error _ -> ());
@@ -851,12 +860,17 @@ let setup_shell () =
   Lui_shell.set_menu_handler
     (Some
        (fun id ->
+          let post action =
+            Queue.add action pending;
+            Option.iter (fun s -> Sdl.push_expose_event s.driver.sdl)
+              (Multi.find_focused windows)
+          in
           match id with
-          | 1 -> Queue.add (Demo_app.Open Demo_app.P_toast) pending
-          | 2 -> Queue.add Demo_app.Req_notify pending
-          | 3 -> Queue.add Demo_app.Req_clipboard pending
-          | 4 -> Queue.add Demo_app.Req_a11y pending
-          | 9 -> quit := true
+          | 1 -> post (Demo_app.Open Demo_app.P_toast)
+          | 2 -> post Demo_app.Req_notify
+          | 3 -> post Demo_app.Req_clipboard
+          | 4 -> post Demo_app.Req_a11y
+          | 9 -> Sdl.push_quit_event ()
           | _ -> ()))
 
 (* ---------- main ---------- *)
@@ -932,27 +946,23 @@ let () =
                (Input.Key_down (Input.Tab, Input.mods_none, false)))
         | None -> ()
     end;
-    (* Each tick returns the scheduler's decision; the loop sleeps
-       until the nearest present deadline across surfaces. Idle
-       surfaces sleep for events too — the wait returns as soon as
-       input lands, and housekeeping (model polls) caps the sleep. *)
+    (* Wake for input or the next frame or UI timer, not a periodic poll. *)
     let wait_ms = ref Float.infinity in
     Multi.iter windows (fun s ->
-        match tick s ~t0 with
-        | Frame.Wait_ms ms -> wait_ms := Float.min !wait_ms ms
-        | Frame.Present | Frame.Idle -> ());
+        (match tick s ~t0 with
+         | Frame.Wait_ms ms -> wait_ms := Float.min !wait_ms ms
+         | Frame.Present when Ui.want_frame s.ui s.host -> wait_ms := 0.
+         | Frame.Present | Frame.Idle -> ());
+        let deadline = Ui.next_input_deadline s.ui in
+        let deadline = match s.driver.toast_since with
+          | None -> deadline
+          | Some at -> Float.min deadline ((at +. 2.5) *. 1000.) in
+        wait_ms := Float.min !wait_ms (deadline -. perf_s () *. 1000.));
     incr iter_no;
-    if not !headless then begin
-      let ms =
-        if !wait_ms = Float.infinity then 250.
-        else Float.max 0. !wait_ms
-      in
-      (* Sleep/wake in one call: [SDL_WaitEventTimeout] returns early
-         the moment an event lands — a wake is just a slower first
-         poll, and the event routes through the same handler — or at
-         the deadline, where the next tick presents on time. *)
-      if Sdl.wait_event_timeout (Some e)
-           (int_of_float (Float.ceil ms))
+    if not !headless && continue () then begin
+      if (if !wait_ms = Float.infinity then Sdl.wait_event (Some e)
+          else Sdl.wait_event_timeout (Some e)
+            (int_of_float (Float.ceil (Float.max 0. !wait_ms))))
       then begin
         handle_sdl_event e;
         drain_events e

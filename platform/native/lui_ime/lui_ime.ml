@@ -17,6 +17,15 @@ let initial =
 
 let composing st = st.marked_text <> ""
 
+type range = { start : int; stop : int }
+type surrounding = { text : string; selection : range; caret : int }
+
+let valid_range text range =
+  let n = String.length text in
+  let boundary i = i = n || Char.code text.[i] land 0xc0 <> 0x80 in
+  range.start >= 0 && range.start <= range.stop && range.stop <= n
+  && boundary range.start && boundary range.stop
+
 type input =
   [ `Editing of string * int * int
   | `Commit of string

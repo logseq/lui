@@ -402,24 +402,33 @@ let () =
   (* Caret rect of the focused field, device px — the candidate-window
      anchor while composing. *)
   let caret_rect () = Assembly.caret_rect asm in
+  let start_ime id =
+    let kind = kind_name store id in
+    if Sdl.is_text_input_active !win then Sdl.stop_text_input !win;
+    Sdl.start_text_input ~multiline:(kind = "textarea") ~secure:(kind = "secure-field") !win
+  in
   (* Hand focus to the first autofocus field, if any. *)
   (match Assembly.first_autofocus asm with
    | Some id ->
      Ui.set_focused ui store id;
-     Sdl.start_text_input !win
+     start_ime id
    | None -> ());
   let quit = ref false in
-  (* SDL_SetTextInputRect works in window (logical) pixels. *)
   let set_ime_rect (r : Lui_scene.rect) =
     let s = !scale_cell in
-    Sdl.set_text_input_rect !win
+    let field = Rects.get rects (Ui.focused ui) in
+    let x = int_of_float (Float.min field.Lui_scene.x r.Lui_scene.x /. s) in
+    let cursor = int_of_float (r.Lui_scene.x /. s) - x in
+    Sdl.set_text_input_area !win
       (Some
          (Sdl.Rect.create
-            ~x:(int_of_float (r.Lui_scene.x /. s))
+            ~x
             ~y:(int_of_float (r.Lui_scene.y /. s))
-            ~w:(max 1 (int_of_float (r.Lui_scene.w /. s)))
+            ~w:(max (cursor + 1) (int_of_float (field.Lui_scene.w /. s)))
             ~h:(max 1 (int_of_float (r.Lui_scene.h /. s)))))
+      ~cursor
   in
+  if Ui.focused ui <> 0 then set_ime_rect (caret_rect ());
   (* The accessibility bridge cell: created after the app tree exists,
      consulted by Focus_changed. *)
   let ax_cell = ref None in
@@ -463,8 +472,8 @@ let () =
        | None -> ());
       if id = 0 then Sdl.stop_text_input !win
       else begin
-        Sdl.start_text_input !win;
-        set_ime_rect (Rects.get rects id)
+        start_ime id;
+        set_ime_rect (caret_rect ())
       end
     | Ime_rect r -> set_ime_rect r
     | Quit -> quit := true)
@@ -544,32 +553,30 @@ let () =
      | Lui_shell_linux.Indicator -> "indicator")
     (Lui_shell_linux.gui_available ());
   let e = Sdl.Event.create () in
+  let handle_sdl_event () =
+    let kind = (Sdl.Event.value e).kind in
+    (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
+       backend lost its resources — recover down the ladder. *)
+    if kind = Sdl.Event.Render_reset then
+      demote "SDL render-target/device reset"
+    else
+      let input = match kind with
+        | Sdl.Event.Window ((Pixel_size_changed | Display_scale_changed | Display_changed | Moved), _, _) ->
+          let width, height = Sdl.get_window_size !win in
+          Some (Input.Resize (width, height))
+        | _ -> input_of_event e in
+      match input with
+      | Some (Input.Resize (w, h)) ->
+        win_w := w;
+        win_h := h;
+        apply_actions
+          (Assembly.handle asm (Input.Resize (w, h)))
+      | Some input ->
+        apply_actions (Assembly.handle asm input)
+      | None -> ()
+  in
   let drain_events () =
-    let go = ref true in
-    while !go do
-      if Sdl.poll_event (Some e) then
-        let kind = (Sdl.Event.value e).kind in
-        (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
-           backend lost its resources — recover down the ladder. *)
-        if kind = Sdl.Event.Render_reset then
-          demote "SDL render-target/device reset"
-        else
-        let input = match kind with
-          | Sdl.Event.Window ((Pixel_size_changed | Display_scale_changed | Display_changed | Moved), _, _) ->
-            let width, height = Sdl.get_window_size !win in
-            Some (Input.Resize (width, height))
-          | _ -> input_of_event e in
-        match input with
-        | Some (Input.Resize (w, h)) ->
-          win_w := w;
-          win_h := h;
-          apply_actions
-            (Assembly.handle asm (Input.Resize (w, h)))
-        | Some input ->
-          apply_actions (Assembly.handle asm input)
-        | None -> ()
-      else go := false
-    done
+    while Sdl.poll_event (Some e) do handle_sdl_event () done
   in
   let frames_target = cfg.headless_frames in
   let checksum = Checksum.create () in
@@ -629,16 +636,28 @@ let () =
       if !frame mod 60 = 0 then
         stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name
     end;
-    (* No vsync under the dummy driver and possibly none elsewhere:
-       pace the loop explicitly. An idle iteration (no repaint) also
-       sleeps briefly so the poll loop does not spin at 100% CPU. *)
-    if not headless then begin
-      if dirty && not vsync then begin
-        let remaining = 16.6 -. ((perf_s () -. t0) *. 1000.) in
-        if remaining > 0.5 then
-          Sdl.delay (int_of_float remaining)
-      end
-      else if not dirty then Sdl.delay 4
+    if not headless && continue () then begin
+      let now = perf_s () *. 1000. in
+      let next = Ui.next_input_deadline ui -. now in
+      let next =
+        if Ui.want_frame ui host then begin
+          if vsync then 0.
+          else
+            let hz = match Sdl.get_window_display_id !win with
+              | Error _ -> 60.
+              | Ok id -> (match Sdl.display_refresh_rate id with
+                  | Ok hz when hz > 0. -> hz
+                  | _ -> 60.) in
+            Float.min next (t0 *. 1000. +. 1000. /. hz -. now)
+        end else next in
+      let next =
+        if Lui_shell_linux.transport () <> Lui_shell_linux.Offline
+           || ax_transport <> Lui_ax_linux.Offline then Float.min next 50.
+        else next in
+      if (if next = Float.infinity then Sdl.wait_event (Some e)
+          else Sdl.wait_event_timeout (Some e)
+            (int_of_float (Float.ceil (Float.max 0. next))))
+      then handle_sdl_event ()
     end
   done;
   stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name;
