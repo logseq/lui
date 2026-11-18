@@ -113,6 +113,10 @@ in parent-owned SDL popup windows when available. Their retained nodes stay
 in the parent tree; popup input uses the parent's existing hit testing and
 focus handling. The original in-window presentation remains the fallback.
 
+On macOS 14 and newer, Metal uses the view's display link to schedule dirty
+frames. The main-run-loop callback wakes SDL and can service drawable changes
+while Cocoa owns the event loop for a live resize.
+
 ```sh
 OPAMSWITCH=5.5.1 opam exec -- dune build platform/native/
 OPAMSWITCH=5.5.1 opam exec -- dune runtest platform/native/ -j 1 --force

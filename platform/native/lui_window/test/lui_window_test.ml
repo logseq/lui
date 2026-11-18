@@ -1285,6 +1285,26 @@ let test_frame_pacing () =
 
 (* The monitor's refresh rate drives the period — 120 Hz and 144 Hz
    shorten it. *)
+let test_frame_display_link () =
+  let frame = Frame.create () in
+  let requests = ref 0 and tick = ref false in
+  let ready () = incr requests; !tick in
+  let poll now_ms = Frame.poll_display_link frame ~now_ms ~ready in
+  (match poll 200. with
+   | Frame.Wait_ms ms -> Alcotest.(check (float 0.01)) "watchdog" 50. ms
+   | _ -> Alcotest.fail "dirty window must wait for its first tick");
+  tick := true;
+  Alcotest.(check bool) "tick allows present before watchdog" true
+    (poll 201. = Frame.Present);
+  Frame.presented frame ~now_ms:201.;
+  tick := false;
+  Alcotest.(check bool) "idle window ignores ticks" true (poll 202. = Frame.Idle);
+  Alcotest.(check int) "idle window does not request a tick" 2 !requests;
+  Frame.request_frame frame;
+  ignore (poll 205.);
+  Alcotest.(check bool) "stalled display link falls back" true
+    (poll 256. = Frame.Present)
+
 let test_frame_refresh_rate () =
   let f = Frame.create () in
   Frame.set_refresh_hz f 120.;
@@ -4930,6 +4950,7 @@ let () =
       ( "frame scheduler",
         [ Alcotest.test_case "dirty cycle" `Quick test_frame_dirty_cycle;
           Alcotest.test_case "pacing" `Quick test_frame_pacing;
+          Alcotest.test_case "display link pacing" `Quick test_frame_display_link;
           Alcotest.test_case "refresh rate" `Quick
             test_frame_refresh_rate;
           Alcotest.test_case "visibility" `Quick test_frame_visibility ] );

@@ -123,7 +123,8 @@ type drv = {
   vsync : bool;
   blit_cell : Lui_blit.t option ref;
   popups : Lui_blit.Popups.t;
-  metal : Lui_metal.t option;
+  mutable metal : Lui_metal.t option;
+  mutable display_link : bool;
   renderer_cell : Lui_host.renderer ref;
   app : (Demo_app.model, Demo_app.action) Lui_app.reducer_app;
   a11y : Lui_a11y.t;
@@ -363,7 +364,7 @@ let poll_driver (s : surf) =
    only mark the frame dirty; nothing draws until [Frame.poll] says
    [Present]. Returns the scheduler's decision so the loop can sleep
    until the nearest deadline. *)
-let tick (s : surf) ~t0 =
+let tick ?(live_resize = false) (s : surf) ~t0 =
   let d = s.driver in
   (match d.metal, d.presentations with
    | Some metal, Some meter when not !headless ->
@@ -403,8 +404,13 @@ let tick (s : surf) ~t0 =
   if !headless || Ui.want_frame s.ui s.host then
     Frame.request_frame d.sched;
   let decision =
-    if !headless then Frame.Present
-    else Frame.poll d.sched ~now_ms:(perf_s () *. 1000.) ~vsync:d.vsync
+    let now_ms = perf_s () *. 1000. in
+    if !headless || live_resize then Frame.Present
+    else match d.metal with
+      | Some metal when d.display_link && Frame.visibility d.sched = Frame.Shown ->
+        Frame.poll_display_link d.sched ~now_ms
+          ~ready:(fun () -> Lui_metal.request_frame_tick metal)
+      | _ -> Frame.poll d.sched ~now_ms ~vsync:d.vsync
   in
   (match decision with
    | Frame.Present ->
@@ -512,6 +518,11 @@ let rec demote (s : surf) reason =
      d.gctx_cell := None
    | None -> ());
   let next_gl = dead = "lui_metal" in
+  if next_gl then begin
+    Option.iter Lui_metal.release d.metal;
+    d.metal <- None;
+    d.display_link <- false
+  end;
   if dead <> "noop" then begin
     Lui_blit.Popups.clear d.popups;
     Lui_host.invalidate_paint s.host;
@@ -748,6 +759,7 @@ let open_window ~title ~idx =
   let id = Sdl.get_window_id !win in
   let d =
     { sdl = !win; gctx_cell; gl_live_cell; vsync; blit_cell; metal;
+      display_link = false;
       popups = Lui_blit.Popups.create ();
       renderer_cell; app; a11y; drop_seen = 0; toast_since = None;
       reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
@@ -778,6 +790,12 @@ let open_window ~title ~idx =
    | Ok di -> s.Multi.display <- di
    | Error _ -> ());
   Frame.set_refresh_hz d.sched (refresh_hz_of s);
+  Option.iter (fun metal ->
+    try
+      let hz = max 1 (int_of_float (Float.round (Frame.refresh_hz d.sched))) in
+      Lui_metal.set_frame_rate metal hz;
+      d.display_link <- true
+    with Failure _ -> ()) d.metal;
   log "lui_window[%d]: %dx%d drawable (scale %.2f), renderer=%s%s"
     idx dw dh scale (!(renderer_cell)).Lui_host.name
     (if !headless then " [headless]" else "");
@@ -858,6 +876,23 @@ let drain_events e =
     handle_sdl_event e
   done
 
+let live_resize_error = ref None
+
+let () =
+  Callback.register "lui_native_live_resize_frame" (fun id ->
+    match Multi.find windows id with
+    | Some s when !live_resize_error = None ->
+      (try
+         let w, h = Sdl.get_window_size s.driver.sdl in
+         let dw, dh = drawable s in
+         if dw <> s.Multi.drawable_w || dh <> s.Multi.drawable_h then begin
+           Multi.apply_logical_size s ~w ~h;
+           apply_actions s (Multi.dispatch s (Input.Resize (w, h)));
+           ignore (tick ~live_resize:true s ~t0:(perf_s ()))
+         end
+       with exn -> live_resize_error := Some exn)
+    | _ -> ())
+
 (* ---------- shell integration (interactive, process-wide) ---------- *)
 
 let setup_shell () =
@@ -883,7 +918,7 @@ let setup_shell () =
        (fun id ->
           let post action =
             Queue.add action pending;
-            Option.iter (fun s -> Sdl.push_expose_event s.driver.sdl)
+            Option.iter (fun (s : surf) -> Sdl.push_expose_event s.driver.sdl)
               (Multi.find_focused windows)
           in
           match id with
@@ -981,9 +1016,14 @@ let () =
         wait_ms := Float.min !wait_ms (deadline -. perf_s () *. 1000.));
     incr iter_no;
     if not !headless && continue () then begin
-      if (if !wait_ms = Float.infinity then Sdl.wait_event (Some e)
+      Lui_metal.set_sdl_waiting true;
+      let received =
+        Fun.protect ~finally:(fun () -> Lui_metal.set_sdl_waiting false) (fun () ->
+          if !wait_ms = Float.infinity then Sdl.wait_event (Some e)
           else Sdl.wait_event_timeout (Some e)
-            (int_of_float (Float.ceil (Float.max 0. !wait_ms))))
+            (int_of_float (Float.ceil (Float.max 0. !wait_ms)))) in
+      Option.iter raise !live_resize_error;
+      if received
       then begin
         handle_sdl_event e;
         drain_events e

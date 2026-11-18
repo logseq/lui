@@ -579,6 +579,10 @@ module Frame : sig
   (** Frame callback: [Present] when dirty and (vsync or past the
       cadence deadline), [Wait_ms] while pacing, [Idle] when clean. *)
 
+  val poll_display_link : t -> now_ms:float -> ready:(unit -> bool) -> decision
+  (** Request a tick only for a dirty surface. Present after a tick, or
+      after three refresh periods if the display link stops delivering. *)
+
   val presented : t -> now_ms:float -> unit
   (** Record a present: clears {!dirty} and starts the next cadence
       interval. *)

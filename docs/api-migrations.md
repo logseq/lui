@@ -15,6 +15,15 @@ SDL adapters that translate child coordinates can use
 `Lui_sdl3.Event.map_pointer (fun x y -> (x +. left, y +. top)) event`;
 keyboard, scroll and lifecycle events are not transformed.
 
+## Unreleased: macOS native frame pacing
+
+The experimental Metal host requests frames from the window's display link on
+macOS 14 and newer. Layout is refreshed while the window is being resized;
+applications continue to use their existing resize handlers. Older systems or
+unavailable display links keep the timer-based scheduler. Hosts with their own
+loop can arm the cadence with `Lui_metal.request_frame_tick renderer` after
+`Lui_metal.set_frame_rate renderer fps`.
+
 ## Unreleased: SDL3 native host text input
 
 Native SDL host code should replace `Lui_sdl3.set_text_input_rect window rect`

@@ -2220,6 +2220,7 @@ module Frame = struct
     mutable refresh_hz : float;
     mutable bg_period_ms : float;
     mutable last_present_ms : float;
+    mutable tick_deadline_ms : float option;
   }
 
   let create () =
@@ -2227,7 +2228,8 @@ module Frame = struct
       visibility = Shown;
       refresh_hz = 60.;
       bg_period_ms = 250.;
-      last_present_ms = Float.neg_infinity }
+      last_present_ms = Float.neg_infinity;
+      tick_deadline_ms = None }
 
   let request_frame t = t.dirty <- true
   let dirty t = t.dirty
@@ -2264,8 +2266,21 @@ module Frame = struct
       else Wait_ms (next -. now_ms)
     end
 
+  let poll_display_link t ~now_ms ~ready =
+    if not t.dirty then Idle
+    else if ready () then Present
+    else
+      let deadline = match t.tick_deadline_ms with
+        | Some deadline -> deadline
+        | None ->
+          let deadline = now_ms +. 3. *. period_ms t in
+          t.tick_deadline_ms <- Some deadline;
+          deadline in
+      if now_ms >= deadline then Present else Wait_ms (deadline -. now_ms)
+
   let presented t ~now_ms =
     t.dirty <- false;
+    t.tick_deadline_ms <- None;
     t.last_present_ms <- now_ms
 end
 
