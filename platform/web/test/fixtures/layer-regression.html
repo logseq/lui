@@ -201,7 +201,29 @@ function setupActionMenu(kind, preserveFocus=false){
   });
   flush();return trigger;
 }
-window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,setupActionMenu,actionActivations:0,sheetInput:null};
+window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,setupActionMenu,actionActivations:0,sheetInput:null,runtimeOwnedMenu:{actionActivations:0}};
+function setupRuntimeOwnedMenu(){
+  const owner=node('row',root);
+  const trigger=node('menu-trigger',owner,{text:'Runtime-owned menu'});
+  const popup=node('dropdown-menu',trigger,{'min-width':220});
+  const action=node('menu-item',popup,{text:'Run runtime-only action','press-enabled':true});
+  handlers.set(action,()=>window.audit.runtimeOwnedMenu.actionActivations++);
+  window.audit.runtimeOwnedMenu.trigger=trigger;
+  window.audit.runtimeOwnedMenu.menu=popup;
+  window.audit.runtimeOwnedMenu.layerPresent=()=>Layers.is_present(renderer.web_layers,popup);
+  window.audit.runtimeOwnedMenu.reinsert=()=>{
+    const parent=window.audit.runtimeOwnedMenu.trigger;
+    const menu=window.audit.runtimeOwnedMenu.menu;
+    const index=nodes.get(parent).children.indexOf(menu);
+    backend.apply_batch({generation:++generation,ops:list([
+      Protocol.remove_child_op(parent,menu),
+      Protocol.insert_child_op(parent,menu,index)
+    ])});
+  };
+  window.audit.runtimeOwnedMenu.removeOnDismiss=()=>handlers.set(popup,()=>{drop(popup);flush();});
+  flush();
+}
+window.audit.setupRuntimeOwnedMenu=setupRuntimeOwnedMenu;
 function setupOrdinaryMenu(retained=false,pressable=false,popover=false){
   const owner=node('row',root);let popup=null;
   function close(){if(popup){if(retained){Menu.set_dropdown_open(renderer,popup,false);}else{drop(popup);popup=null;flush();}}}

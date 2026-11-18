@@ -1,5 +1,27 @@
 # LUI API migration guide
 
+## Unreleased: Web top-level MenuTrigger activation
+
+On Web, a top-level `MenuTrigger` that owns a `DropdownMenu` opens on activation
+instead of hover or focus. Pointer clicks and native Enter/Space button
+activation toggle the layer-managed open state; moving the pointer away does
+not close the root menu. `aria-expanded` follows opening, click toggles, and
+close paths. Menu triggers inside menu or picker popup contexts retain their
+hover/focus submenu and pointer-corridor behavior. Outside click, Escape,
+menu-action dismissal, and focus restoration remain supported. The runtime
+toggle does not add a second `Press` event. For runtime-owned menus, `on_dismiss`
+is an optional notification; the runtime closes the menu even when it is
+omitted or does not update application state. Ordinary button-controlled menus
+and picker behavior are unchanged. There is no protocol or schema change, and
+other backends are unchanged.
+
+For example, a convenience `menu` owns its trigger and dropdown:
+
+```ocaml
+menu ~text:"More"
+  [ menu_item ~text:"Refresh" ~on_press:(fun _ -> refresh ()) [] ]
+```
+
 ## Experimental native transparent popup frames
 
 Native retained popup transitions now omit all paint operations at zero animated

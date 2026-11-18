@@ -35,6 +35,94 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+test("top-level runtime-owned MenuTrigger toggles on activation and preserves dismissal focus", async () => {
+  await openLayerRegressionPage()
+  await session.page.evaluate(() => window.audit.setupRuntimeOwnedMenu())
+  await session.page.evaluate(() => window.audit.runtimeOwnedMenu.reinsert())
+
+  const trigger = session.page.locator(".lui-menu-item").filter({ hasText: "Runtime-owned menu" })
+  const action = session.page.getByText("Run runtime-only action", { exact: true })
+  const waitForExpanded = expanded => session.page.waitForFunction(value => {
+    const trigger = [...document.querySelectorAll('.lui-menu-item')]
+      .find(element => element.textContent.trim() === "Runtime-owned menu")
+    return trigger?.getAttribute("aria-expanded") === value
+  }, expanded)
+  const waitForClosed = async () => {
+    await waitForExpanded("false")
+    await action.waitFor({ state: "hidden" })
+  }
+  const dismissCount = () => state(`window.audit.events.filter(event =>
+    event.TAG === 7 && event._0 === window.audit.runtimeOwnedMenu.menu).length`)
+
+  await trigger.hover()
+  const hoverExpanded = await trigger.getAttribute("aria-expanded")
+  await trigger.focus()
+  const focusExpanded = await trigger.getAttribute("aria-expanded")
+  assert.deepEqual({ hoverExpanded, focusExpanded }, { hoverExpanded: "false", focusExpanded: "false" })
+  assert.equal(await action.isVisible(), false)
+
+  await session.page.mouse.move(8, 8)
+  await trigger.click()
+  await waitForExpanded("true")
+  assert.equal(await action.isVisible(), true)
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute("role") === "menu")
+  assert.equal(await session.page.getByRole("menu").locator("[data-highlighted]").count(), 0)
+  await session.page.mouse.move(8, 8)
+  assert.equal(await trigger.getAttribute("aria-expanded"), "true")
+  assert.equal(await action.isVisible(), true)
+  await trigger.click()
+  await waitForClosed()
+
+  await trigger.click()
+  await waitForExpanded("true")
+  await session.page.evaluate(() => window.audit.runtimeOwnedMenu.reinsert())
+  await session.page.waitForFunction(() => !window.audit.runtimeOwnedMenu.layerPresent())
+  await waitForClosed()
+  await trigger.click()
+  await waitForExpanded("true")
+  assert.equal(await action.isVisible(), true)
+  await action.click()
+  await waitForClosed()
+  assert.equal(await state(`window.audit.runtimeOwnedMenu.actionActivations`), 1)
+
+  await trigger.click()
+  await waitForExpanded("true")
+  const outsideDismisses = await dismissCount()
+  await clickButton("Outside action")
+  assert.ok(await dismissCount() > outsideDismisses)
+  await waitForClosed()
+  assert.equal(await session.page.locator(":focus").textContent(), "Outside action")
+
+  await trigger.click()
+  await waitForExpanded("true")
+  await session.page.keyboard.press("Escape")
+  await waitForClosed()
+  assert.equal(await session.page.locator(":focus").textContent(), "Runtime-owned menu")
+
+  await trigger.press("Enter")
+  await waitForExpanded("true")
+  await session.page.waitForFunction(() => document.activeElement?.textContent.trim() === "Run runtime-only action")
+  await trigger.press("Space")
+  await waitForClosed()
+  assert.equal(await session.page.locator(":focus").textContent(), "Runtime-owned menu")
+
+  await trigger.click()
+  await waitForExpanded("true")
+  await session.page.evaluate(() => window.audit.runtimeOwnedMenu.removeOnDismiss())
+  const removalDismisses = await dismissCount()
+  await clickButton("Outside action")
+  assert.ok(await dismissCount() > removalDismisses)
+  const removalState = await state(`(() => {
+    const trigger = document.getElementById('lui-node-' + window.audit.runtimeOwnedMenu.trigger)
+    return {
+      expanded: trigger?.getAttribute('aria-expanded'),
+      menuInStore: window.audit.nodes.has(window.audit.runtimeOwnedMenu.menu),
+    }
+  })()`)
+  assert.deepEqual(removalState, { expanded: "false", menuInStore: false })
+  await action.waitFor({ state: "hidden" })
+})
+
 for (const trigger of ['Open ordinary menu', 'Open pressable menu']) {
   test(`${trigger}: pointer opening focuses the menu without highlighting a row`, async () => {
     await openLayerRegressionPage()
