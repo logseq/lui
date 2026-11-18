@@ -9,6 +9,28 @@ import org.junit.Test
 
 class LuiStoreTest {
 
+    @Test
+    fun `numeric properties clamp and size conflicts resolve before validation`() {
+        val tree = tree()
+        tree.apply(batch(1,
+            LuiPatchOp.CreateNode(1L, LuiNodeKind.box),
+            LuiPatchOp.SetProp(1L, "width", LuiWireValue.IntValue(10)),
+            LuiPatchOp.SetProp(1L, "min-width", LuiWireValue.IntValue(100)),
+            LuiPatchOp.SetProp(1L, "max-width", LuiWireValue.IntValue(50)),
+            LuiPatchOp.SetProp(1L, "height", LuiWireValue.IntValue(-4)),
+            LuiPatchOp.SetProp(1L, "padding", LuiWireValue.IntValue(-2)),
+            LuiPatchOp.SetProp(1L, "opacity", LuiWireValue.DoubleValue(Double.NaN)),
+        ))
+        val properties = tree.node(1L)!!.properties
+        assertEquals(100, properties["width"]!!.intValue)
+        assertEquals(100, properties["max-width"]!!.intValue)
+        assertEquals(0, properties["height"]!!.intValue)
+        assertEquals(0, properties["padding"]!!.intValue)
+        assertEquals(1.0, properties["opacity"]!!.doubleValue)
+        tree.apply(batch(2, LuiPatchOp.SetProp(1L, "opacity", LuiWireValue.DoubleValue(-0.5))))
+        assertEquals(0.0, tree.node(1L)!!.properties["opacity"]!!.doubleValue)
+    }
+
     private fun tree() = LuiRetainedTree(LuiExtensionRegistry())
 
     private fun batch(generation: Int, vararg ops: LuiPatchOp) =

@@ -1,5 +1,42 @@
 # LUI API migration guide
 
+## Unreleased: Numeric clamping and Apple bottom-tabs resilience
+
+The OCaml runtime emit path and Web, Apple, and Android retained stores now
+clamp negative `width`, `height`, `min-width`, `max-width`, `min-height`,
+`max-height`, `gap`, `padding` (including directional and axis variants),
+`border-width`, `corner-radius`, `tooltip-delay`, `duration`, and
+`resize-duration` to zero. Margins and signed offsets are unchanged. Values
+of the wrong wire type and properties unsupported by a node kind still reject.
+
+Pixel size constraints resolve after the batch's property writes:
+`effective_max = max(min_size, max_size)` and
+`effective_fixed = clamp(fixed, min_size, effective_max)`. An absent minimum
+means zero and an absent maximum remains unbounded; absent dimensions and
+`"auto"` stay absent/automatic. For example, `width=10, min-width=100,
+max-width=50` now stores and renders `width=100, min-width=100, max-width=100`
+instead of rejecting. Later writes resolve against these canonical stored
+values, not a hidden copy of the original conflicting values. Pure protocol
+validators still validate canonical values; low-level integrations can call
+`Lui_protocol.normalize_property_value` and `normalize_size_properties` before
+validating. `size_properties` names the affected pixel-size properties.
+
+`opacity`, `hover-opacity`, `pressed-opacity`, `disabled-opacity`, and
+`label-opacity` clamp to `[0,1]`. Non-finite values for these opacity properties
+fall back to the neutral opacity default `1` and emit a stderr diagnostic naming
+the property, reason, and fallback. For example, a reactive computation returning
+`nan` for opacity now emits `1.0`, not invalid JSON. The low-level wire encoder
+continues to reject non-finite floats; applications bypassing the runtime must
+normalize before encoding. Other float properties retain their existing rules.
+
+Apple `bottom_tabs` no longer rejects a dynamic child count outside `2...5`;
+it logs a diagnostic and renders the supplied destinations using the existing
+tab renderer. Required accessible labels and valid `bottom_tab` children remain
+enforced. For example, publishing a temporary empty destination list is accepted
+while loading; restoring two or more destinations requires no remount workaround.
+There are no schema or wire-format changes, and valid existing values behave
+as before.
+
 ## Unreleased: OCaml runtime resilience
 
 Children-position `reactive` now compares physically identical values first,

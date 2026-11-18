@@ -1911,6 +1911,7 @@ let notify_segment_property application node property value =
           !(segment.dynamic_segment_on_property)) segments
 
 let set_prop application node property value =
+  let value = normalize_property_value property value in
   if property = FocusWithinEnabled then
     (match application.runtime_backend.backend_profile.profile_host with
      | WebHost -> ()
@@ -2569,6 +2570,23 @@ let rec stabilize application =
     publish_virtual_receipts application;
     raise failure
 
+let normalize_pending_sizes application =
+  let nodes = Hashtbl.create 8 in
+  List.iter (function
+    | SetProp (node, property, _) | RemoveProp (node, property)
+      when List.mem property size_properties -> Hashtbl.replace nodes node ()
+    | _ -> ()) !(application.pending_ops);
+  Hashtbl.iter (fun node () ->
+    match Hashtbl.find_opt application.runtime_properties node with
+    | None -> ()
+    | Some properties ->
+        let normalized = normalize_size_properties properties in
+        List.iter (fun property ->
+          match Property_map.find_opt property normalized with
+          | Some value when Property_map.find_opt property properties <> Some value ->
+              set_prop application node property value
+          | _ -> ()) size_properties) nodes
+
 let rec flush application =
   if !(application.runtime_flushing) then begin
     application.runtime_flush_dirty := true;
@@ -2579,6 +2597,7 @@ let rec flush application =
     let flushed =
       try
         stabilize application;
+        normalize_pending_sizes application;
         if !(application.runtime_extension_dirty) then begin
           validate_extension_nodes application;
           application.runtime_extension_dirty := false

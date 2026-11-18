@@ -1625,6 +1625,44 @@ let virtual_indices_of_string value =
 let virtual_indices_to_string indices =
   "[" ^ String.concat "," (List.map string_of_int indices) ^ "]"
 
+let normalize_property_value property value =
+  match property, value with
+  | (WidthValue | HeightValue | MinWidth | MaxWidth | MinHeight | MaxHeight
+    | Gap | PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
+    | PaddingRight | PaddingBottom | PaddingLeft | BorderWidth | CornerRadius
+    | TooltipDelay | DurationValue | ResizeDuration), IntValue number ->
+      IntValue (max 0 number)
+  | (Opacity | LabelOpacity | HoverOpacity | PressedOpacity | DisabledOpacity), FloatValue number ->
+      let number = if is_finite number then number else begin
+        let name = match property with
+          | Opacity -> "opacity" | LabelOpacity -> "label-opacity"
+          | HoverOpacity -> "hover-opacity" | PressedOpacity -> "pressed-opacity"
+          | _ -> "disabled-opacity" in
+        Printf.eprintf "LUI numeric normalization: property=%s reason=non-finite fallback=1\n%!" name;
+        1.
+      end in
+      FloatValue (max 0. (min 1. number))
+  | _ -> value
+
+let size_properties = [WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight]
+
+let normalize_size_properties properties =
+  let axis properties fixed minimum maximum =
+    let lower = match Property_map.find_opt minimum properties with
+      | Some (IntValue value) -> max 0 value | _ -> 0 in
+    let upper = match Property_map.find_opt maximum properties with
+      | Some (IntValue value) -> max lower value | _ -> max_int in
+    let normalize property = function
+      | IntValue _ when property = maximum -> IntValue upper
+      | IntValue value when property = fixed -> IntValue (max lower (min upper value))
+      | value -> normalize_property_value property value in
+    List.fold_left (fun properties property ->
+      match Property_map.find_opt property properties with
+      | None -> properties
+      | Some value -> Property_map.add property (normalize property value) properties)
+      properties [minimum; maximum; fixed] in
+  axis (axis properties WidthValue MinWidth MaxWidth) HeightValue MinHeight MaxHeight
+
 let property_value_supported property value =
   match (property, value) with
   | (VirtualViewportEpoch | VirtualOwnerEpoch | VirtualOwnerNode), IntValue n -> n > 0

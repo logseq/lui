@@ -437,6 +437,9 @@ val transition_segments : string -> string list list
 val anchor_rect_of_string : string -> (float * float * float * float) option
 val virtual_indices_of_string : string -> int list option
 val virtual_indices_to_string : int list -> string
+val normalize_property_value : property -> wire_value -> wire_value
+val size_properties : property list
+val normalize_size_properties : wire_value Property_map.t -> wire_value Property_map.t
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int

@@ -227,12 +227,13 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
             }
             is LuiPatchOp.SetProp -> {
                 val node = requireNode(nodes, op.id)
-                if (!LuiKindRules.supports(node.kind, op.property, op.value)) {
+                val value = op.value.normalized(op.property)
+                if (!LuiKindRules.supports(node.kind, op.property, value)) {
                     throw LuiBackendException(
                         "unsupported property value: ${node.kind}.${op.property}",
                     )
                 }
-                node.properties[op.property] = op.value
+                node.properties[op.property] = value
             }
             is LuiPatchOp.RemoveProp -> {
                 val node = requireNode(nodes, op.id)
@@ -512,17 +513,10 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
 
     private fun validateSizeAxis(state: LuiNode, size: String, min: String, max: String) {
         val sizeValue = state.properties[size]?.intValue
-        val minValue = state.properties[min]?.intValue
-        val maxValue = state.properties[max]?.intValue
-        if (sizeValue != null && minValue != null && sizeValue < minValue) {
-            throw LuiBackendException("$size below $min")
-        }
-        if (sizeValue != null && maxValue != null && sizeValue > maxValue) {
-            throw LuiBackendException("$size above $max")
-        }
-        if (minValue != null && maxValue != null && minValue > maxValue) {
-            throw LuiBackendException("$min above $max")
-        }
+        val minValue = (state.properties[min]?.intValue ?: 0).coerceAtLeast(0)
+        val maxValue = (state.properties[max]?.intValue ?: Int.MAX_VALUE).coerceAtLeast(minValue)
+        if (state.properties[max]?.intValue != null) state.properties[max] = LuiWireValue.IntValue(maxValue)
+        if (sizeValue != null) state.properties[size] = LuiWireValue.IntValue(sizeValue.coerceIn(minValue, maxValue))
     }
 }
 

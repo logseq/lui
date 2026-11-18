@@ -1186,7 +1186,7 @@ struct LUIRetainedTree {
             kind == .box || kind == .listItem
     }
 
-    private func validateNodeProperties(
+    private mutating func validateNodeProperties(
         extensionRegistry: LUIAppleExtensionRegistry,
         scope: Set<Int>? = nil,
         sharedTopologyChanged: Bool
@@ -1198,6 +1198,8 @@ struct LUIRetainedTree {
         if let scope {
             for id in scope {
                 if let node = nodes[id] {
+                    let node = normalizedSizeNode(node)
+                    nodes[id] = node
                     try validateNode(node, id: id)
                 }
                 if let node = extensionNodes[id] {
@@ -1210,6 +1212,8 @@ struct LUIRetainedTree {
             return
         }
         for (id, node) in nodes {
+            let node = normalizedSizeNode(node)
+            nodes[id] = node
             try validateNode(node, id: id)
         }
         for (_, node) in extensionNodes {
@@ -1467,8 +1471,8 @@ struct LUIRetainedTree {
                 guard !(node.properties[.accessibilityLabel]?.stringValue ?? "").isEmpty else {
                     throw invalid("bottom-tabs requires an accessibility label")
                 }
-                guard (2...5).contains(node.children.count) else {
-                    throw invalid("bottom-tabs requires two to five destinations")
+                if !(2...5).contains(node.children.count) {
+                    FileHandle.standardError.write(Data("LUI bottom-tabs: rendering \(node.children.count) destinations outside recommended 2...5 range\n".utf8))
                 }
             }
             if node.kind == .bottomTab {
@@ -1673,6 +1677,24 @@ struct LUIRetainedTree {
         }
     }
 
+    private func normalizedSizeNode(_ input: LUINodeState) -> LUINodeState {
+        var node = input
+        let axes: [(LUIProperty, LUIProperty, LUIProperty)] = [
+            (.width, .minWidth, .maxWidth), (.height, .minHeight, .maxHeight),
+        ]
+        for (fixed, minimum, maximum) in axes {
+            let lower = max(0, node.properties[minimum]?.intValue ?? 0)
+            let upper = max(lower, node.properties[maximum]?.intValue ?? .max)
+            if node.properties[maximum]?.intValue != nil {
+                node.properties[maximum] = .int(upper)
+            }
+            if let exact = node.properties[fixed]?.intValue {
+                node.properties[fixed] = .int(max(lower, min(upper, exact)))
+            }
+        }
+        return node
+    }
+
     private func validateSizeAxis(
         _ node: LUINodeState,
         fixed: LUIProperty,
@@ -1694,8 +1716,21 @@ struct LUIRetainedTree {
 
 extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
+        if [.opacity, .labelOpacity, .hoverOpacity, .pressedOpacity, .disabledOpacity].contains(property),
+           let number = doubleValue ?? intValue.map(Double.init) {
+            guard number.isFinite else {
+                FileHandle.standardError.write(Data("LUI numeric normalization: property=\(property) reason=non-finite fallback=1\n".utf8))
+                return .double(1)
+            }
+            return .double(max(0, min(1, number)))
+        }
         guard case .int(let value) = self else { return self }
         switch property {
+        case .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight,
+             .gap, .padding, .paddingHorizontal, .paddingVertical, .paddingTop,
+             .paddingRight, .paddingBottom, .paddingLeft, .borderWidth,
+             .cornerRadius, .tooltipDelay, .duration, .resizeDuration:
+            return .int(max(0, value))
         case .itemExtent, .grow, .shrink, .anchorOffset, .anchorAlignmentOffset,
             .sourceX, .sourceY, .sourceWidth, .sourceHeight, .progressValue,
             .minValue, .maxValue, .stepValue, .firstPaneWidth,
