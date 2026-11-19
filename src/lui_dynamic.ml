@@ -815,6 +815,8 @@ let switch_range context parent source equal mount =
         let old_nodes = range_nodes application old.range_segment in
         let base = !(old.range_segment.Lui_runtime.dynamic_segment_base) in
         let saved = Lui_runtime.checkpoint_subtree application parent parent in
+        let finish_replacements = replacing_virtual_nodes application
+          (List.concat_map (Lui_runtime.collect_subtree_nodes application.Lui_runtime.runtime_children) old_nodes) in
         let candidate = ref None in
         let committed = ref false in
         try
@@ -823,6 +825,7 @@ let switch_range context parent source equal mount =
           ignore (Lui_runtime.reconcile_forest ~range:(base, List.length old_nodes)
             application saved parent old_nodes (range_nodes application fresh.range_segment));
           Signal.mount fresh.range_context.Lui_ui.ui_scope;
+          finish_replacements ();
           List.iter (Lui_runtime.retire_checkpoint_dynamic_segments saved) old_nodes;
           retire_range ~drop:false application old.range_segment;
           current := fresh;
@@ -830,6 +833,7 @@ let switch_range context parent source equal mount =
           committed := true;
           dispose_range old
         with failure ->
+          finish_replacements ();
           if not !committed then begin
             Option.iter (fun fresh -> retire_range ~drop:false application fresh.range_segment) !candidate;
             Lui_runtime.restore application saved;
