@@ -579,7 +579,7 @@ let error_boundary ~fallback child : t =
                 (Lui_ui.owner_name context "error-fallback") in
               ignore (fallback diagnostic recovery (Some anchor));
               Signal.mount recovery.Lui_ui.ui_scope;
-              Lui_runtime.commit_boundary_recovery application recovery_start)
+              Lui_runtime.commit_boundary_recovery ~anchor application recovery_start)
         end)
   in
   let content = { content with Lui_ui.ui_protect = protect } in
