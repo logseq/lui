@@ -14,6 +14,7 @@ type ui_context = {
   ui_next_owner_id : int ref;
   ui_profile : platform_profile;
   ui_protect : (unit -> unit) -> unit;
+  ui_dynamic_owner : Lui_runtime.dynamic_segment option;
 }
 
 let make_context application scope state_scope state_scopes
@@ -30,6 +31,7 @@ let make_context application scope state_scope state_scopes
     ui_profile =
       application.Lui_runtime.runtime_backend.backend_profile;
     ui_protect = (fun action -> action ());
+    ui_dynamic_owner = None;
   }
 
 let context application scope =
@@ -60,7 +62,8 @@ let child_context parent name =
   in
   Hashtbl.replace active_state_paths path true;
   { (make_context parent.ui_application scope state_scope state_scopes
-    active_state_paths path) with ui_protect = parent.ui_protect }
+    active_state_paths path) with ui_protect = parent.ui_protect;
+      ui_dynamic_owner = parent.ui_dynamic_owner }
 
 let guarded_projection context project =
   let previous = ref None in
@@ -409,8 +412,15 @@ let style_class context node class_name =
     (StringValue class_name)
 
 let append context parent child =
-  Lui_runtime.insert_child context.ui_application parent child
-    (Lui_runtime.child_count context.ui_application parent)
+  let application = context.ui_application in
+  match context.ui_dynamic_owner with
+  | Some owner when Lui_runtime.canonical_node application owner.Lui_runtime.dynamic_segment_parent
+      = Lui_runtime.canonical_node application parent ->
+    Lui_runtime.insert_child application parent child
+      (Lui_runtime.dynamic_segment_insert_index owner !(owner.Lui_runtime.dynamic_segment_size));
+    Lui_runtime.resize_dynamic_segment application owner 1
+  | _ -> Lui_runtime.insert_child application parent child
+      (Lui_runtime.child_count application parent)
 
 let gap context node gap = int_property context node Gap gap
 let main context node alignment = string_property context node MainAlignment alignment

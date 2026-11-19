@@ -479,14 +479,15 @@ and apply_roots ?(detached = false) fuel scope fn args =
                     (function_roots ~detached:true fuel fallback))
                   (List.assoc_opt (Labelled "fallback") args);
                 [ (Schema.Box, fn.pexp_loc) ]
-            | Some "if_", values ->
+            | Some name, values when name = "if_" || String.starts_with ~prefix:"if_" name ->
                 dynamic_roots detached fn.pexp_loc
                   (Option.fold ~none:[]
-                     ~some:(value_roots ~detached:true fuel)
+                     ~some:(value_roots ~detached:false fuel)
                      (last values))
-            | Some ("reactive" | "dyn"), fn_value :: _ ->
+            | Some name, fn_value :: _ when name = "reactive" || name = "dyn"
+                || String.starts_with ~prefix:"reactive_" name ->
                 dynamic_roots detached fn.pexp_loc
-                  (function_roots ~detached:true fuel fn_value)
+                  (function_roots ~detached:false fuel fn_value)
             | Some "virtual_rows", _ ->
                 if detached then
                   Location.raise_errorf ~loc:fn.pexp_loc
@@ -499,14 +500,10 @@ and apply_roots ?(detached = false) fuel scope fn args =
                 in
                 List.iter (check_edge Schema.VirtualList) rows;
                 [ (Schema.VirtualRows, fn.pexp_loc) ]
-            | ( Some
-                  ( "keyed" | "keyed_step" | "keyed_timeline_item"
-                  | "keyed_bottom_tab" | "keyed_table_row" | "keyed_table_cell"
-                  | "keyed_radio" | "keyed_swipe_action" ),
-                _ ) ->
+            | Some name, _ when name = "keyed" || String.starts_with ~prefix:"keyed_" name ->
                 dynamic_roots detached fn.pexp_loc
                   (Option.fold ~none:[]
-                     ~some:(function_roots ~detached:true fuel)
+                     ~some:(function_roots ~detached:false fuel)
                      (List.assoc_opt (Labelled "mount") args))
             | _ -> (
                 match (fn.pexp_desc, positional args) with
@@ -526,6 +523,10 @@ and apply_roots ?(detached = false) fuel scope fn args =
                 | _ -> [])))
 
 and dynamic_roots detached loc nodes =
+  List.iter (fun (kind, loc) ->
+    if kind = Schema.VirtualRows then
+      Location.raise_errorf ~loc
+        "LUI nesting: virtual_rows requires a direct, exclusive virtual-list slot") nodes;
   if detached then begin
     List.iter (check_edge Schema.Box) nodes;
     [ (Schema.Box, loc) ]

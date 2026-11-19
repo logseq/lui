@@ -414,7 +414,11 @@ let rec check_view_type expected = function
         | Standard (P.ListSectionHeader | P.ListSectionFooter) -> "t"
         | Standard kind -> (view_contract kind).S.view_result
         | Extension _ -> "t" in
-      if actual <> expected then fail ("expected " ^ expected ^ " child, got " ^ actual)
+      let compatible = match target with
+        | Standard kind -> S.view_slot_accepts expected kind
+        | Extension _ -> false in
+      if actual <> expected && not compatible then
+        fail ("expected " ^ expected ^ " child, got " ^ actual)
   | Component (_, child) | Slot (Some child) | When (_, child) | Each (_, _, _, child) ->
       check_view_type expected child
   | Choice (_, yes, no) -> check_view_type expected yes; check_view_type expected no
@@ -424,7 +428,8 @@ let rec check_view_type expected = function
 let rec view_result = function
   | Element (Standard (P.ListSectionHeader | P.ListSectionFooter), _, _, _)
   | Element (Extension _, _, _, _) -> Some "t"
-  | Element (Standard kind, _, _, _) -> Some (view_contract kind).S.view_result
+  | Element (Standard kind, _, _, _) ->
+      Some (if S.view_slot_accepts "t" kind then "t" else (view_contract kind).S.view_result)
   | Component (_, child) | Slot (Some child) | When (_, child) | Each (_, _, _, child) -> view_result child
   | Choice (_, yes, no) -> unify_view_results (view_result yes) (view_result no)
   | Platform branches -> List.fold_left (fun result (_, child) -> unify_view_results result (view_result child)) None branches

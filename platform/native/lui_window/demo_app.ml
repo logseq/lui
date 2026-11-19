@@ -523,12 +523,12 @@ let section_overlays model_s send =
              panel anchors under the trigger like the File menu. *)
           menu ~text:"dropdown"
             ~on_dismiss:(press send (Close P_menu))
-            [ menu_item ~text:"profile" ~icon:`settings
+            [ dropdown_menu_item ~text:"profile" ~icon:`settings
                 ~foreground:"#e4e6ee"
                 ~on_press:(press send (Close P_menu)) [];
-              menu_item ~text:"notify" ~icon:`copy ~foreground:"#e4e6ee"
+              dropdown_menu_item ~text:"notify" ~icon:`copy ~foreground:"#e4e6ee"
                 ~on_press:(press send Req_notify) [];
-              menu_item ~text:"close" ~foreground:"#989eb2"
+              dropdown_menu_item ~text:"close" ~foreground:"#989eb2"
                 ~on_press:(press send (Close P_menu)) [] ];
           ghost_btn send "sheet" (Open P_sheet);
           ghost_btn send "toast" (Open P_toast) ];
@@ -553,13 +553,13 @@ let section_overlays model_s send =
           ghost_btn send "dump a11y" Req_a11y ];
       caption "toolbar with a menu";
       toolbar ~label:"demo" ~toolbar_gap:8
-        [ text ~value:"app bar" ~foreground:"#4c74f6" ~font_size:"11" [];
-          menu ~text:"File" ~label:"file menu" ~foreground:"#e4e6ee"
-            [ menu_item ~text:"new item" ~foreground:"#e4e6ee"
+        [ toolbar_text ~value:"app bar" ~foreground:"#4c74f6" ~font_size:"11" [];
+          toolbar_menu ~text:"File" ~label:"file menu" ~foreground:"#e4e6ee"
+            [ dropdown_menu_item ~text:"new item" ~foreground:"#e4e6ee"
                 ~on_press:(press send Add) [];
-              menu_item ~text:"notify" ~foreground:"#e4e6ee"
+              dropdown_menu_item ~text:"notify" ~foreground:"#e4e6ee"
                 ~on_press:(press send Req_notify) [];
-              menu_item ~text:"tooltip item" ~foreground:"#e4e6ee"
+              dropdown_menu_item ~text:"tooltip item" ~foreground:"#e4e6ee"
                 ~tooltip:"menu items can carry tooltips"
                 ~on_press:(press send (Last_event "tooltip item")) [] ] ] ]
 
@@ -721,12 +721,12 @@ let popups model_s send =
            ghost_btn send "close" (Close P_popover) ]);
     open_ ~test:(fun m -> m.ctx_open)
       (context_menu ~on_dismiss:(press send (Close P_ctx))
-         [ menu_item ~text:"context: first" ~foreground:"#e4e6ee"
-             ~on_press:(press send (Close P_ctx)) [];
-           menu_item ~text:"context: second" ~foreground:"#e4e6ee"
-             ~on_press:(press send (Close P_ctx)) [];
-           menu_item ~text:"dismiss" ~foreground:"#989eb2"
-             ~on_press:(press send (Close P_ctx)) [] ]);
+         [ context_menu_item ~text:"context: first" ~foreground:"#e4e6ee"
+             ~on_press:(press send (Close P_ctx)) ();
+           context_menu_item ~text:"context: second" ~foreground:"#e4e6ee"
+             ~on_press:(press send (Close P_ctx)) ();
+           context_menu_item ~text:"dismiss" ~foreground:"#989eb2"
+             ~on_press:(press send (Close P_ctx)) () ]);
     open_ ~test:(fun m -> m.sheet_open)
       (sheet ~title:"Sheet controls" ~detents:"medium" ~padding:16
          ~on_dismiss:(press send (Close P_sheet))

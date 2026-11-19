@@ -21,7 +21,7 @@ type action =
       { label : string
       ; icon : icon
       ; text : string option
-      ; menu : t list
+      ; menu : dropdown_menu_item_el list
       ; on_dismiss : (unit -> unit) option
       }
 
@@ -287,10 +287,10 @@ val check_menu_item :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   on_press:(unit -> unit) ->
-  unit -> t
+  unit -> dropdown_menu_item_el
 
 (** Label + trailing chevron button that opens [menu] (a list of
-    {!menu_item}/{!check_menu_item}/{!submenu} children) as an anchored
+    {!dropdown_menu_item}/{!check_menu_item}/{!dropdown_menu_submenu} children) as an anchored
     dropdown menu. The menu is a stack sibling gated by [open_], matching
     the wire contract (menus may not nest under [button]); drive [open_]
     from your model and clear it in [on_dismiss]. *)
@@ -301,7 +301,7 @@ val menu_button :
   ?icon:icon ->
   ?anchor:anchor ->
   open_:bool Signal.signal ->
-  menu:t list ->
+  menu:dropdown_menu_item_el list ->
   ?on_dismiss:(unit -> unit) ->
   ?on_press:(unit -> unit) ->
   unit -> t

@@ -19,6 +19,7 @@ type event_handler = {
 type dynamic_segment = {
   dynamic_segment_id : int;
   dynamic_segment_parent : int;
+  dynamic_segment_owner : dynamic_segment option;
   dynamic_segment_base : int ref;
   dynamic_segment_size : int ref;
   dynamic_segment_active : bool ref;
@@ -1660,12 +1661,12 @@ and emit_dropped_subtree_ops application saved removed_set node =
     children;
   enqueue_drop application node
 
-let reconcile_subtree application saved parent old_root candidate_root =
+let reconcile_forest ?range application saved parent old_roots candidate_roots =
   let parent = canonical_node application parent in
-  let old_root = canonical_node application old_root in
+  let old_roots = List.map (canonical_node application) old_roots in
   let current_children = application.runtime_children in
-  let old_nodes = collect_subtree_nodes saved.checkpoint_children old_root in
-  let candidate_nodes = collect_subtree_nodes current_children candidate_root in
+  let old_nodes = List.concat_map (collect_subtree_nodes saved.checkpoint_children) old_roots in
+  let candidate_nodes = List.concat_map (collect_subtree_nodes current_children) candidate_roots in
   let mapping = Hashtbl.create 16 in
   let old_global = Hashtbl.create 16 in
   List.iter
@@ -1684,19 +1685,23 @@ let reconcile_subtree application saved parent old_root candidate_root =
   List.iter
     (fun node -> Hashtbl.replace saved_children_node_set node ())
     old_nodes;
-  if Hashtbl.find_opt saved.checkpoint_reload_keys old_root
-     = Hashtbl.find_opt application.runtime_reload_keys candidate_root then
-    ignore
-      (collect_node_mapping application saved old_root candidate_root
-         old_global old_key_counts candidate_key_counts reparented claimed
-         saved_children_node_set mapping);
-  if not (Hashtbl.mem mapping candidate_root) then
-    (* the roots themselves could not pair up (a dynamic branch swapped to a
-       different shape); still salvage keyed descendants of the candidate *)
-    rescue_subtree application saved candidate_root old_global
-      old_key_counts candidate_key_counts reparented claimed
-      saved_children_node_set mapping;
-  let desired_root = map_node mapping candidate_root in
+  let rec pair old candidates =
+    match old, candidates with
+    | old_root :: rest, candidate_root :: candidates ->
+      if Hashtbl.find_opt saved.checkpoint_reload_keys old_root
+         = Hashtbl.find_opt application.runtime_reload_keys candidate_root then
+        ignore (collect_node_mapping application saved old_root candidate_root
+          old_global old_key_counts candidate_key_counts reparented claimed
+          saved_children_node_set mapping);
+      pair rest candidates
+    | _ -> () in
+  pair old_roots candidate_roots;
+  List.iter (fun candidate_root ->
+    if not (Hashtbl.mem mapping candidate_root) then
+      rescue_subtree application saved candidate_root old_global
+        old_key_counts candidate_key_counts reparented claimed
+        saved_children_node_set mapping) candidate_roots;
+  let desired_roots = List.map (map_node mapping) candidate_roots in
   let desired_node_set = Hashtbl.create 16 in
   List.iter
     (fun candidate ->
@@ -1771,13 +1776,16 @@ let reconcile_subtree application saved parent old_root candidate_root =
     | Some children -> Lui_sequence.to_list children
     | None -> []
   in
+  let base = match range with Some (base, _) -> base | None ->
+    let rec index i = function
+      | [] -> i
+      | child :: rest -> if List.mem child old_roots then i else index (i + 1) rest in
+    index 0 siblings in
+  let count = match range with Some (_, count) -> count | None -> List.length old_roots in
   let desired_parent_children =
-    if List.mem old_root siblings then
-      List.map
-        (fun child -> if child = old_root then desired_root else child)
-        siblings
-    else siblings @ [ desired_root ]
-  in
+    List.filteri (fun index _ -> index < base) siblings
+    @ desired_roots
+    @ List.filteri (fun index _ -> index >= base + count) siblings in
   Hashtbl.replace desired_children parent (Lui_sequence.of_list desired_parent_children);
   let base_handlers = Hashtbl.copy saved.checkpoint_event_handlers in
   remove_node_keys base_handlers old_nodes;
@@ -1791,7 +1799,10 @@ let reconcile_subtree application saved parent old_root candidate_root =
     remap_node_values application.dynamic_segments candidate_nodes mapping
       base_segments
   in
-  if Hashtbl.find_opt application.mounted_nodes candidate_root = Some Root then
+  (match range with None -> () | Some _ ->
+    Option.iter (Hashtbl.replace desired_segments parent)
+      (Hashtbl.find_opt application.dynamic_segments parent));
+  if List.exists (fun root -> Hashtbl.find_opt application.mounted_nodes root = Some Root) candidate_roots then
     invalid_arg "runtime root cannot be nested";
   journal_restore_pending application saved.checkpoint_pending_ops;
   journal_clear application Pending_creates application.pending_creates;
@@ -1969,7 +1980,12 @@ let reconcile_subtree application saved parent old_root candidate_root =
     mapping;
   Hashtbl.iter (fun _ owner -> Lui_virtual.Internal.remap owner (map_node mapping))
     application.runtime_virtual_owners;
-  desired_root
+  desired_roots
+
+let reconcile_subtree application saved parent old_root candidate_root =
+  match reconcile_forest application saved parent [old_root] [candidate_root] with
+  | [root] -> root
+  | _ -> assert false
 
 (* target is a descendant-or-self of root iff walking the parent chain
    from target reaches root. *)
@@ -3066,7 +3082,12 @@ let find_dynamic_segment_index segments segment_id =
   in
   loop segments 0
 
-let register_dynamic_segment ?(exclusive = false) application parent =
+let rec dynamic_segment_contains owner segment =
+  segment == owner || match segment.dynamic_segment_owner with
+  | None -> false
+  | Some parent -> dynamic_segment_contains owner parent
+
+let register_dynamic_segment ?owner ?(exclusive = false) application parent =
   let parent = canonical_node application parent in
   require_node application parent;
   let current = Option.value
@@ -3083,7 +3104,9 @@ let register_dynamic_segment ?(exclusive = false) application parent =
         (incr application.next_dynamic_segment_id;
          !(application.next_dynamic_segment_id));
       dynamic_segment_parent = parent;
-      dynamic_segment_base = ref (child_count application parent);
+      dynamic_segment_owner = owner;
+      dynamic_segment_base = ref (match owner with None -> child_count application parent
+        | Some owner -> !(owner.dynamic_segment_base) + !(owner.dynamic_segment_size));
       dynamic_segment_size = ref 0;
       dynamic_segment_active = ref true;
       dynamic_segment_exclusive = exclusive;
@@ -3095,9 +3118,19 @@ let register_dynamic_segment ?(exclusive = false) application parent =
     | Some segments -> segments
     | None -> []
   in
+  (* Registrations run in reverse document order so appending within the
+     last owner's range shares all preceding registrations. *)
+  let registered = match owner with
+    | None -> segment :: current
+    | Some owner ->
+      let rec seek = function
+        | [] -> invalid_arg "dynamic range owner is not registered"
+        | current :: rest as all -> if dynamic_segment_contains owner current then segment :: all
+          else current :: seek rest in
+      seek current in
   journal_member ~new_member:true application Segment_member application.dynamic_segments parent
     (fun segment -> segment.dynamic_segment_id) segment.dynamic_segment_id;
-  Hashtbl.replace application.dynamic_segments parent (current @ [ segment ]);
+  Hashtbl.replace application.dynamic_segments parent registered;
   incr application.runtime_dynamic_segment_count;
   segment
 
@@ -3162,9 +3195,16 @@ let resize_dynamic_segment application segment delta =
   if next_size < 0 then
     invalid_arg "dynamic segment size cannot be negative";
   journal_ref application Segment_size segment.dynamic_segment_id segment.dynamic_segment_size next_size;
+  let rec resize_owner = function
+    | None -> ()
+    | Some owner ->
+      journal_ref application Segment_size owner.dynamic_segment_id owner.dynamic_segment_size
+        (!(owner.dynamic_segment_size) + delta);
+      resize_owner owner.dynamic_segment_owner in
+  resize_owner segment.dynamic_segment_owner;
   List.iteri
     (fun index current ->
-       if index > segment_index then
+       if index < segment_index && not (dynamic_segment_contains segment current) then
          journal_ref application Segment_base current.dynamic_segment_id current.dynamic_segment_base
            (!(current.dynamic_segment_base) + delta))
     segments

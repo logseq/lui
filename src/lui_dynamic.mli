@@ -61,3 +61,10 @@ val virtual_rows :
   (Lui_ui.ui_context -> 'a Signal.signal -> int) -> 'b ui_keyed
 val keyed_node : 'a ui_keyed -> 'a -> int
 val dispose_keyed : 'a ui_keyed -> unit
+val switch_range : Lui_ui.ui_context -> int -> 'a Signal.signal ->
+  ('a -> 'a -> bool) -> (Lui_ui.ui_context -> 'a -> 'b) -> unit
+val conditional_range : Lui_ui.ui_context -> int -> bool Signal.signal ->
+  (Lui_ui.ui_context -> 'a) -> unit
+val keyed_range : Lui_ui.ui_context -> int -> 'a list Signal.signal ->
+  ('a -> 'key) -> ('key -> 'key -> int) ->
+  (Lui_ui.ui_context -> 'a Signal.signal -> 'b) -> unit

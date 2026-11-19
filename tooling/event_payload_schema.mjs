@@ -1,4 +1,5 @@
 export function callbackContract(schema, constructor, parameter) {
+  constructor = schema.slotConstructors?.[constructor]?.constructor ?? constructor;
   const name = schema.eventCallbackOverrides?.[constructor]?.[parameter] ?? parameter;
   return schema.eventCallbacks?.[name];
 }

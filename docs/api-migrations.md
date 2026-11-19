@@ -1,5 +1,87 @@
 # LUI API migration guide
 
+## Unreleased: Child capabilities and anchorless segments (ADR 0007 Phase 3c)
+
+`keyed_input_group_actions` is removed: an input group admits at most one
+actions container. Keep `input_group_actions` as the single `~actions` value
+and put keyed content inside it instead:
+
+```ocaml
+input_group
+  ~actions:(input_group_actions
+    [keyed ~source:actions ~key:action_id ~cmp:String.compare ~mount:action_button])
+  (textarea [])
+```
+
+`if_input_group_actions` still permits an absent or single container;
+`reactive_input_group_actions` switches a single container in place.
+
+Experimental EDN `:if` and `:platform` branches use the generated ordinary-view
+compatibility rules when unifying their results. For example,
+`[:if true [:dropdown-menu] [:column]]` is accepted in an ordinary view slot,
+just like explicitly lifting the dropdown with `dropdown_menu_view` in OCaml.
+Restricted slots still check every branch against their own child capability.
+
+Restricted parents now take abstract slot elements, not arbitrary `t` children:
+
+| Parent | Child type | Builders |
+| --- | --- | --- |
+| `toolbar` | `toolbar_el` | `toolbar_button`, `toolbar_icon_button`, and a `toolbar_` builder for every admitted control, text, spacer, divider and menu |
+| `dropdown_menu`, `menu`, `submenu` | `dropdown_menu_item_el` | `dropdown_menu_item`, `dropdown_menu_trigger`, `dropdown_menu_submenu`, `dropdown_menu_divider`, `dropdown_menu_separator` |
+| `context_menu` | `context_menu_item_el` | `context_menu_item`, `context_menu_separator` |
+| `list_section` | `list_section_item_el` | `list_section_item` |
+| `tree` | `tree_el` | `tree_row`, `tree_column`, `tree_panel`, `tree_card`, `tree_box`, `tree_list_item`, `tree_virtual_list` |
+| `menu_trigger` | one mandatory `dropdown_menu_el` | `dropdown_menu` (not a list) |
+
+`reactive_dropdown_menu` can replace a trigger's single dropdown. There is no
+`if_dropdown_menu` or `keyed_dropdown_menu`: those could violate its mandatory
+single-child cardinality. Conditionally render or key the enclosing trigger
+instead, using its parent's slot adapter.
+
+Ordinary leaf constructors remain available with their existing signatures.
+Slot builders keep their ordinary constructor's properties and children, except
+`context_menu_item`: it requires `~on_press`, ends in `()`, and has no children.
+Its only metadata is text, icon, foreground, variant, selected/checked,
+disabled (encoded as enabled), accessibility identifier, and press enablement.
+Their existing signal twins are supported. Submenus, arbitrary styling and raw
+event callbacks cannot be passed to a context-menu item.
+
+```ocaml
+toolbar ~label:"Actions"
+  [toolbar_button ~text:"Save" ~on_press:save []];
+menu_trigger ~text:"More"
+  (dropdown_menu [dropdown_menu_item ~text:"Open" ~on_press:open_document []]);
+context_menu [context_menu_item ~text:"Delete" ~on_press:delete ()]
+```
+
+Use `keyed_toolbar`, `if_toolbar`, `reactive_toolbar`, and their corresponding
+`*_dropdown_menu_item`, `*_context_menu_item`, `*_list_section_item` and `*_tree`
+adapters to retain a slot's capability across dynamic branches. Matching
+`if_*`, `reactive_*` and `scoped_*` adapters are also available for the existing
+restricted slots. `reactive_dropdown_menu` preserves the single menu capability;
+there is deliberately no keyed/conditional menu adapter that could violate
+`menu_trigger`'s cardinality. Use `dropdown_menu_view` to display a dropdown menu
+as an ordinary overlay child. Composite menu actions now take typed dropdown
+entries too.
+
+```ocaml
+toolbar ~label:"Actions"
+  [keyed_toolbar ~source:items ~key:Fun.id ~cmp:Int.compare
+     ~mount:(fun item ->
+       if_toolbar ~test:visible
+         (toolbar_button ~text:(reactive string_of_int item) []))]
+```
+
+Nested dynamic branches now mount directly against the existing parent, without
+an intervening `Box display=contents`. Each branch owns a range, including empty
+and multi-node ranges; toggles and keyed reorders preserve surrounding static
+siblings. Root-level dynamics still need a transparent box when no parent exists.
+Error boundaries retain their recovery anchor and checkpoint behavior. Code or
+tests inspecting wire trees must no longer expect nested dynamic anchor nodes.
+No wire operation or host protocol encoding has changed.
+The experimental EDN renderer keeps its existing wire constructor names and
+checks their child kinds against the same generated slot capabilities.
+
 ## Unreleased: Typed event callbacks (ADR 0007 Phase 3b)
 
 Element callbacks now receive their payload rather than a raw protocol event.

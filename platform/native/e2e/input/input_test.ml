@@ -143,12 +143,12 @@ let view2 _ctx ms send : Lui_elements.t =
     ; button ~text:"menu" ~on_press:(press send Open)
         ~on_context_menu:(fun _ -> press send Open ()) []
     ; context_menu
-        [ keyed ~source:(map (fun m -> m.menu) ms) ~key:(fun s -> s)
+        [ keyed_context_menu_item ~source:(map (fun m -> m.menu) ms) ~key:(fun s -> s)
             ~cmp:String.compare
             ~mount:(fun s ->
               let item = sample s in
-              menu_item ~text_signal:(reactive (fun v -> v) s)
-                ~on_press:(press send (Pick item)) []) ] ]
+              context_menu_item ~text_signal:(reactive (fun v -> v) s)
+                ~on_press:(press send (Pick item)) ()) ] ]
 
 let boot2 () = boot_view ~initial:init2 ~update:upd2 ~view:view2 ()
 

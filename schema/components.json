@@ -235,21 +235,233 @@
     }
   },
   "mandatoryParameters": {
-    "button": ["text"],
-    "icon_button": ["icon", "label"],
-    "icon": ["name"],
-    "slider": ["label", "value"],
-    "progress": ["value"],
-    "sheet": ["title"],
-    "accordion": ["title"],
-    "toolbar": ["label"],
-    "radio_group": ["label"],
-    "tree": ["label"],
-    "stepper": ["active"],
-    "step": ["text"],
-    "timeline_item": ["title"],
-    "bottom_tabs": ["label"],
-    "bottom_tab": ["title", "on_press"]
+    "button": [
+      "text"
+    ],
+    "icon_button": [
+      "icon",
+      "label"
+    ],
+    "icon": [
+      "name"
+    ],
+    "slider": [
+      "label",
+      "value"
+    ],
+    "progress": [
+      "value"
+    ],
+    "sheet": [
+      "title"
+    ],
+    "accordion": [
+      "title"
+    ],
+    "toolbar": [
+      "label"
+    ],
+    "radio_group": [
+      "label"
+    ],
+    "tree": [
+      "label"
+    ],
+    "stepper": [
+      "active"
+    ],
+    "step": [
+      "text"
+    ],
+    "timeline_item": [
+      "title"
+    ],
+    "bottom_tabs": [
+      "label"
+    ],
+    "bottom_tab": [
+      "title",
+      "on_press"
+    ],
+    "context_menu_item": [
+      "on_press"
+    ],
+    "toolbar_button": [
+      "text"
+    ],
+    "toolbar_icon_button": [
+      "icon",
+      "label"
+    ],
+    "toolbar_radio_group": [
+      "label"
+    ]
+  },
+  "slotConstructors": {
+    "toolbar_button": {
+      "constructor": "button",
+      "result": "toolbar_el"
+    },
+    "toolbar_icon_button": {
+      "constructor": "icon_button",
+      "result": "toolbar_el"
+    },
+    "toolbar_toggle_button": {
+      "constructor": "toggle_button",
+      "result": "toolbar_el"
+    },
+    "toolbar_button_group": {
+      "constructor": "button_group",
+      "result": "toolbar_el"
+    },
+    "toolbar_toggle_group": {
+      "constructor": "toggle_group",
+      "result": "toolbar_el"
+    },
+    "toolbar_checkbox": {
+      "constructor": "checkbox",
+      "result": "toolbar_el"
+    },
+    "toolbar_switch": {
+      "constructor": "switch_",
+      "result": "toolbar_el"
+    },
+    "toolbar_toggle": {
+      "constructor": "toggle",
+      "result": "toolbar_el"
+    },
+    "toolbar_radio_group": {
+      "constructor": "radio_group",
+      "result": "toolbar_el"
+    },
+    "toolbar_select": {
+      "constructor": "select",
+      "result": "toolbar_el"
+    },
+    "toolbar_combobox": {
+      "constructor": "combobox",
+      "result": "toolbar_el"
+    },
+    "toolbar_text_field": {
+      "constructor": "text_field",
+      "result": "toolbar_el"
+    },
+    "toolbar_secure_field": {
+      "constructor": "secure_field",
+      "result": "toolbar_el"
+    },
+    "toolbar_input": {
+      "constructor": "input",
+      "result": "toolbar_el"
+    },
+    "toolbar_search_field": {
+      "constructor": "search_field",
+      "result": "toolbar_el"
+    },
+    "toolbar_menu_item": {
+      "constructor": "menu_item",
+      "result": "toolbar_el"
+    },
+    "toolbar_menu_trigger": {
+      "constructor": "menu_trigger",
+      "result": "toolbar_el"
+    },
+    "toolbar_spacer": {
+      "constructor": "spacer",
+      "result": "toolbar_el"
+    },
+    "toolbar_divider": {
+      "constructor": "divider",
+      "result": "toolbar_el"
+    },
+    "toolbar_text": {
+      "constructor": "text",
+      "result": "toolbar_el"
+    },
+    "toolbar_menu": {
+      "constructor": "menu",
+      "result": "toolbar_el"
+    },
+    "toolbar_separator": {
+      "constructor": "separator",
+      "result": "toolbar_el"
+    },
+    "dropdown_menu_item": {
+      "constructor": "menu_item",
+      "result": "dropdown_menu_item_el"
+    },
+    "dropdown_menu_trigger": {
+      "constructor": "menu_trigger",
+      "result": "dropdown_menu_item_el"
+    },
+    "dropdown_menu_submenu": {
+      "constructor": "submenu",
+      "result": "dropdown_menu_item_el"
+    },
+    "dropdown_menu_separator": {
+      "constructor": "separator",
+      "result": "dropdown_menu_item_el"
+    },
+    "dropdown_menu_divider": {
+      "constructor": "divider",
+      "result": "dropdown_menu_item_el"
+    },
+    "list_section_item": {
+      "constructor": "list_item",
+      "result": "list_section_item_el"
+    },
+    "tree_row": {
+      "constructor": "row",
+      "result": "tree_el"
+    },
+    "tree_column": {
+      "constructor": "column",
+      "result": "tree_el"
+    },
+    "tree_panel": {
+      "constructor": "panel",
+      "result": "tree_el"
+    },
+    "tree_card": {
+      "constructor": "card",
+      "result": "tree_el"
+    },
+    "tree_box": {
+      "constructor": "box",
+      "result": "tree_el"
+    },
+    "tree_list_item": {
+      "constructor": "list_item",
+      "result": "tree_el"
+    },
+    "tree_virtual_list": {
+      "constructor": "virtual_list",
+      "result": "tree_el"
+    },
+    "context_menu_item": {
+      "constructor": "menu_item",
+      "result": "context_menu_item_el"
+    },
+    "context_menu_separator": {
+      "constructor": "separator",
+      "result": "context_menu_item_el"
+    }
+  },
+  "dynamicAdapters": {
+    "step": "step_el",
+    "timeline_item": "timeline_item_el",
+    "bottom_tab": "bottom_tab_el",
+    "table_row": "table_row_el",
+    "table_cell": "table_cell_el",
+    "radio": "radio_el",
+    "swipe_action": "swipe_action_el",
+    "input_group_actions": "input_group_actions_el",
+    "dropdown_menu_item": "dropdown_menu_item_el",
+    "context_menu_item": "context_menu_item_el",
+    "toolbar": "toolbar_el",
+    "list_section_item": "list_section_item_el",
+    "tree": "tree_el",
+    "dropdown_menu": {"result": "dropdown_menu_el", "single": true}
   },
   "constructorAliases": {"icon_button": "button"},
   "designTokens": {

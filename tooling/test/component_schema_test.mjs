@@ -51,6 +51,7 @@ test('element constructors expose only admitted properties and events', () => {
   assert.deepEqual(Object.keys(admission.events).sort(), schema.events.map(({ lg }) => lg).sort());
   const violations = [];
   for (const [constructor, kind, childKind] of constructors) {
+    const original = schema.slotConstructors?.[constructor]?.constructor ?? constructor;
     assert.ok(admission.kinds[kind], `unknown kind for ${constructor}`);
     assert.ok(functions.has(constructor), `missing constructor ${constructor}`);
     for (const argument of functions.get(constructor).slice(0, -1)) {
@@ -60,7 +61,7 @@ test('element constructors expose only admitted properties and events', () => {
       const base = parameter.replace(/_signal$/, '');
       if (base === 'key' || /^(t|\w+_el)( list)?$/.test(type)) continue;
       if (constructor === 'scroll' && base === 'virtual_owner' && type === 'Lui_virtual.owner') continue;
-      if (constructor === 'virtual_list' && base === 'viewport' && type === 'Lui_virtual.source') continue;
+      if (original === 'virtual_list' && base === 'viewport' && type === 'Lui_virtual.source') continue;
       if (parameter.startsWith('on_')) {
         assert.notEqual(type, '(Lui_protocol.event -> unit)',
           `${constructor}.${parameter} exposes a raw event callback`);
@@ -69,8 +70,8 @@ test('element constructors expose only admitted properties and events', () => {
         assert.equal(type, `(${contract.payload} -> unit)`,
           `incorrect payload type for ${constructor}.${parameter}`);
         const handler = parameter.slice(3);
-        const event = handler === 'change' && constructor === 'slider' ? 'ValueChanged'
-          : handler === 'navigate' ? (['button', 'icon_button', 'row', 'box'].includes(constructor) ? 'NavigationKey' : 'NavigateNext')
+        const event = handler === 'change' && original === 'slider' ? 'ValueChanged'
+          : handler === 'navigate' ? (['button', 'icon_button', 'row', 'box'].includes(original) ? 'NavigationKey' : 'NavigateNext')
           : eventAliases[handler] ?? handler.split('_').map(word => word[0].toUpperCase() + word.slice(1)).join('');
         const eventKind = handler === 'dismiss' ? childKind : kind;
         assert.ok(admission.events[event], `unknown event parameter ${constructor}.${parameter}`);
@@ -85,10 +86,10 @@ test('element constructors expose only admitted properties and events', () => {
         ['x', 'y', 'anchor', 'anchor-target', 'anchor-rect', 'anchor-alignment', 'anchor-offset', 'anchor-alignment-offset'];
       if (constructor === 'split' && base === 'sizing') properties = ['value', 'first-pane-width'];
       if (constructor === 'split' && base === 'motion') properties = ['resize-duration', 'resize-easing', 'resize-origin'];
-      if (base === 'checked' && ['toggle_button', 'menu_item'].includes(constructor)) properties = ['selected'];
+      if (base === 'checked' && ['toggle_button', 'menu_item'].includes(original)) properties = ['selected'];
       if (base === 'selected' && constructor === 'radio') properties = ['checked'];
       if (base === 'title' && ['sheet', 'accordion'].includes(constructor)) properties = ['text'];
-      if (constructor === 'virtual_list' && ['overscan', 'item_extent'].includes(base)) properties = ['data-attrs'];
+      if (original === 'virtual_list' && ['overscan', 'item_extent'].includes(base)) properties = ['data-attrs'];
       for (const property of properties) {
         assert.ok(schema.properties.some(({ wire }) => wire === property), `unknown property ${constructor}.${parameter}`);
         if (!admission.kinds[kind].includes(property)) {
@@ -170,6 +171,36 @@ function runGenerator(arguments_) {
     encoding: 'utf8',
   });
 }
+
+test('slot builders retain abstract results and mandatory arguments', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const functions = typedViewFunctions(readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8'));
+  for (const [name, {constructor, result}] of Object.entries(schema.slotConstructors)) {
+    const args = functions.get(name);
+    assert.equal(args?.at(-1), result, name);
+    for (const label of schema.mandatoryParameters[constructor] ?? []) {
+      assert.ok(args.some(arg => arg.startsWith(`${label}:`)), `${name}.${label}`);
+    }
+  }
+  for (const [name, capability] of Object.entries(schema.dynamicAdapters)) {
+    const {result, single} = typeof capability === 'string' ? {result: capability} : capability;
+    for (const prefix of single ? ['reactive_'] : ['if_', 'reactive_']) {
+      assert.equal(functions.get(prefix + name)?.at(-1), result, prefix + name);
+    }
+    if (single) {
+      assert.equal(functions.has('if_' + name), false);
+      assert.equal(functions.has('keyed_' + name), false);
+    }
+  }
+  const metadata = functions.get('context_menu_item').slice(0, -2);
+  assert.deepEqual(metadata.map(arg => arg.replace(/^\??(\w+):.*$/, '$1')), [
+    'text', 'text_signal', 'icon', 'icon_signal', 'foreground', 'foreground_signal',
+    'variant', 'selected', 'selected_signal', 'checked', 'checked_signal',
+    'disabled', 'disabled_signal', 'accessibility_identifier', 'accessibility_identifier_signal', 'on_press',
+  ]);
+  assert.ok(metadata.includes('on_press:(unit -> unit)'));
+  assert.equal(functions.get('context_menu_item').at(-2), 'unit');
+});
 
 test('committed protocol artifacts match the canonical component schema', () => {
   const result = runGenerator(['--check']);

@@ -824,15 +824,15 @@ let view_contract = function
       view_slots = [];
     }
   | DropdownMenu -> Some {
-      view_result = "t";
-      view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (PopupX, ViewFloat, false); (PopupY, ViewFloat, false); (AnchorValue, view_anchor, false); (AnchorAlignmentValue, view_anchor_alignment, false); (AnchorOffset, ViewFloat, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_result = "dropdown_menu_el";
+      view_children = ViewList "dropdown_menu_item_el";
+      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (PopupX, ViewFloat, false); (PopupY, ViewFloat, false); (AnchorValue, view_anchor, false); (AnchorAlignmentValue, view_anchor_alignment, false); (AnchorOffset, ViewFloat, false); (Transition, ViewString, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "dismiss"];
       view_slots = [];
     }
   | ContextMenu -> Some {
       view_result = "t";
-      view_children = ViewList "t";
+      view_children = ViewList "context_menu_item_el";
       view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "dismiss"];
       view_slots = [];
@@ -846,7 +846,7 @@ let view_contract = function
     }
   | MenuTrigger -> Some {
       view_result = "t";
-      view_children = ViewList "t";
+      view_children = ViewArguments ["dropdown_menu_el"];
       view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (ForegroundValue, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (TextValue, ViewString, false); (InlineIconName, view_icon, false); (AccessibilityLabel, ViewString, false); (Enabled, ViewBool, false); (AlignmentValue, view_alignment, false)];
       view_events = [];
       view_slots = [];
@@ -965,7 +965,7 @@ let view_contract = function
     }
   | Tree -> Some {
       view_result = "t";
-      view_children = ViewList "t";
+      view_children = ViewList "tree_el";
       view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (AccessibilityLabel, ViewString, true); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
@@ -1021,7 +1021,7 @@ let view_contract = function
     }
   | Toolbar -> Some {
       view_result = "t";
-      view_children = ViewList "t";
+      view_children = ViewList "toolbar_el";
       view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (PaddingValue, ViewInt, false); (BackgroundValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (HeightValue, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (OrientationValue, view_orientation, false); (AccessibilityLabel, ViewString, true); (PlacementValue, view_toolbar_placement, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
@@ -1035,7 +1035,7 @@ let view_contract = function
     }
   | ListSection -> Some {
       view_result = "t";
-      view_children = ViewList "t";
+      view_children = ViewList "list_section_item_el";
       view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (SeparatorValue, view_separator_visibility, false); (AlignmentValue, view_alignment, false)];
       view_events = [];
       view_slots = [("header", "t", false); ("footer", "t", false)];
@@ -1098,6 +1098,16 @@ let view_contract = function
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "dismiss"];
       view_slots = [];
     }
+
+
+let view_slot_accepts slot kind = match slot, kind with
+  | "t", DropdownMenu -> true
+  | "toolbar_el", (Button | ToggleButton | ButtonGroup | ToggleGroup | Checkbox | SwitchControl | Toggle | RadioGroup | Select | Combobox | TextField | SecureField | Input | SearchField | MenuItem | MenuTrigger | Spacer | Divider | Text) -> true
+  | "dropdown_menu_item_el", (MenuItem | MenuTrigger | Divider) -> true
+  | "list_section_item_el", (ListItem) -> true
+  | "tree_el", (Row | Column | Panel | Card | Box | ListItem | VirtualList) -> true
+  | "context_menu_item_el", (MenuItem | Divider) -> true
+  | _ -> false
 
 
 

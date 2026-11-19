@@ -259,11 +259,27 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
       view_slots = ${list(slots)};
     }`);
   }
+  const capabilities = new Map();
+  for (const {constructor, result} of Object.values(schema.slotConstructors ?? {})) {
+    const canonical = schema.constructorAliases?.[constructor] ?? constructor;
+    const wire = {separator: 'divider', menu: 'menu-trigger', submenu: 'menu-trigger'}[canonical]
+      ?? canonical.replace(/_$/, '').replaceAll('_', '-');
+    const kind = schema.nodeKinds.find(kind => kind.wire === wire)?.lg;
+    if (!kind) throw new Error(`unknown capability constructor ${constructor}`);
+    if (!capabilities.has(result)) capabilities.set(result, new Set());
+    capabilities.get(result).add(kind);
+  }
   return `${extension ? '' : typedViewSignature}
 ${[...domains].map(([name, value]) => `let view_${name} = ${value}`).join('\n')}
 
 let ${extension ? 'extension_view_contract' : 'view_contract'} = function
 ${contracts.join('\n')}
 ${extension ? '  | _ -> None\n' : ''}
+${extension ? '' : `
+let view_slot_accepts slot kind = match slot, kind with
+  | "t", DropdownMenu -> true
+${[...capabilities].map(([slot, kinds]) => `  | ${quote(slot)}, (${[...kinds].join(' | ')}) -> true`).join('\n')}
+  | _ -> false
+`}
 `;
 }

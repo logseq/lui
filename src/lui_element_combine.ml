@@ -27,7 +27,7 @@ type action =
       { label : string
       ; icon : icon
       ; text : string option
-      ; menu : t list
+      ; menu : dropdown_menu_item_el list
       ; on_dismiss : (unit -> unit) option
       }
 
@@ -403,7 +403,7 @@ let form_sheet
     (match cancel with
      | None -> []
      | Some (cancel_label, on_cancel) ->
-       [ button
+       [ toolbar_button
            ~style_class:"cancellation-action"
            ~text:cancel_label
            ~on_press:on_cancel
@@ -412,7 +412,7 @@ let form_sheet
     @ (match confirm with
        | None -> []
        | Some (confirm_label, on_confirm) ->
-         [ button
+         [ toolbar_button
              ~style_class:"confirmation-action"
              ~text:confirm_label
              ?disabled_signal:confirm_disabled
@@ -783,7 +783,7 @@ let check_menu_item
       ~on_press
       ()
   =
-  menu_item
+  dropdown_menu_item
     ?key
     ?accessibility_identifier
     ~text:label
@@ -828,7 +828,7 @@ let menu_button
     ?accessibility_identifier
     [ trigger
     ; if_ ~test:open_
-        (dropdown_menu ~anchor ~anchor_alignment:`start ?on_dismiss menu)
+        (dropdown_menu_view (dropdown_menu ~anchor ~anchor_alignment:`start ?on_dismiss menu))
     ]
 ;;
 

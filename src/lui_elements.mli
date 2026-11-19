@@ -172,6 +172,12 @@ type table_cell_el
 type radio_el
 type input_group_actions_el
 type swipe_action_el
+type dropdown_menu_item_el
+type context_menu_item_el
+type toolbar_el
+type list_section_item_el
+type tree_el
+type dropdown_menu_el
 
 (** Empty type: [leaf] constructors take a [nothing list] children slot, so
     [] compiles and any real child is a type error. *)
@@ -1471,7 +1477,7 @@ val tree :
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) ->
   label:string ->
-  ?transition:string -> t list -> t
+  ?transition:string -> tree_el list -> t
 val resizable :
   ?key:string ->
   ?grow:float ->
@@ -3050,7 +3056,7 @@ val dropdown_menu :
   ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->
   ?on_dismiss:(unit -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> dropdown_menu_item_el list -> dropdown_menu_el
 val context_menu :
   ?key:string ->
   ?accessibility_identifier:string ->
@@ -3058,7 +3064,7 @@ val context_menu :
   ?on_appear:(unit -> unit) ->
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) ->
-  ?on_dismiss:(unit -> unit) -> t list -> t
+  ?on_dismiss:(unit -> unit) -> context_menu_item_el list -> t
 val menu_trigger :
   ?key:string ->
   ?accessibility_identifier:string ->
@@ -3074,7 +3080,7 @@ val menu_trigger :
   ?icon_signal:icon Signal.signal ->
   ?label:string ->
   ?disabled:bool ->
-  ?disabled_signal:bool Signal.signal -> t list -> t
+  ?disabled_signal:bool Signal.signal -> dropdown_menu_el -> t
 val menu :
   ?key:string ->
   ?accessibility_identifier:string ->
@@ -3089,7 +3095,7 @@ val menu :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_dismiss:(unit -> unit) -> t list -> t
+  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> t
 val submenu :
   ?key:string ->
   ?text:string ->
@@ -3097,7 +3103,7 @@ val submenu :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_dismiss:(unit -> unit) -> t list -> t
+  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> t
 val dialog :
   ?key:string ->
   ?gap:int ->
@@ -3342,7 +3348,7 @@ val toolbar :
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
-  label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:toolbar_placement -> t list -> t
+  label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:toolbar_placement -> toolbar_el list -> t
 val accordion :
   ?key:string ->
   ?height:int ->
@@ -3493,7 +3499,7 @@ val list_section :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?separator:separator_visibility ->
-  ?header:t -> ?footer:t -> t list -> t
+  ?header:t -> ?footer:t -> list_section_item_el list -> t
 val swipe_actions :
   ?key:string ->
   ?accessibility_identifier:string -> swipe_action_el list -> t
@@ -3793,3 +3799,1693 @@ val themed :
     (string * Lui_ui.theme_token_value) list Signal.signal ->
   ?mode:Lui_ui.theme_mode ->
   ?mode_signal:Lui_ui.theme_mode Signal.signal -> t -> t
+
+val toolbar_button :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  text:string ->
+  ?text_signal:string Signal.signal ->
+  ?variant:variant ->
+  ?size:button_size ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  ?label:string ->
+  ?text_alignment:text_alignment ->
+  ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?autofocus:bool ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  ?transition:string -> t list -> toolbar_el
+
+(** An icon-only button with a mandatory accessible [label]. Uses the same
+    wire kind, defaults, events and children slot as [button]. *)
+val toolbar_icon_button :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?variant:variant ->
+  ?size:control_size ->
+  icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  label:string ->
+  ?text_alignment:text_alignment ->
+  ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?autofocus:bool ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_toggle_button :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?variant:variant ->
+  ?size:control_size ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  ?label:string ->
+  ?text_alignment:text_alignment ->
+  ?selected:bool ->
+  ?checked:bool ->
+  ?checked_signal:bool Signal.signal ->
+  ?autofocus:bool ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_button_group :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_toggle_group :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_checkbox :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?checked:bool ->
+  ?checked_signal:bool Signal.signal ->
+  ?indeterminate:bool ->
+  ?indeterminate_signal:bool Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_toggle_detail:(toggle_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_switch :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?checked:bool ->
+  ?checked_signal:bool Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_toggle :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?checked:bool ->
+  ?checked_signal:bool Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_radio_group :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> label:string ->
+  ?transition:string -> radio_el list -> toolbar_el
+val toolbar_select :
+  ?key:string ->
+  ?gap:int ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?label:string ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_press:(unit -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_combobox :
+  ?key:string ->
+  ?gap:int ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_press:(unit -> unit) ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+
+(** Menu surface mounted in the popup portal. Anchoring is either implicit
+    — the element under the menu's retained parent ([~anchor],
+    [~anchor_alignment], [~anchor_offset]) — or programmatic:
+    [~at:(x, y)] ([~at_signal]) opens the menu at a viewport point, clamped
+    like {!Lui_elements.popover}, with no DOM anchor required. [~at] and
+    [~anchor] are mutually exclusive (rejected at validation). *)
+val toolbar_text_field :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
+  ?label:string ->
+  ?autofocus:bool ->
+  ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_secure_field :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
+  ?label:string ->
+  ?autofocus:bool ->
+  ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_input :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
+  ?label:string ->
+  ?autofocus:bool ->
+  ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?kind:input_kind ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_search_field :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
+  ?label:string ->
+  ?autofocus:bool ->
+  ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_menu_item :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?selection_placement:icon_placement ->
+  ?variant:variant ->
+  ?size:control_size ->
+  ?selected:bool ->
+  ?checked:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?checked_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_menu_trigger :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground:string ->
+  ?foreground_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal -> dropdown_menu_el -> toolbar_el
+val toolbar_spacer :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?transition:string -> nothing list -> toolbar_el
+val toolbar_divider :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?orientation:orientation ->
+  ?transition:string -> nothing list -> toolbar_el
+val toolbar_text :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?as_:phrasing_tag ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?value:string ->
+  ?value_signal:string Signal.signal ->
+  ?text_alignment:text_alignment ->
+  ?font_size:string ->
+  ?font_weight:int ->
+  ?line_height:string ->
+  ?letter_spacing:float ->
+  ?font_family:string ->
+  ?font_style:font_style ->
+  ?text_decoration:string ->
+  ?white_space:white_space -> ?line_clamp:int ->
+  ?text_overflow:text_overflow ->
+  ?overflow:overflow ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?transition:string -> t list -> toolbar_el
+val toolbar_menu :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?foreground:string ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> toolbar_el
+val toolbar_separator :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?orientation:orientation ->
+  ?transition:string -> nothing list -> toolbar_el
+
+(* Text-entry constructors can opt into Submit on focus loss with
+   [submit_on_blur]. Unfinished composition never submits on blur. *)
+val dropdown_menu_item :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?selection_placement:icon_placement ->
+  ?variant:variant ->
+  ?size:control_size ->
+  ?selected:bool ->
+  ?checked:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?checked_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  ?transition:string -> t list -> dropdown_menu_item_el
+val dropdown_menu_trigger :
+  ?key:string ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground:string ->
+  ?foreground_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal -> dropdown_menu_el -> dropdown_menu_item_el
+val dropdown_menu_submenu :
+  ?key:string ->
+  ?text:string ->
+  ?icon:icon ->
+  ?label:string ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> dropdown_menu_item_el
+val dropdown_menu_separator :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?orientation:orientation ->
+  ?transition:string -> nothing list -> dropdown_menu_item_el
+
+(* Text-entry constructors can opt into Submit on focus loss with
+   [submit_on_blur]. Unfinished composition never submits on blur. *)
+val dropdown_menu_divider :
+  ?key:string ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?orientation:orientation ->
+  ?transition:string -> nothing list -> dropdown_menu_item_el
+val list_section_item :
+  ?key:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  ?role:role ->
+  ?tree_level:int ->
+  ?expanded:bool ->
+  ?expanded_signal:bool Signal.signal ->
+  ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_press:(unit -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_double_press:(unit -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_toggle:(bool -> unit) ->
+  ?separator:separator_visibility ->
+  ?swipe_actions:swipe_action_el list ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?list_marker:list_marker ->
+  ?transition:string -> t list -> list_section_item_el
+
+(** A named group of rows inside a {!list}: [~header]/[~footer] take any
+    element and mount it in a dedicated slot node, [~key] sets both the
+    reload key and the wire [key] identity used by scroll targeting. *)
+val tree_row :
+  ?as_:row_tag ->
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?shrink:float ->
+  ?orientation:orientation ->
+  ?orientation_signal:orientation Signal.signal ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_focus_within:(bool -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?pointer_capture:bool ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_move:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_pointer_cancel:(pointer_detail -> unit) ->
+  ?on_navigation_key:(navigation_key -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  ?display:display ->
+  ?flex_wrap:flex_wrap ->
+  ?transition:string -> t list -> tree_el
+val tree_column :
+  ?as_:list_container_tag ->
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?shrink:float ->
+  ?grow_signal:float Signal.signal ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?min_width_signal:int Signal.signal ->
+  ?max_width:int ->
+  ?max_width_signal:int Signal.signal ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_focus_within:(bool -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  ?display:display ->
+  ?display_signal:display Signal.signal ->
+  ?flex_wrap:flex_wrap ->
+  ?transition:string -> t list -> tree_el
+val tree_panel :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  ?transition:string -> t list -> tree_el
+val tree_card :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  ?transition:string -> t list -> tree_el
+val tree_box :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?shrink:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_focus_within:(bool -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?pointer_capture:bool ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_move:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_pointer_cancel:(pointer_detail -> unit) ->
+  ?on_navigation_key:(navigation_key -> unit) ->
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  ?display:display ->
+  ?flex_wrap:flex_wrap ->
+  ?inert:bool ->
+  ?inert_signal:bool Signal.signal ->
+  ?transition:string -> t list -> tree_el
+val tree_list_item :
+  ?key:string ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  ?role:role ->
+  ?tree_level:int ->
+  ?expanded:bool ->
+  ?expanded_signal:bool Signal.signal ->
+  ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_press:(unit -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_double_press:(unit -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_toggle:(bool -> unit) ->
+  ?separator:separator_visibility ->
+  ?swipe_actions:swipe_action_el list ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
+  ?list_marker:list_marker ->
+  ?transition:string -> t list -> tree_el
+
+(** A named group of rows inside a {!list}: [~header]/[~footer] take any
+    element and mount it in a dedicated slot node, [~key] sets both the
+    reload key and the wire [key] identity used by scroll targeting. *)
+val tree_virtual_list :
+  ?viewport:Lui_virtual.source ->
+  ?key:string ->
+  ?overscan:int ->
+  ?item_extent:float ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?scroll_target:string ->
+  ?scroll_anchor:scroll_anchor ->
+  ?scroll_token:int ->
+  ?scroll_target_signal:string Signal.signal ->
+  ?scroll_token_signal:int Signal.signal ->
+  ?scroll_animated:bool ->
+  ?track_visible_range:bool ->
+  ?on_scroll_completed:(scroll_completed -> unit) ->
+  ?on_visible_range:(visible_range -> unit) ->
+   (* Receives [VisibleRange] (intersecting row indices — overscan and
+      focus-retained rows excluded) and [ScrollEdges] (whether the
+      scroll viewport touches its top/bottom edges — the typed signal
+      for tail pinning). *)
+  ?opacity:float ->
+  ?opacity_signal:float Signal.signal ->
+  ?list_marker:list_marker ->
+  ?transition:string -> t list -> tree_el
+val context_menu_item :
+  ?text:string ->
+  ?text_signal:string Signal.signal ->
+  ?icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?foreground:string ->
+  ?foreground_signal:string Signal.signal ->
+  ?variant:variant ->
+  ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?checked:bool ->
+  ?checked_signal:bool Signal.signal ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  on_press:(unit -> unit) -> unit -> context_menu_item_el
+val context_menu_separator : unit -> context_menu_item_el
+val dropdown_menu_view : dropdown_menu_el -> t
+
+val if_step : test:bool Signal.signal -> step_el -> step_el
+val reactive_step : ?equal:('a -> 'a -> bool) -> ('a -> step_el) -> 'a Signal.signal -> step_el
+val if_timeline_item : test:bool Signal.signal -> timeline_item_el -> timeline_item_el
+val reactive_timeline_item : ?equal:('a -> 'a -> bool) -> ('a -> timeline_item_el) -> 'a Signal.signal -> timeline_item_el
+val if_bottom_tab : test:bool Signal.signal -> bottom_tab_el -> bottom_tab_el
+val reactive_bottom_tab : ?equal:('a -> 'a -> bool) -> ('a -> bottom_tab_el) -> 'a Signal.signal -> bottom_tab_el
+val if_table_row : test:bool Signal.signal -> table_row_el -> table_row_el
+val reactive_table_row : ?equal:('a -> 'a -> bool) -> ('a -> table_row_el) -> 'a Signal.signal -> table_row_el
+val if_table_cell : test:bool Signal.signal -> table_cell_el -> table_cell_el
+val reactive_table_cell : ?equal:('a -> 'a -> bool) -> ('a -> table_cell_el) -> 'a Signal.signal -> table_cell_el
+val if_radio : test:bool Signal.signal -> radio_el -> radio_el
+val reactive_radio : ?equal:('a -> 'a -> bool) -> ('a -> radio_el) -> 'a Signal.signal -> radio_el
+val if_swipe_action : test:bool Signal.signal -> swipe_action_el -> swipe_action_el
+val reactive_swipe_action : ?equal:('a -> 'a -> bool) -> ('a -> swipe_action_el) -> 'a Signal.signal -> swipe_action_el
+val if_input_group_actions : test:bool Signal.signal -> input_group_actions_el -> input_group_actions_el
+val reactive_input_group_actions : ?equal:('a -> 'a -> bool) -> ('a -> input_group_actions_el) -> 'a Signal.signal -> input_group_actions_el
+val keyed_dropdown_menu_item : source:'a list Signal.signal -> key:('a -> 'b) -> cmp:('b -> 'b -> int) -> mount:('a Signal.signal -> dropdown_menu_item_el) -> dropdown_menu_item_el
+val if_dropdown_menu_item : test:bool Signal.signal -> dropdown_menu_item_el -> dropdown_menu_item_el
+val reactive_dropdown_menu_item : ?equal:('a -> 'a -> bool) -> ('a -> dropdown_menu_item_el) -> 'a Signal.signal -> dropdown_menu_item_el
+val keyed_context_menu_item : source:'a list Signal.signal -> key:('a -> 'b) -> cmp:('b -> 'b -> int) -> mount:('a Signal.signal -> context_menu_item_el) -> context_menu_item_el
+val if_context_menu_item : test:bool Signal.signal -> context_menu_item_el -> context_menu_item_el
+val reactive_context_menu_item : ?equal:('a -> 'a -> bool) -> ('a -> context_menu_item_el) -> 'a Signal.signal -> context_menu_item_el
+val keyed_toolbar : source:'a list Signal.signal -> key:('a -> 'b) -> cmp:('b -> 'b -> int) -> mount:('a Signal.signal -> toolbar_el) -> toolbar_el
+val if_toolbar : test:bool Signal.signal -> toolbar_el -> toolbar_el
+val reactive_toolbar : ?equal:('a -> 'a -> bool) -> ('a -> toolbar_el) -> 'a Signal.signal -> toolbar_el
+val keyed_list_section_item : source:'a list Signal.signal -> key:('a -> 'b) -> cmp:('b -> 'b -> int) -> mount:('a Signal.signal -> list_section_item_el) -> list_section_item_el
+val if_list_section_item : test:bool Signal.signal -> list_section_item_el -> list_section_item_el
+val reactive_list_section_item : ?equal:('a -> 'a -> bool) -> ('a -> list_section_item_el) -> 'a Signal.signal -> list_section_item_el
+val keyed_tree : source:'a list Signal.signal -> key:('a -> 'b) -> cmp:('b -> 'b -> int) -> mount:('a Signal.signal -> tree_el) -> tree_el
+val if_tree : test:bool Signal.signal -> tree_el -> tree_el
+val reactive_tree : ?equal:('a -> 'a -> bool) -> ('a -> tree_el) -> 'a Signal.signal -> tree_el
+val reactive_dropdown_menu : ?equal:('a -> 'a -> bool) -> ('a -> dropdown_menu_el) -> 'a Signal.signal -> dropdown_menu_el
+
+val scoped_step : (Lui_ui.ui_context -> step_el) -> step_el
+val scoped_timeline_item : (Lui_ui.ui_context -> timeline_item_el) -> timeline_item_el
+val scoped_bottom_tab : (Lui_ui.ui_context -> bottom_tab_el) -> bottom_tab_el
+val scoped_table_row : (Lui_ui.ui_context -> table_row_el) -> table_row_el
+val scoped_table_cell : (Lui_ui.ui_context -> table_cell_el) -> table_cell_el
+val scoped_radio : (Lui_ui.ui_context -> radio_el) -> radio_el
+val scoped_input_group_actions : (Lui_ui.ui_context -> input_group_actions_el) -> input_group_actions_el
+val scoped_swipe_action : (Lui_ui.ui_context -> swipe_action_el) -> swipe_action_el
+val scoped_dropdown_menu_item : (Lui_ui.ui_context -> dropdown_menu_item_el) -> dropdown_menu_item_el
+val scoped_context_menu_item : (Lui_ui.ui_context -> context_menu_item_el) -> context_menu_item_el
+val scoped_toolbar : (Lui_ui.ui_context -> toolbar_el) -> toolbar_el
+val scoped_list_section_item : (Lui_ui.ui_context -> list_section_item_el) -> list_section_item_el
+val scoped_tree : (Lui_ui.ui_context -> tree_el) -> tree_el
+val scoped_dropdown_menu : (Lui_ui.ui_context -> dropdown_menu_el) -> dropdown_menu_el

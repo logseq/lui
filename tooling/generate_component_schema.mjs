@@ -354,6 +354,7 @@ val property_web_only : property -> bool
 
 ${typedViewSignature}
 val view_contract : node_kind -> property view_contract option
+val view_slot_accepts : string -> node_kind -> bool
 val extension_view_contract : string -> string view_contract option
 `;
 }
@@ -503,6 +504,16 @@ function renderNestingSchema(schema) {
       return [`  | "${name}" -> Some (${lg}, ${lg}, ${shape})`];
     });
   });
+  for (const [name, {constructor}] of Object.entries(schema.slotConstructors ?? {})) {
+    const base = constructors.find(line => line.startsWith(`  | "${constructor}" ->`));
+    const special = constructor === 'separator' ? 'Some (Divider, Divider, Children_list)'
+      : ['menu', 'submenu'].includes(constructor) ? 'Some (MenuTrigger, DropdownMenu, Children_list)' : null;
+    if (!base && !special) throw new Error(`unknown slot constructor ${constructor}`);
+    const shape = functions.get(name).slice(0, -1).filter(arg => !/^\??\w+:/.test(arg));
+    const contract = (special ?? base.split(' -> ')[1]).replace(/(?:Children_list|Child_arguments \d+)\)/,
+      `${shape.length === 1 && shape[0].endsWith(' list') ? 'Children_list' : `Child_arguments ${shape.length}`})`);
+    constructors.push(`  | "${name}" -> ${contract}`);
+  }
   constructors.push('  | "separator" -> Some (Divider, Divider, Children_list)',
     '  | "menu" | "submenu" -> Some (MenuTrigger, DropdownMenu, Children_list)');
   return `(* Generated from schema/components.json, Lui_elements and Lui_protocol. Do not edit by hand. *)
@@ -524,8 +535,21 @@ ${constructors.join('\n')}
   | _ -> None
 
 let mandatory_labels = function
-${Object.entries(schema.mandatoryParameters ?? {}).map(([name, labels]) => `  | ${JSON.stringify(name)} -> [${labels.map(JSON.stringify).join('; ')}]`).join('\n')}
+${Object.entries({...schema.mandatoryParameters,
+  ...Object.fromEntries(Object.entries(schema.slotConstructors ?? {})
+    .map(([name, {constructor}]) => [name, schema.mandatoryParameters?.[constructor] ?? []]))})
+  .filter(([, labels]) => labels.length)
+  .map(([name, labels]) => `  | ${JSON.stringify(name)} -> [${labels.map(JSON.stringify).join('; ')}]`).join('\n')}
   | _ -> []
+
+let scoped_adapter = function
+${[...functions].filter(([, args]) => args.at(-1).endsWith('_el')).map(([name, args]) => `  | ${JSON.stringify(name)} -> "scoped_${args.at(-1).slice(0, -3)}"`).join('\n')}
+  | _ -> "scoped"
+
+let dynamic_adapter = function
+  | ${Object.keys(schema.dynamicAdapters ?? {}).flatMap(name => ['keyed_', 'if_', 'reactive_']
+    .map(prefix => prefix + name)).filter(name => functions.has(name)).map(JSON.stringify).join(' | ')} -> true
+  | _ -> false
 
 let exports = function
   | ${[...functions.keys()].map(JSON.stringify).join(' | ')} -> true

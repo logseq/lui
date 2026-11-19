@@ -157,7 +157,7 @@ let glass_buttons_section model_source send : t =
     Lui_element_combine.Menu { label; icon; text; menu; on_dismiss = None }
   in
   let entry name =
-    menu_item ~text:name
+    dropdown_menu_item ~text:name
       ~on_press:(press send (Model.PerformContextAction name)) []
   in
   section "Glass Buttons"
@@ -727,12 +727,12 @@ let context_menu_section model_source send : t =
     [ list ~gap:2 ~cross:`stretch ~max_width:480
         [ list_item ~text:"Quarterly report.md"
             [ context_menu
-                [ menu_item ~text:"Rename"
-                    ~on_press:(press send (Model.PerformContextAction "Rename")) []
-                ; separator []
-                ; menu_item ~text:"Archive"
+                [ context_menu_item ~text:"Rename"
+                    ~on_press:(press send (Model.PerformContextAction "Rename")) ()
+                ; context_menu_separator ()
+                ; context_menu_item ~text:"Archive"
                     ~disabled:(reactive Model.disabled model_source)
-                    ~on_press:(press send (Model.PerformContextAction "Archive")) []
+                    ~on_press:(press send (Model.PerformContextAction "Archive")) ()
                 ]
             ]
         ]
@@ -752,29 +752,29 @@ let menu_item_section model_source send : t =
         [ button ~text:"Document actions"
             ~on_press:(press send (Model.OpenPicker "menuitem")) []
         ; if_ ~test:open_
-            (dropdown_menu ~anchor:`below ~anchor_alignment:`start
+            (dropdown_menu_view (dropdown_menu ~anchor:`below ~anchor_alignment:`start
                ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
-               [ menu_item ~text:"Rename" ~icon:`edit
+               [ dropdown_menu_item ~text:"Rename" ~icon:`edit
                    ~on_press:(press send (Model.PerformContextAction "Rename"))
                    []
-               ; submenu ~text:"Share" ~on_dismiss:dismiss
-                   [ menu_item ~text:"Copy link"
+               ; dropdown_menu_submenu ~text:"Share" ~on_dismiss:dismiss
+                   [ dropdown_menu_item ~text:"Copy link"
                        ~on_press:
                          (press send (Model.PerformContextAction "Copy link"))
                        []
-                   ; menu_item ~text:"Export"
+                   ; dropdown_menu_item ~text:"Export"
                        ~on_press:
                          (press send (Model.PerformContextAction "Export")) []
                    ]
-               ; menu_item ~text:"Archive"
+               ; dropdown_menu_item ~text:"Archive"
                    ~disabled:(reactive Model.disabled model_source)
                    ~on_press:(press send (Model.PerformContextAction "Archive"))
                    []
-               ; menu_item ~text:"Delete" ~variant:`destructive ~icon:`trash
+               ; dropdown_menu_item ~text:"Delete" ~variant:`destructive ~icon:`trash
                    ~size:`sm
                    ~on_press:(press send (Model.PerformContextAction "Delete"))
                    []
-               ])
+                ]))
         ]
     ; paragraph ~value:(reactive Model.document_action model_source) []
     ]
@@ -836,18 +836,18 @@ let tree_section model_source send : t =
   let open_ = model_source >|= Model.accordion_open in
   section "Tree"
     [ tree ~gap:2 ~label:"Project files" ~max_width:480
-        [ reactive
+        [ reactive_tree
             ~equal:(fun (a : Model.t) (b : Model.t) ->
               a.Model.accordion_open = b.Model.accordion_open)
             (fun (m : Model.t) ->
-              list_item ~role:`treeitem ~tree_level:1 ~icon:`folder_open
+              tree_list_item ~role:`treeitem ~tree_level:1 ~icon:`folder_open
                 ~text:"Documents" ~expanded:m.Model.accordion_open
                 ~on_toggle:(on_toggle send (fun v -> Model.SetAccordionOpen v))
                 ~on_press:(press send (Model.SelectDocument "Quarterly report.md"))
                 [])
             model_source
-        ; if_ ~test:open_
-            (column ~padding_horizontal:20
+        ; if_tree ~test:open_
+            (tree_column ~padding_horizontal:20
                [ list_item ~role:`treeitem ~tree_level:2 ~icon:`file_text
                    ~text:"Quarterly report.md"
                    ~selected:(reactive Model.report_selected model_source)
@@ -1030,25 +1030,25 @@ let toolbar_section model_source send : t =
   let checked = model_source >|= Model.checked in
   section "Toolbar"
     [ toolbar ~orientation:`horizontal ~label:"Formatting" ~gap:4
-        [ button ~variant:`ghost ~text:"Bold" ~on_press:noop []
-        ; button_group ~label:"Text style"
+        [ toolbar_button ~variant:`ghost ~text:"Bold" ~on_press:noop []
+        ; toolbar_button_group ~label:"Text style"
             [ button ~variant:`ghost ~text:"Italic" ~on_press:noop []
             ; button ~variant:`ghost ~text:"Underline" ~on_press:noop []
             ]
-        ; button ~variant:`ghost ~text:"Redo" ~disabled:true ~on_press:noop []
-        ; button ~variant:`ghost ~text:"More" ~on_press:noop []
-        ; input ~text:(reactive value) ~placeholder:"Format value"
+        ; toolbar_button ~variant:`ghost ~text:"Redo" ~disabled:true ~on_press:noop []
+        ; toolbar_button ~variant:`ghost ~text:"More" ~on_press:noop []
+        ; toolbar_input ~text:(reactive value) ~placeholder:"Format value"
             ~label:"Format value"
             ~on_input:(on_input send (fun v -> Model.SetFieldValue v)) []
         ]
     ; toolbar ~orientation:`vertical ~label:"Insert" ~gap:4
-        [ button ~variant:`ghost ~text:"Link" ~on_press:noop []
-        ; button ~variant:`ghost ~text:"Image" ~on_press:noop []
-        ; checkbox ~text:"Locked option" ~checked:(reactive checked)
+        [ toolbar_button ~variant:`ghost ~text:"Link" ~on_press:noop []
+        ; toolbar_button ~variant:`ghost ~text:"Image" ~on_press:noop []
+        ; toolbar_checkbox ~text:"Locked option" ~checked:(reactive checked)
             ~disabled:true []
-        ; select ~text:(reactive value) ~placeholder:"Locked picker"
+        ; toolbar_select ~text:(reactive value) ~placeholder:"Locked picker"
             ~disabled:true []
-        ; input ~text:(reactive value) ~label:"Locked input"
+        ; toolbar_input ~text:(reactive value) ~label:"Locked input"
             ~disabled:true []
         ]
     ; paragraph
@@ -1078,25 +1078,25 @@ let environment_menu model_source send : t =
   let dismiss = press send Model.ClosePicker in
   let production_selected = model_source >|= Model.production_selected in
   let staging_selected = model_source >|= Model.staging_selected in
-  dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
+  dropdown_menu_view (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
     ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
-    [ menu_item ~text:"Production" ~selected:(reactive production_selected)
+    [ dropdown_menu_item ~text:"Production" ~selected:(reactive production_selected)
         ~disabled:(reactive disabled)
         ~on_press:(press send (Model.SelectEnvironment "Production")) []
-    ; menu_item ~text:"Staging" ~selected:(reactive staging_selected)
+    ; dropdown_menu_item ~text:"Staging" ~selected:(reactive staging_selected)
         ~disabled:(reactive disabled)
         ~on_press:(press send (Model.SelectEnvironment "Staging")) []
-    ; submenu ~text:"More environments" ~disabled:(reactive disabled)
+    ; dropdown_menu_submenu ~text:"More environments" ~disabled:(reactive disabled)
         ~on_dismiss:dismiss
-        [ menu_item ~text:"Production region"
+        [ dropdown_menu_item ~text:"Production region"
             ~selected:(reactive production_selected)
             ~on_press:(press send (Model.SelectEnvironment "Production")) []
-        ; menu_item ~text:"Staging region"
+        ; dropdown_menu_item ~text:"Staging region"
             ~selected:(reactive staging_selected)
             ~on_press:(press send (Model.SelectEnvironment "Staging")) []
         ]
-    ; menu_item ~text:"Development" ~disabled:true []
-    ]
+    ; dropdown_menu_item ~text:"Development" ~disabled:true []
+    ])
 
 let select_section model_source send : t =
   let environment = model_source >|= Model.environment in
@@ -1126,17 +1126,17 @@ let combobox_section model_source send : t =
             ~on_press:(press send (Model.OpenPicker "combobox"))
             ~on_dismiss:dismiss []
         ; if_ ~test:open_
-            (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
+            (dropdown_menu_view (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
                ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
-               [ if_ ~test:(reactive Model.production_visible model_source)
-                   (menu_item ~text:"Production" ~icon:`check
+               [ if_dropdown_menu_item ~test:(reactive Model.production_visible model_source)
+                   (dropdown_menu_item ~text:"Production" ~icon:`check
                       ~disabled:(reactive Model.disabled model_source)
                       ~on_press:(press send (Model.SelectEnvironment "Production")) [])
-               ; if_ ~test:(reactive Model.staging_visible model_source)
-                   (menu_item ~text:"Staging"
+               ; if_dropdown_menu_item ~test:(reactive Model.staging_visible model_source)
+                   (dropdown_menu_item ~text:"Staging"
                       ~disabled:(reactive Model.disabled model_source)
                       ~on_press:(press send (Model.SelectEnvironment "Staging")) [])
-               ])
+                ]))
         ]
     ; row ~gap:8 ~cross:`center
         [ text ~value:"Shared query:" []
@@ -1676,7 +1676,7 @@ let combine_sidebar_section model_source send : t =
                    ~checked_signal:(selected "Personal") ~on_press:(choose "Personal") ()
                ; check_menu_item ~label:"Work"
                    ~checked_signal:(selected "Work") ~on_press:(choose "Work") ()
-               ; menu_item ~text:"Add workspace" ~on_press:(choose "New workspace") []
+               ; dropdown_menu_item ~text:"Add workspace" ~on_press:(choose "New workspace") []
                ]
              ~on_dismiss:(press send Model.CloseCombineMenu)
              ~on_press:(press send Model.OpenCombineMenu) ())
