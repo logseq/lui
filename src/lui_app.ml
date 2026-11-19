@@ -304,7 +304,7 @@ let reload_view app request source_hash contract_hash view elapsed_ms =
           | None ->
             invalid_arg "candidate view did not return a node"
         in
-        Lui_runtime.retire_checkpoint_dynamic_segments saved old_view;
+        Lui_runtime.retire_checkpoint_dynamic_segments application saved old_view;
         (* The candidate is committed. Publish its ownership before running
            fallible old-view cleanup; a committed tree cannot be rolled back. *)
         state.reload_view_scope := candidate_scope;
