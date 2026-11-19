@@ -1,5 +1,15 @@
 # LUI API migration guide
 
+### Apple row intrinsic text priority
+
+Non-growing `text`, `heading`, and `paragraph` children in Apple rows now
+retain intrinsic width ahead of growing siblings, without requiring
+`single-line`. For example, `row [button ~grow:1.0 ~text:"Tab" [];
+text ~value:"✓" []]` keeps its trailing glyph visible. No wire or caller
+changes are required. Flexible containers keep their existing priority;
+growing text still shares the growing-child priority. Explicit `single-line`
+priority is unchanged. Android and web layout are unchanged.
+
 ### Foreground accent ink compatibility
 
 `primary` and `accent` in a foreground slot retain their accent ink color;

@@ -1713,6 +1713,20 @@ struct LUISwiftUIBackendTests {
 
     @Test("growing Row children preserve intrinsic trailing controls")
     func growingRowChildrenPreserveTrailingControls() {
+        let growingButton = LUIRowLayoutPolicy.childLayoutPriority(
+            kind: .button, grow: 1, styleClass: nil)
+        for kind in [LUINodeKind.text, .heading, .paragraph] {
+            #expect(LUIRowLayoutPolicy.childLayoutPriority(
+                kind: kind, grow: nil, styleClass: nil) > growingButton)
+            #expect(LUIRowLayoutPolicy.childLayoutPriority(
+                kind: kind, grow: 0, styleClass: "secondary") > growingButton)
+            #expect(LUIRowLayoutPolicy.childLayoutPriority(
+                kind: kind, grow: 1, styleClass: nil) == growingButton)
+        }
+        for kind in [LUINodeKind.row, .column, .spacer] {
+            #expect(LUIRowLayoutPolicy.childLayoutPriority(
+                kind: kind, grow: nil, styleClass: nil) == 0)
+        }
         #expect(LUIRowLayoutPolicy.childLayoutPriority(
             grow: nil,
             styleClass: nil
