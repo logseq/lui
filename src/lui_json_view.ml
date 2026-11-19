@@ -371,30 +371,41 @@ let heading_level_opt = function
   | Some 4 -> Some `h4 | Some 5 -> Some `h5 | Some 6 -> Some `h6
   | None -> None | Some _ -> invalid_arg "Invalid heading level"
 
+let diagnostic message = Printf.eprintf "LUI JSON view: %s\n%!" message
+
 let popover_target_prop props =
-  let rect = anchor_rect_prop props in
   let target = v_str props "anchor-target" in
-  match anchor_opt (v_str props "anchor"), v_float props "x", v_float props "y" with
-  | Some side, None, None ->
-      let source = match target, rect with
-        | None, None -> E.Parent
-        | Some name, None -> E.Target name
-        | None, Some (x, y, width, height) -> E.Rect {x; y; width; height}
-        | Some _, Some _ -> invalid_arg "Conflicting popover anchor sources" in
+  let has_rect = get props "anchor-rect" <> None in
+  let x = v_float props "x" and y = v_float props "y" in
+  match anchor_opt (v_str props "anchor") with
+  | Some side ->
+      if x <> None || y <> None then diagnostic "anchor wins over point positioning";
+      let source = match target with
+        | Some name ->
+            if has_rect then diagnostic "anchor-target wins over anchor-rect";
+            E.Target name
+        | None ->
+            match anchor_rect_prop props with
+            | None -> E.Parent
+            | Some (x, y, width, height) -> E.Rect {x; y; width; height} in
       E.Anchor {side; source;
         align = Option.value (anchor_align_opt (v_str props "anchor-alignment")) ~default:`start;
         offset = Option.value (v_float props "anchor-offset") ~default:0.;
         align_offset = Option.value (v_float props "anchor-alignment-offset") ~default:0.}
-  | None, Some x, Some y when target = None && rect = None -> E.At (x, y)
-  | None, None, None when target = None && rect = None -> E.Cover
-  | _ -> invalid_arg "Conflicting popover positioning"
+  | None ->
+      if target <> None || has_rect then diagnostic "ignoring anchor source without an anchor side";
+      match x, y with
+      | Some x, Some y -> E.At (x, y)
+      | None, None -> E.Cover
+      | _ -> diagnostic "incomplete point positioning falls back to Cover"; E.Cover
 
 let split_sizing_prop props =
-  match v_float props "value", v_float props "first-width" with
-  | Some value, None -> Some (E.Fraction value)
-  | None, Some width -> Some (E.First_width width)
+  match v_float props "first-width", v_float props "value" with
+  | Some width, value ->
+      if value <> None then diagnostic "first-width wins over fractional split value";
+      Some (E.First_width width)
+  | None, Some value -> Some (E.Fraction value)
   | None, None -> None
-  | Some _, Some _ -> invalid_arg "Conflicting split sizing"
 
 let split_motion_prop props =
   match v_int props "resize-duration", resize_easing_opt (v_str props "resize-easing"),

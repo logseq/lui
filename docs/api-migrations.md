@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: Resilient JSON positioning and sizing conflicts
+
+Conflicting JSON inputs now normalize deterministically and log diagnostics on
+stderr through the same path as runtime boundary/duplicate-key diagnostics:
+
+- A valid `anchor` side wins over `x`/`y` point positioning.
+- `anchor-target` wins over `anchor-rect` (the losing rectangle is not parsed).
+- Without an anchor side, orphan anchor sources are ignored; a complete point
+  wins, otherwise Cover is used. An incomplete point also falls back to Cover.
+- Split `first-width` wins over fractional `value`.
+
+For example, `{"kind":"split","value":0.25,"first-width":246}` emits only
+`first-pane-width=246` and logs the discarded fraction. Conflicts no longer
+raise. Invalid winning rectangle data still follows the existing validation.
+
 ## Unreleased: Closed vocabularies and exclusive modes (ADR 0007 Phase 3a, step 3)
 
 The typed element API replaces the following open strings/integers with closed
@@ -73,8 +88,7 @@ clamped to zero and easing/origin are omitted to keep the batch valid.
 
 Language-neutral view contracts retain flattened wire fields for positioning,
 sizing, and motion. The JSON renderer translates its existing flat inputs to
-the new sum types and rejects conflicting modes/sources instead of forwarding
-an invalid combination. Newly closed JSON enum inputs reject unknown values.
+the new sum types and normalizes conflicting modes/sources as described above. Newly closed JSON enum inputs reject unknown values.
 
 ## Unreleased: Mandatory element values (ADR 0007 Phase 3a, step 2)
 

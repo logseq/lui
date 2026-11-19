@@ -3379,6 +3379,31 @@ let test_json_view_anchor_rect () =
       (fun () -> let session=mount value in drive_dispose session))
     [Lui_json_view.Str "0 0 -1 2";Str "nan 0 1 2";Str "0 0 1";Num 4.]
 
+let test_json_view_conflicting_modes () =
+  let open Lui_json_view in
+  List.iter (fun (kind, fields, expected) ->
+    let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+        (Obj (("kind", Str kind) :: fields))) () in
+    Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+      let node = drive_node session (Drive.Model.Kind kind) in
+      List.iter (fun (property, value) ->
+        Alcotest.(check bool) (kind ^ "." ^ property) true
+          (Hashtbl.find_opt node.Drive.Model.props property = value)) expected))
+    [ "popover",
+        ["anchor", Str "below"; "anchor-target", Str "trigger";
+         "anchor-rect", Str "invalid losing rectangle"; "x", Num 10.; "y", Num 20.],
+        ["anchor", Some (Lui_protocol.StringValue "below");
+         "anchor-target", Some (Lui_protocol.StringValue "trigger");
+         "anchor-rect", None; "x", None; "y", None]
+    ; "popover", ["anchor-target", Str "orphan"; "x", Num 10.; "y", Num 20.],
+        ["anchor", None; "anchor-target", None;
+         "x", Some (Lui_protocol.FloatValue 10.); "y", Some (Lui_protocol.FloatValue 20.)]
+    ; "popover", ["x", Num 10.], ["anchor", None; "x", None; "y", None]
+    ; "split", ["value", Num 0.25; "first-width", Num 246.],
+        ["value", None; "first-pane-width", Some (Lui_protocol.FloatValue 246.)]
+    ]
+
 let test_context_only_leaf_children () =
   Alcotest.(check bool) "rich table cells keep regular controls" true
     (Lui_protocol.child_kind_supported Lui_protocol.TableCell Lui_protocol.Button);
@@ -6412,6 +6437,7 @@ let () =
           Alcotest.test_case "portable editor and virtual tuning" `Quick test_portable_editor_and_virtual_tuning;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
+          Alcotest.test_case "conflicting modes recover" `Quick test_json_view_conflicting_modes;
         ] );
       ( "extension fingerprints",
         [
