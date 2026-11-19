@@ -1,5 +1,269 @@
 # LUI API migration guide
 
+## Unreleased: Text buttons and accessible icon buttons
+
+`button` now requires `~text:string`. Its `button_size` is closed to
+`` `default | `sm | `lg ``; other controls retain their existing sizes.
+`?text_signal` remains supported and overrides the initial text. Reactive
+text keeps the existing authored syntax:
+
+```ocaml
+button ~text:"Save" ~on_press:save []
+button ~text:(reactive caption) ~on_press:save []
+```
+
+Replace icon-only calls with `icon_button ~icon ~label`; both arguments are
+mandatory, and `label` is the accessible name, not visible text:
+
+```ocaml
+(* Before *)
+button ~icon:`plus ~label:"Add attachment" ~size:`icon children
+(* After: keep the same children list, including menus/custom content. *)
+icon_button ~icon:`plus ~label:"Add attachment" ~size:`icon children
+```
+
+`icon_button` accepts the same styling, variant, disabled state, callbacks,
+icon signal, tooltip and shortcut options as `button`, but no text/text signal.
+Its `control_size` also includes `` `icon ``. Both constructors keep the
+existing defaults and emit the same `Button` wire kind; no wrapper or new
+backend kind is introduced. Composite glass actions choose the appropriate
+constructor based on whether visible text is present. The transparent file
+preview hit target now has meaningful transparent text rather than no text.
+
+JSON keeps `"kind":"button"`: with `text` it uses the text constructor;
+without `text` it requires both `icon` and `label` and uses `icon_button`.
+Host accessible-name validation remains: mandatory OCaml strings can still
+be empty, and a reactive text signal can become empty. Missing arguments are
+compile-time errors, but empty accessible names still need runtime validation.
+
+## Unreleased: Resilient JSON positioning and sizing conflicts
+
+Conflicting JSON inputs now normalize deterministically and log diagnostics on
+stderr through the same path as runtime boundary/duplicate-key diagnostics:
+
+- A valid `anchor` side wins over `x`/`y` point positioning.
+- `anchor-target` wins over `anchor-rect` (the losing rectangle is not parsed).
+- Without an anchor side, orphan anchor sources are ignored; a complete point
+  wins, otherwise Cover is used. An incomplete point also falls back to Cover.
+- Split `first-width` wins over fractional `value`.
+
+For example, `{"kind":"split","value":0.25,"first-width":246}` emits only
+`first-pane-width=246` and logs the discarded fraction. Conflicts no longer
+raise. Invalid winning rectangle data still follows the existing validation.
+
+## Unreleased: Closed vocabularies and exclusive modes (ADR 0007 Phase 3a, step 3)
+
+The typed element API replaces the following open strings/integers with closed
+polymorphic variants. Existing valid wire values are unchanged:
+
+| Parameter | Type and values |
+| --- | --- |
+| heading level | `heading_level`: `` `h1 `` through `` `h6 `` (still encoded as integers 1–6) |
+| toolbar placement | `toolbar_placement`: `` `automatic `bottom `navigation `principal `primary_action `secondary_action `status `confirmation_action `cancellation_action `destructive_action `top_bar_leading `top_bar_trailing `` |
+| sheet sizing | `sheet_sizing`: `` `form `fitted `page `` |
+| font_style | `` `normal `italic `oblique `` |
+| white_space | `` `normal `nowrap `pre_wrap `pre_line `` |
+| text_overflow | `` `clip `ellipsis `` |
+| overflow | `` `visible `hidden `auto `` |
+
+Signal twins use the same types. Underscores still encode as hyphens, e.g.
+`` `pre_wrap `` becomes `"pre-wrap"`. Replace `~level:2` with ``~level:`h2``,
+`~sizing:"form"` with ``~sizing:`form``, and `~white_space:"pre-wrap"` with
+``~white_space:`pre_wrap``.
+
+The shared `element_tag` type is replaced by exact per-kind `as_` types:
+`phrasing_tag` on text (Span, Em, Strong, B, I, U, S, Del, Mark, Small, Code,
+Kbd, Sub, Sup, Pre); `heading_tag` on heading (H1–H6); `paragraph_tag` on
+paragraph (P, Span, Div, Pre); `label_tag` on label (Label, Span, Div);
+`list_container_tag` on column (Div, Ul, Ol); and `row_tag` on row (Div, Li).
+Tag names remain polymorphic variants, so valid literal calls are unchanged.
+Annotations using `element_tag` must adopt the appropriate family type.
+
+### Popover positioning
+
+Replace `at`/`at_signal`, `anchor`, `anchor_target`, `anchor_rect`,
+`anchor_alignment`, `anchor_offset`, and `anchor_alignment_offset` with one
+`target` (or reactive `target` / low-level `target_signal`):
+
+```ocaml
+popover ~target:(At (10., 20.)) []
+popover ~target:(Anchor {
+  side = `below; source = Target "filter-trigger";
+  align = `start; offset = 8.; align_offset = 0.
+}) []
+popover ~target:(reactive (fun (x, y) -> At (x, y)) position) []
+```
+
+`Cover` is the unchanged no-anchor default. `Anchor.source` is `Parent`,
+`Target identifier`, or `Rect {x; y; width; height}`. A rectangle keeps the
+existing space-separated float encoding. Choose the alignment and offsets
+explicitly in an Anchor record. Mode/source changes remove stale properties,
+including when switching back to Cover. Native demos previously specified an
+invalid point-plus-anchor combination; they now use the intended below-parent
+anchor. `dropdown_menu` and tooltip positioning APIs are unchanged.
+
+### Split sizing and motion
+
+Replace `value`/`value_signal` and `first_width`/`first_width_signal` with
+`sizing`/`sizing_signal`. Use `Fraction value` or `First_width pixels`:
+
+```ocaml
+split ~sizing:(First_width 246.) (column []) (column [])
+split ~sizing:(reactive (fun value -> Fraction value) fraction)
+  ~motion:{duration_ms = 180; easing = `standard; origin = None}
+  (column []) (column [])
+```
+
+Omitting sizing now emits **Fraction 0.5**, including on Apple, which requires
+exactly one sizing mode. Reactive mode changes remove the previous sizing
+property. `motion` groups the former `resize_duration`, `resize_easing`, and
+`resize_origin`. Omitted motion retains instant resizing (duration 0, implicit
+standard easing, no origin). Positive duration emits the chosen easing and
+optional origin. Non-positive duration means instant resizing: duration is
+clamped to zero and easing/origin are omitted to keep the batch valid.
+
+Language-neutral view contracts retain flattened wire fields for positioning,
+sizing, and motion. The JSON renderer translates its existing flat inputs to
+the new sum types and normalizes conflicting modes/sources as described above. Newly closed JSON enum inputs reject unknown values.
+
+## Unreleased: Mandatory element values (ADR 0007 Phase 3a, step 2)
+
+The following constructor labels are now required:
+
+| Constructor | Required labels |
+| --- | --- |
+| icon | name |
+| slider | label, value |
+| progress | value |
+| sheet, accordion | title (renamed from text) |
+| toolbar, radio_group, tree, bottom_tabs | label |
+| stepper | active |
+| step | text |
+| timeline_item | title |
+| bottom_tab | title, on_press |
+
+Supply a meaningful accessible label/title rather than an empty placeholder.
+For `sheet` and `accordion`, rename `text`/`text_signal` to `title`/`title_signal`.
+Their wire property remains `text`; other constructors' text parameters are
+unchanged. `form_sheet` already takes `title` and needs no caller change.
+
+Existing signal twins remain optional. The required static value initializes
+the property; a supplied signal wins on mount and subsequent publications.
+For example:
+
+```ocaml
+slider ~label:"Volume" ~value:0.5 []
+sheet ~title:"Settings" [text ~value:"Preferences" []]
+accordion ~title:"Details" [text ~value:"More information" []]
+
+(* Both required initial value and signal binding are supplied by the PPX. *)
+slider ~label:"Volume" ~value:(reactive volume) []
+progress ~value:(reactive (fun completed total -> completed /. total)
+                   completed total) []
+```
+
+For mandatory reactive labels, `lui_ppx` evaluates the signal expression once,
+reads its current value with `Signal.sample`, and supplies both `~x` and
+`~x_signal`. Mapped signals retain their existing mount-owned lifetime. The
+mandatory labels live in `schema/components.json`; generated PPX metadata and
+the interface contract test consume that declaration. Optional reactive labels
+still lower to the signal argument alone.
+
+The JSON-view renderer also requires these data values (sheet/accordion titles
+continue to use the wire key `text`). A bottom-tab JSON node requires an `id`
+to route its required press callback. Missing required JSON data now raises
+`Invalid_argument` naming the missing constructor parameter instead of mounting
+an incomplete node. Data-only typed view contracts mark required properties too.
+
+## Unreleased: Admission-safe element parameters (ADR 0007 Phase 3a, step 1)
+
+`Lui_elements` constructors now expose only properties and events admitted by
+`Lui_protocol` for their node kind. Unsupported optional parameters are removed,
+including their `_signal` twins wherever present. `key` remains reload metadata;
+`toggle_button`/`menu_item` keep `checked` (an alias for `selected`), and `radio`
+keeps `selected` (an alias for `checked`). Required values, vocabulary types,
+event payload types, and child types are unchanged in this step.
+
+The following sets abbreviate the removed property parameters:
+
+```text
+A = gap, main, cross, columns
+P = padding, padding_horizontal, padding_vertical
+M = margin, margin_horizontal, margin_vertical,
+    margin_top, margin_right, margin_bottom, margin_left
+D = width, height, min_width, max_width, min_height, max_height
+B = background, foreground, border_color, border_width, corner_radius
+F = container_relative_frame, container_relative_frame_inset
+U = A + grow + P + M + D + B + F + style_class + data_attrs
+```
+
+`+` combines sets; `-` excludes names. Every listed name also removes its signal
+twin if the old constructor exposed one.
+
+| Constructor family | Removed properties |
+| --- | --- |
+| row, column, panel, card, box, button, radio, checkbox, popover | columns |
+| stack, overlay, view_that_fits, bubble, text, heading, paragraph, label, toggle_button, toggle, slider, number_stepper, textarea, switch_, spinner, icon, table_cell, resizable, status_bar, file_image | A |
+| edge_inset, scroll, select, combobox, dropdown_menu, split | main, cross, columns |
+| alert | A + text_alignment |
+| radio_group, progress, divider, separator, spacer, image, media_surface, table | A + foreground |
+| text_field, secure_field, input, search_field | A + submit_on_enter |
+| list, virtual_list, tabs, button_group, toggle_group, breadcrumb, pagination | columns, foreground |
+| bottom_tabs | A + P + M + B + F |
+| bottom_tab, stepper, step, timeline_item, file_picker | U |
+| context_menu | U + disabled |
+| menu_item | columns, role, tree_level, expanded |
+| list_item, link | gap, columns |
+| avatar | A + grow + P + M |
+| timeline | U - gap - grow |
+| input_group | U - grow - width - height - min_width |
+| input_group_actions | U - gap |
+| accordion | U - height - style_class |
+| table_row | main, cross, columns, foreground |
+| tree | main, cross, columns, foreground, role, tree_level, expanded |
+| dialog | main, cross, grow, columns + F |
+| drawer, sheet | A + grow + B + F + min_width, max_width, min_height, max_height |
+| tooltip | U - F |
+| toast | A + grow + B + D + F |
+| toolbar | main, cross, grow, columns, padding_horizontal, padding_vertical + M + foreground, border_color + (D - height) + F |
+| kbd | A + M + F |
+
+No property parameters were removed from grid, menu_trigger, menu, submenu,
+list_section, swipe_actions, swipe_action, or file_preview.
+
+| Constructor | Removed event parameters |
+| --- | --- |
+| toggle_button | on_press |
+| select | on_input, on_submit |
+| dropdown_menu | on_press, on_input, on_submit |
+| menu_item | on_input, on_submit, on_dismiss |
+| list_item | on_input |
+| tree | on_press, on_change, on_toggle, on_press_detail, on_pointer_down, on_pointer_up, on_context_menu |
+
+Move layout/styling to a container that admits it, and wire callbacks on the
+interactive children rather than the owning collection. For example:
+
+```ocaml
+(* Before: gap is not a Text property. *)
+text ~gap:8 ~value:"Status" []
+
+(* After: keep spacing on an admitted layout container. *)
+row ~gap:8 [text ~value:"Status" []]
+```
+
+`context_menu` keeps its platform menu surface and item styling; it no longer
+accepts arbitrary surface decorations. The Windows demo drops its rejected
+background/border/radius/padding arguments, retaining menu items and their
+foreground colors and using the host's standard menu decoration. Do not put a
+generic box inside a context menu: its child-kind contract still applies.
+
+`apply_universal` is now internal, not a public low-level styling escape hatch.
+Use admitted constructor parameters (or an admitted enclosing container), not
+`Lui_elements.apply_universal`. The JSON-view renderer's constructor calls are
+updated alongside the signatures, so it also stops forwarding unsupported arguments.
+The schema tooling test parses those signatures, including `separator`, `menu`,
+and `submenu`, and checks them against generated canonical admission data.
+
 ## Unreleased: Canonical design-token and typography parity
 
 Web `headline` text now uses the canonical typography rule's `1.4` line-height

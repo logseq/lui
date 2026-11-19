@@ -35,13 +35,13 @@ let picker_node picker request completion host_completion on_picked
     ~completion_signal:completion_s ~on_picked ~on_dismiss []
 
 let attach_button attach_label on_attach_press : t =
-  button ~icon:`plus ~variant:`ghost ~size:`icon ~width:36 ~height:36
+  icon_button ~icon:`plus ~variant:`ghost ~size:`icon ~width:36 ~height:36
     ~label:attach_label ~accessibility_identifier:"lui-ai-attach"
     ~on_press:on_attach_press []
 
 let stop_button generating stop_label on_stop : t =
   if_ ~test:generating
-    (button ~icon:`pause ~variant:`secondary ~width:36 ~height:36
+    (icon_button ~icon:`pause ~variant:`secondary ~width:36 ~height:36
        ~corner_radius:18 ~label:stop_label
        ~accessibility_identifier:"lui-ai-stop" ~on_press:on_stop [])
 

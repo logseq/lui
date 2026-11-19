@@ -21,35 +21,37 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
     success(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
       "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
     const cases = [
-      ["context_menu [button []]", "context-menu", "button"],
+      ['context_menu [icon_button ~icon:`plus ~label:"Add" []]', 'context-menu', 'button'],
+      ['toolbar ~label:"Actions" [icon_button ~icon:`plus ~label:"Add" []]'],
+      ["context_menu [button ~text:{|Action|} []]", "context-menu", "button"],
       ["dropdown_menu [column []]", "dropdown-menu", "column"],
       ["toolbar [column []]", "toolbar", "column"],
       ['tree [text ~value:"bad" []]', "tree", "text"],
       ["menu_trigger [menu_item []]", "menu-trigger", "menu-item"],
       ["input_group (text_field [])", "input-group", "text-field"],
-      ["input [button []]", "input", "button"],
-      ["context_menu [if_ ~test:source (button [])]", "context-menu", "button"],
-      ["context_menu [reactive (fun _ -> button []) source]", "context-menu", "button"],
-      ["context_menu [keyed ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> button [])]", "context-menu", "button"],
-      ["context_menu [align `center (button [])]", "context-menu", "button"],
-      ["context_menu [scoped (fun _ -> button [])]", "context-menu", "button"],
+      ["input [button ~text:{|Action|} []]", "input", "button"],
+      ["context_menu [if_ ~test:source (button ~text:{|Action|} [])]", "context-menu", "button"],
+      ["context_menu [reactive (fun _ -> button ~text:{|Action|} []) source]", "context-menu", "button"],
+      ["context_menu [keyed ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> button ~text:{|Action|} [])]", "context-menu", "button"],
+      ["context_menu [align `center (button ~text:{|Action|} [])]", "context-menu", "button"],
+      ["context_menu [scoped (fun _ -> button ~text:{|Action|} [])]", "context-menu", "button"],
       ['context_menu [error_boundary ~fallback:(fun _ -> text ~value:"error" []) (menu_item [])]', "context-menu", "box"],
       ['column [error_boundary ~fallback:(fun _ -> text ~value:"error" []) (reactive (fun _ -> text ~value:"ok" []) source)]'],
-      ["context_menu (List.map (fun _ -> button []) [1])", "context-menu", "button"],
-      ["context_menu ([menu_item []] @ [button []])", "context-menu", "button"],
-      ["context_menu [if true then menu_item [] else button []]", "context-menu", "button"],
-      ["context_menu [match true with true -> menu_item [] | false -> button []]", "context-menu", "button"],
-      ["Lui_elements.context_menu [Lui_elements.button []]", "context-menu", "button"],
-      ["Lui_elements.(context_menu [button []])", "context-menu", "button"],
-      ["let child = button [] in context_menu [child]", "context-menu", "button"],
-      ["let build child = context_menu [child] in build (button [])", "context-menu", "button"],
-      ["let build = context_menu ~disabled:false in build [button []]", "context-menu", "button"],
+      ["context_menu (List.map (fun _ -> button ~text:{|Action|} []) [1])", "context-menu", "button"],
+      ["context_menu ([menu_item []] @ [button ~text:{|Action|} []])", "context-menu", "button"],
+      ["context_menu [if true then menu_item [] else button ~text:{|Action|} []]", "context-menu", "button"],
+      ["context_menu [match true with true -> menu_item [] | false -> button ~text:{|Action|} []]", "context-menu", "button"],
+      ["Lui_elements.context_menu [Lui_elements.button ~text:{|Action|} []]", "context-menu", "button"],
+      ["Lui_elements.(context_menu [button ~text:{|Action|} []])", "context-menu", "button"],
+      ["let child = button ~text:{|Action|} [] in context_menu [child]", "context-menu", "button"],
+      ["let build child = context_menu [child] in build (button ~text:{|Action|} [])", "context-menu", "button"],
+      ["let build = context_menu ~disabled:false in build [button ~text:{|Action|} []]", "context-menu", "button"],
       ["context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]", "context-menu", "box"],
       ["context_menu [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]", "context-menu", "virtual-rows"],
       ["context_menu [menu_item []; divider []]"],
       ["dropdown_menu [menu_trigger [dropdown_menu [menu_item []]]]"],
-      ['toolbar [button []; text ~value:"ok" []; spacer []]'],
-      ['tree [row [text ~value:"ok" []]; virtual_list []]'],
+      ['toolbar ~label:"Actions" [button ~text:{|Action|} []; text ~value:"ok" []; spacer []]'],
+      ['tree ~label:"Files" [row [text ~value:"ok" []]; virtual_list []]'],
       ["input [context_menu [menu_item []]]"],
       ["context_menu [reactive (fun _ -> menu_item []) source]"],
       ['list [list_section ~header:(text ~value:"Title" []) [list_item []]]'],
@@ -218,12 +220,12 @@ let () =
     ; check true ("open Lui_elements type element = t module rec Lui_elements : sig val " ^ name ^ " : unit -> element end = struct let " ^ name ^ " () = menu_item [] end let _ = context_menu [Lui_elements." ^ name ^ " ()]")
   ) constructors;
   check false ("open Lui_elements let _ = context_menu [" ^
-    String.concat ";" (List.init 200 (fun _ -> "menu_item []")) ^ ";button []]");
-  check false "open Lui_elements let _ = let child = button [] in Lui_elements.(context_menu [child])";
-  check false "module E = Lui_elements let _ = E.context_menu [E.button []]";
-  check false "open Lui_elements let wrap child = context_menu [child] let _ = wrap (button [])";
-  check false "open Lui_elements let make = context_menu ~disabled:false let _ = make [button []]";
-  check true "open Lui_elements module List = struct let map _ _ = [menu_item []] end let _ = context_menu (List.map (fun _ -> button []) [1])";
+    String.concat ";" (List.init 200 (fun _ -> "menu_item []")) ^ ";button ~text:{|Action|} []]");
+  check false "open Lui_elements let _ = let child = button ~text:{|Action|} [] in Lui_elements.(context_menu [child])";
+  check false "module E = Lui_elements let _ = E.context_menu [E.button ~text:{|Action|} []]";
+  check false "open Lui_elements let wrap child = context_menu [child] let _ = wrap (button ~text:{|Action|} [])";
+  check false "open Lui_elements let make = context_menu ~disabled:false let _ = make [button ~text:{|Action|} []]";
+  check true "open Lui_elements module List = struct let map _ _ = [menu_item []] end let _ = context_menu (List.map (fun _ -> button ~text:{|Action|} []) [1])";
   let rows = "virtual_rows ~source ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()" in
   List.iter (fun (name, _, _, _) ->
     let p = List.find (fun (candidate, _, _, _) -> candidate = name) constructors in
@@ -235,13 +237,13 @@ let () =
   check false ("open Lui_elements let _ = virtual_list [if_ ~test:source (" ^ rows ^ ")]");
   check false "open Lui_elements let _ = context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]";
   check true "open Lui_elements let _ = column [if_ ~test:source (if_ ~test:source (menu_item []))]";
-  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in if flag then menu_trigger [child] else button [child]";
-  check true "open Lui_elements let f context = let child = if Lui_ui.host context = KotlinHost then dropdown_menu [] else context_menu [] in if Lui_ui.host context = KotlinHost then menu_trigger [child] else button [child]";
-  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in let same = flag in if not same then button [child] else menu_trigger [child]";
-  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in match flag with true -> menu_trigger [child] | false -> button [child]";
-  check false "open Lui_elements let f flag other = let child = if flag then dropdown_menu [] else context_menu [] in let flag = other in if flag then menu_trigger [child] else button [child]";
-  check false "open Lui_elements let f () = let child = if Random.bool () then dropdown_menu [] else context_menu [] in if Random.bool () then menu_trigger [child] else button [child]";
-  check false "open Lui_elements let f flag = let child = if flag then context_menu [] else dropdown_menu [] in if flag then menu_trigger [child] else button [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check true "open Lui_elements let f context = let child = if Lui_ui.host context = KotlinHost then dropdown_menu [] else context_menu [] in if Lui_ui.host context = KotlinHost then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in let same = flag in if not same then button ~text:{|Action|} [child] else menu_trigger [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in match flag with true -> menu_trigger [child] | false -> button ~text:{|Action|} [child]";
+  check false "open Lui_elements let f flag other = let child = if flag then dropdown_menu [] else context_menu [] in let flag = other in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check false "open Lui_elements let f () = let child = if Random.bool () then dropdown_menu [] else context_menu [] in if Random.bool () then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check false "open Lui_elements let f flag = let child = if flag then context_menu [] else dropdown_menu [] in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
   for _ = 1 to 2000 do
     let pick () = List.nth constructors (Random.State.int random (List.length constructors)) in
     let p1 = pick () and p2 = pick () and c1 = pick () and c2 = pick () in
@@ -417,6 +419,163 @@ let () =
       "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
       join(dir, "layout.ml"), "-o", join(dir, "layout")])
     assert.equal(run([join(dir, "layout")]).trim(), "retained")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
+test("mandatory reactive values provide one owned signal and its current value", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-mandatory-signal-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "mandatory.ml"), `
+let () =
+  let batches = ref [] and conversions = ref 0 and evaluations = ref 0 in
+  let backend = { Lui_protocol.backend_profile = Lui_protocol.generic_profile ();
+    apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+  let project value = incr conversions; value *. 2. in
+  let source value = incr evaluations; value in
+  let view _context model _send =
+    Lui_elements.column [
+      Lui_elements.progress ~value:(reactive project (source model)) [];
+      Lui_elements.button ~text:(reactive string_of_float model) [];
+      Lui_elements.icon_button ~icon:(reactive (fun value -> if value < 0.3 then \`plus else \`check) model)
+        ~label:"Status" []
+    ] in
+  let app = Lui_app.create backend 0.25 (fun _ next -> next) view in
+  let check expected =
+    let ops = List.concat_map (fun (batch : Lui_protocol.patch_batch) -> batch.ops) !batches in
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.ProgressValue, Lui_protocol.FloatValue value) -> value = expected
+      | _ -> false) ops);
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.TextValue, Lui_protocol.StringValue text) ->
+          text = string_of_float (expected /. 2.)
+      | _ -> false) ops);
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.InlineIconName, Lui_protocol.StringValue icon) ->
+          icon = (if expected < 0.6 then "plus" else "check")
+      | _ -> false) ops) in
+  ignore (Lui_app.start app); ignore (Lui_app.flush app);
+  check 0.5;
+  assert (!evaluations = 1 && !conversions = 1);
+  batches := [];
+  ignore (Lui_app.send app 0.375); ignore (Lui_app.flush app);
+  check 0.75;
+  assert (!evaluations = 1 && !conversions = 2);
+  ignore (Lui_app.dispose app);
+  print_endline "mandatory"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "mandatory.ml"), "-o", join(dir, "mandatory")])
+    assert.equal(run([join(dir, "mandatory")]).trim(), "mandatory")
+    for (const expression of [
+      'button []',
+      'button ~text:"Save" ~size:`icon []',
+      'icon_button ~icon:`plus []',
+      'icon_button ~label:"Add" []',
+    ]) {
+      writeFileSync(join(dir, "missing.ml"), `open Lui_elements\nlet _ : t = ${expression}\n`)
+      const result = spawnSync("opam", ["exec", "--", "ocamlfind", "ocamlc", "-package", "ocaml-signal",
+        "-c", "-I", "_build/default/src/.lui.objs/byte", join(dir, "missing.ml")],
+        {cwd: root, encoding: "utf8"})
+      assert.notEqual(result.status, 0, `${expression} unexpectedly compiled`)
+      assert.match(result.stderr, /Error:/)
+    }
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
+test("exclusive popover and split modes encode and clear their wire properties", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-exclusive-modes-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "modes.ml"), `
+open Lui_protocol
+open Lui_elements
+let () =
+  let kinds = Hashtbl.create 8 and props = Hashtbl.create 8 in
+  let properties id = Option.value (Hashtbl.find_opt props id) ~default:Property_map.empty in
+  let backend = { backend_profile = generic_profile (); apply_batch = (fun batch ->
+    List.iter (function
+      | CreateNode (id, kind) -> Hashtbl.replace kinds id kind
+      | SetProp (id, key, value) -> Hashtbl.replace props id (Property_map.add key value (properties id))
+      | RemoveProp (id, key) -> Hashtbl.replace props id (Property_map.remove key (properties id))
+      | _ -> ()) batch.ops;
+    Hashtbl.iter (fun id kind -> match kind with
+      | Popover | Split -> assert (node_properties_supported kind (properties id))
+      | _ -> ()) kinds; true) } in
+  let view _context model _send = column [
+    popover ~accessibility_identifier:"popup" ~target:(reactive fst model) [];
+    split ~accessibility_identifier:"split" ~sizing:(reactive snd model)
+      ~motion:{duration_ms = 180; easing = \`spring; origin = Some 0.2}
+      (column []) (column []);
+    split ~accessibility_identifier:"default"
+      ~motion:{duration_ms = 0; easing = \`linear; origin = Some 0.8}
+      (column []) (column []);
+    split ~accessibility_identifier:"no-motion" (column []) (column []) ] in
+  let app = Lui_app.create backend (Cover, Fraction 0.25) (fun _ next -> next) view in
+  let check name key expected =
+    let found = Hashtbl.fold (fun _ values result ->
+      if Property_map.find_opt AccessibilityIdentifier values = Some (StringValue name)
+      then Some values else result) props None in
+    assert (Property_map.find_opt key (Option.get found) = expected) in
+  let send target sizing = ignore (Lui_app.send app (target, sizing)); ignore (Lui_app.flush app) in
+  ignore (Lui_app.start app); ignore (Lui_app.flush app);
+  check "popup" AnchorValue None; check "popup" PopupX None;
+  check "split" ProgressValue (Some (FloatValue 0.25));
+  check "split" ResizeDuration (Some (IntValue 180));
+  check "split" ResizeEasing (Some (StringValue "spring"));
+  check "split" ResizeOrigin (Some (FloatValue 0.2));
+  check "default" ProgressValue (Some (FloatValue 0.5));
+  check "default" FirstPaneWidth None; check "default" ResizeDuration (Some (IntValue 0));
+  check "default" ResizeEasing None; check "default" ResizeOrigin None;
+  check "no-motion" ProgressValue (Some (FloatValue 0.5));
+  List.iter (fun key -> check "no-motion" key None) [ResizeDuration; ResizeEasing; ResizeOrigin];
+  send (At (10., 20.)) (First_width 246.);
+  check "popup" PopupX (Some (FloatValue 10.)); check "popup" PopupY (Some (FloatValue 20.));
+  check "split" FirstPaneWidth (Some (FloatValue 246.)); check "split" ProgressValue None;
+  let anchored source = Anchor {side = \`below; source; align = \`end_; offset = 8.; align_offset = 3.} in
+  send (anchored Parent) (Fraction 0.6);
+  check "popup" PopupX None; check "popup" PopupY None;
+  check "popup" AnchorValue (Some (StringValue "below"));
+  check "popup" AnchorAlignmentValue (Some (StringValue "end"));
+  check "popup" AnchorOffset (Some (FloatValue 8.));
+  check "popup" AnchorAlignmentOffset (Some (FloatValue 3.));
+  check "popup" AnchorTarget None; check "popup" AnchorRect None;
+  check "split" ProgressValue (Some (FloatValue 0.6)); check "split" FirstPaneWidth None;
+  send (anchored (Target "trigger")) (Fraction 0.6);
+  check "popup" AnchorTarget (Some (StringValue "trigger"));
+  send (anchored (Rect {x = 1.; y = 2.; width = 30.; height = 40.})) (Fraction 0.6);
+  check "popup" AnchorTarget None;
+  check "popup" AnchorRect (Some (StringValue "1. 2. 30. 40."));
+  send Cover (Fraction 0.6);
+  List.iter (fun key -> check "popup" key None)
+    [PopupX; PopupY; AnchorValue; AnchorTarget; AnchorRect; AnchorAlignmentValue;
+     AnchorOffset; AnchorAlignmentOffset];
+  ignore (Lui_app.dispose app);
+  print_endline "exclusive"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "modes.ml"), "-o", join(dir, "modes")])
+    assert.equal(run([join(dir, "modes")]).trim(), "exclusive")
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })
 

@@ -5,9 +5,110 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { typedViewFunctions } from '../typed_view_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const generator = join(repository, 'tooling/generate_component_schema.mjs');
+
+test('element constructors expose only admitted properties and events', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const admission = JSON.parse(readFileSync(join(repository, 'schema/apple-property-admission.json'), 'utf8'));
+  const functions = typedViewFunctions(readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8'));
+  const nesting = readFileSync(join(repository, 'ppx/lui_nesting_schema.ml'), 'utf8');
+  const mapping = nesting.match(/let constructor = function([\s\S]*?)\nlet exports/)[1];
+  const kinds = new Map(schema.nodeKinds.map(({ lg, wire }) => [lg, wire]));
+  const constructors = [...mapping.matchAll(/^\s*\| (.+?) -> Some \((\w+), (\w+),/gm)]
+    .flatMap(([, names, root, children]) => [...names.matchAll(/"(\w+)"/g)]
+      .map(([, name]) => [name, kinds.get(root), kinds.get(children)]));
+  assert.equal(new Set(constructors.map(([, kind]) => kind)).size, schema.nodeKinds.length - 3);
+  const aliases = {
+    as_: ['as'], label: ['accessibility-label'], disabled: ['enabled'],
+    shortcut_hint: ['tooltip-keys'], kind: ['input-type'], fit: ['image-fit'],
+    first_width: ['first-pane-width'], point_size: ['width', 'height'],
+    resizable_width: ['width'], accordion_height: ['height'],
+    toolbar_gap: ['gap'], toolbar_class: ['style-class'], toast_class: ['style-class'],
+    list_marker: ['list-style'], at: ['x', 'y'], level: ['heading-level'],
+  };
+  const eventAliases = {
+    input: 'TextChanged', toggle: 'ToggleChanged', toggle_detail: 'ToggleChangedDetail',
+    value_changed: 'ValueChanged', resize: 'ValueChanged', navigation_key: 'NavigationKey',
+    context_menu: 'ContextMenuPress', focus_within: 'FocusWithinChanged',
+  };
+  assert.equal(functions.has('apply_universal'), false, 'apply_universal must stay internal');
+  assert.equal(functions.has('button_impl'), false, 'button_impl must stay internal');
+  assert.deepEqual(schema.mandatoryParameters.button, ['text']);
+  assert.deepEqual(schema.mandatoryParameters.icon_button, ['icon', 'label']);
+  assert.ok(functions.get('button').includes('?size:button_size'));
+  assert.ok(functions.get('icon_button').includes('?size:control_size'));
+  assert.ok(constructors.some(([name, kind]) => name === 'icon_button' && kind === 'button'));
+  for (const [constructor, parameters] of Object.entries(schema.mandatoryParameters)) {
+    for (const parameter of parameters) {
+      assert.ok(functions.get(constructor)?.some(argument => argument.startsWith(`${parameter}:`)),
+        `${constructor}.${parameter} must be mandatory`);
+    }
+  }
+  assert.deepEqual(Object.keys(admission.events).sort(), schema.events.map(({ lg }) => lg).sort());
+  const violations = [];
+  for (const [constructor, kind, childKind] of constructors) {
+    assert.ok(admission.kinds[kind], `unknown kind for ${constructor}`);
+    assert.ok(functions.has(constructor), `missing constructor ${constructor}`);
+    for (const argument of functions.get(constructor).slice(0, -1)) {
+      const match = /^\??(\w+):(.*)$/.exec(argument);
+      if (!match) continue;
+      const [, parameter, type] = match;
+      const base = parameter.replace(/_signal$/, '');
+      if (base === 'key' || /^(t|\w+_el)( list)?$/.test(type)) continue;
+      if (constructor === 'scroll' && base === 'virtual_owner' && type === 'Lui_virtual.owner') continue;
+      if (constructor === 'virtual_list' && base === 'viewport' && type === 'Lui_virtual.source') continue;
+      if (parameter.startsWith('on_')) {
+        const handler = parameter.slice(3);
+        const event = handler === 'change' && constructor === 'slider' ? 'ValueChanged'
+          : handler === 'navigate' ? (['button', 'icon_button', 'row', 'box'].includes(constructor) ? 'NavigationKey' : 'NavigateNext')
+          : eventAliases[handler] ?? handler.split('_').map(word => word[0].toUpperCase() + word.slice(1)).join('');
+        const eventKind = handler === 'dismiss' ? childKind : kind;
+        assert.ok(admission.events[event], `unknown event parameter ${constructor}.${parameter}`);
+        if (!admission.events[event].includes(eventKind)) {
+          violations.push(`${constructor}.${parameter}: ${event} unsupported on ${eventKind}`);
+        }
+        continue;
+      }
+      let properties = base === 'value' && type.startsWith('string') ? ['text']
+        : aliases[base] ?? [base.replaceAll('_', '-')];
+      if (constructor === 'popover' && base === 'target') properties =
+        ['x', 'y', 'anchor', 'anchor-target', 'anchor-rect', 'anchor-alignment', 'anchor-offset', 'anchor-alignment-offset'];
+      if (constructor === 'split' && base === 'sizing') properties = ['value', 'first-pane-width'];
+      if (constructor === 'split' && base === 'motion') properties = ['resize-duration', 'resize-easing', 'resize-origin'];
+      if (base === 'checked' && ['toggle_button', 'menu_item'].includes(constructor)) properties = ['selected'];
+      if (base === 'selected' && constructor === 'radio') properties = ['checked'];
+      if (base === 'title' && ['sheet', 'accordion'].includes(constructor)) properties = ['text'];
+      if (constructor === 'virtual_list' && ['overscan', 'item_extent'].includes(base)) properties = ['data-attrs'];
+      for (const property of properties) {
+        assert.ok(schema.properties.some(({ wire }) => wire === property), `unknown property ${constructor}.${parameter}`);
+        if (!admission.kinds[kind].includes(property)) {
+          violations.push(`${constructor}.${parameter}: ${property} unsupported on ${kind}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
+});
+
+test('semantic tag families exactly match emit-time validation', () => {
+  const signature = readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8');
+  const protocol = readFileSync(join(repository, 'src/lui_protocol.ml'), 'utf8');
+  const functions = typedViewFunctions(signature);
+  for (const [constructor, kind, type] of [
+    ['text', 'Text', 'phrasing_tag'], ['heading', 'Heading', 'heading_tag'],
+    ['paragraph', 'Paragraph', 'paragraph_tag'], ['label', 'Label', 'label_tag'],
+    ['column', 'Column', 'list_container_tag'], ['row', 'Row', 'row_tag'],
+  ]) {
+    assert.ok(functions.get(constructor).includes(`?as_:${type}`));
+    const body = signature.match(new RegExp(`type ${type} = \\[([^\\]]+)\\]`))[1];
+    const tags = [...body.matchAll(/`(\w+)/g)].map(([, tag]) => tag.toLowerCase()).sort();
+    const accepted = protocol.match(new RegExp(`\\| ${kind} ->\\s*List.mem tag\\s*\\[([^\\]]+)\\]`))[1];
+    assert.deepEqual(tags, [...accepted.matchAll(/"([^"]+)"/g)].map(([, tag]) => tag).sort());
+  }
+});
 
 test('Android kind predicates derive from the canonical admission export', () => {
   const admission = JSON.parse(readFileSync(join(repository, 'schema/apple-property-admission.json'), 'utf8'));
@@ -50,6 +151,7 @@ test('schema summary preserves the pinned public API boundary', () => {
     'span',
   ]);
   assert.ok(summary.supported.includes('button'));
+  assert.ok(summary.supported.includes('icon-button'));
   assert.ok(summary.supported.includes('toggle-button'));
   assert.ok(summary.supported.includes('toggle'));
   assert.ok(summary.supported.includes('radio-group'));

@@ -8,7 +8,7 @@ open Lui_elements
 
 let section title children : t =
   column ~gap:16 ~padding:32
-    (heading ~level:2 ~value:title [] :: children)
+    (heading ~level:`h2 ~value:title [] :: children)
 
 let button_row children =
   row ~gap:12 ~max_width:560 ~flex_wrap:`wrap children
@@ -104,7 +104,7 @@ let button_section model_source send : t =
         ; button ~size:`lg ~icon:`chevron_right
             ~icon_placement:`trailing ~text:"Large"
             ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~size:`icon ~icon:`plus ~label:"New note"
+        ; icon_button ~size:`icon ~icon:`plus ~label:"New note"
             ~disabled:(reactive disabled) ~on_press:noop []
         ]
     ; paragraph
@@ -595,8 +595,8 @@ let resizable_section : t =
 let split_section model_source send : t =
   let fraction = model_source >|= Model.split_fraction in
   section "Split"
-    [ split ~value:(reactive fraction) ~gap:8 ~height:220
-        ~resize_duration:180 ~resize_easing:`standard
+    [ split ~sizing:(reactive (fun value -> Fraction value) fraction) ~gap:8 ~height:220
+        ~motion:{duration_ms = 180; easing = `standard; origin = None}
         ~label:"Gallery workspace"
         ~on_resize:(value_changed send (fun v -> Model.SetSplitFraction v))
         (panel ~min_width:96 ~padding:16
@@ -656,7 +656,7 @@ let sheet_section model_source send : t =
     ; paragraph
         ~value:"Sheet uses the host platform's native modal presentation." []
     ; if_ ~test:open_
-        (sheet ~text:"Share" ~height:320 ~padding:24
+        (sheet ~title:"Share" ~height:320 ~padding:24
            ~on_dismiss:(press send Model.CloseSheet)
            [ column ~gap:12
                [ box ~height:24 []
@@ -992,7 +992,7 @@ let tooltip_section : t =
   section "Tooltip"
     [ row ~gap:16 ~cross:`center
         [ stack
-            [ button ~size:`icon ~icon:`edit ~label:"Edit document"
+            [ icon_button ~size:`icon ~icon:`edit ~label:"Edit document"
                 ~variant:`outline ~on_press:noop []
             ; tooltip ~text:"Edit this document" ~anchor:`above
                 ~anchor_alignment:`end_ ~anchor_offset:8.0
@@ -1065,7 +1065,7 @@ let toolbar_section model_source send : t =
 let accordion_section model_source send : t =
   let open_ = model_source >|= Model.accordion_open in
   section "Accordion"
-    [ accordion ~text:"Do collapsed children stay retained?"
+    [ accordion ~title:"Do collapsed children stay retained?"
         ~selected:(reactive open_)
         ~on_toggle:(on_toggle send (fun v -> Model.SetAccordionOpen v))
         [ paragraph
@@ -1337,7 +1337,7 @@ let spotify_player_bar : t =
 
 let spotify_section : t =
   column ~gap:0 ~padding:0
-    [ heading ~level:2 ~value:"Spotify" []
+    [ heading ~level:`h2 ~value:"Spotify" []
     ; bottom_tabs ~label:"Spotify"
         [ bottom_tab ~title:"Home" ~icon:`music ~selected:true ~on_press:noop
             [ column ~gap:8 ~background:spotify_bg
@@ -1420,7 +1420,7 @@ let youtube_home : t =
 
 let youtube_section : t =
   column ~gap:0 ~padding:0
-    [ heading ~level:2 ~value:"YouTube" []
+    [ heading ~level:`h2 ~value:"YouTube" []
     ; bottom_tabs ~label:"YouTube"
         [ bottom_tab ~title:"Home" ~icon:`play ~selected:true ~on_press:noop
             [ column ~background:"#ffffff" [ youtube_home ] ]
@@ -1456,7 +1456,7 @@ let native_extension_section : t =
  fun context parent ->
   let page =
     column ~gap:16 ~padding:32
-      [ heading ~level:2 ~value:"NativeExtension" []
+      [ heading ~level:`h2 ~value:"NativeExtension" []
       ; paragraph
           ~value:"apple-map renders a real MapKit map; its marker children stay retained."
           []
@@ -1600,7 +1600,7 @@ let combine_section ?(picker_available = false) model_source send : t =
         ~text_signal:field_value_
         ~on_input:(on_input send (fun v -> Model.SetFieldValue v))
         ~actions:
-          [ button ~variant:`ghost ~icon:`plus ~width:44 ~height:44
+          [ icon_button ~variant:`ghost ~icon:`plus ~width:44 ~height:44
               ~label:"Add attachment" ~accessibility_identifier:"button.attachment"
               ~disabled:(reactive (fun m -> not picker_available || m.Model.composer_request <> m.Model.composer_completion) model_source)
               ~on_press:(press send (Model.ComposerRequest `files)) []

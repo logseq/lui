@@ -296,8 +296,9 @@ let test_forward_compat_and_schema_version () =
   let public_names =
     objects (member "publicElements" schema) |> List.map (string_field "name")
   in
-  (* Catalog names that are not wire node kinds: separator is the divider
-     node, reactions is bubble chrome, and badge/skeleton have no kind. *)
+  (* Catalog names that are not wire node kinds: icon-button uses button,
+     separator uses divider, reactions is bubble chrome, and badge/skeleton
+     have no kind. *)
   let public_exceptions =
     List.filter
       (fun name -> not (Lui_wire_schema.standard_node_name name))
@@ -305,7 +306,7 @@ let test_forward_compat_and_schema_version () =
     |> List.sort String.compare
   in
   Alcotest.(check (list string)) "public elements without a node kind"
-    [ "badge"; "reactions"; "separator"; "skeleton" ]
+    [ "badge"; "icon-button"; "reactions"; "separator"; "skeleton" ]
     public_exceptions;
   let named_lists key =
     match member key schema with

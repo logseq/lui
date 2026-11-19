@@ -111,7 +111,7 @@ let meta_row cfg (item_s : item Signal.signal) ~main : t =
 
 let text_body (item_s : item Signal.signal) : t =
   text ~value:(reactive (fun (i : item) -> i.text) item_s)
-    ~white_space:"pre-wrap" ~style_class:"lui-ai-text" []
+    ~white_space:`pre_wrap ~style_class:"lui-ai-text" []
 
 let user_body cfg (item_s : item Signal.signal) : t =
   column ~cross:`end_ ~gap:4
@@ -135,11 +135,11 @@ let think_body cfg (item_s : item Signal.signal) : t =
       Lui_ui.child_context context ("lui-ai-think:" ^ item.id)
     in
     let open_ = scoped_state context think_open_slot item.streaming in
-    accordion ~text:"Thought process"
+    accordion ~title:"Thought process"
       ~selected_signal:(Signal.value open_)
       ~on_toggle:(fun _ -> Signal.set open_ (not (Signal.get_state open_)))
       [ text ~value:(reactive (fun (i : item) -> i.text) item_s)
-          ~white_space:"pre-wrap" ~foreground:"muted-foreground" [] ])
+          ~white_space:`pre_wrap ~foreground:"muted-foreground" [] ])
 
 let host_fallback (item_s : item Signal.signal) : t =
   column ~cross:`stretch ~gap:4
@@ -148,7 +148,7 @@ let host_fallback (item_s : item Signal.signal) : t =
         ~value:(reactive
                   (fun (i : item) -> Option.value i.payload ~default:"")
                   item_s)
-        ~foreground:"muted-foreground" ~white_space:"pre-wrap"
+        ~foreground:"muted-foreground" ~white_space:`pre_wrap
         ~style_class:"caption" [] ]
 
 (* Tool card body: input/output rendered as escaped text plus the lazy
@@ -164,13 +164,13 @@ let tool_detail cfg (item_s : item Signal.signal) : t =
                column ~cross:`stretch ~gap:6
                  ((match call.input with
                    | Some input when input <> "" ->
-                       [ text ~value:input ~white_space:"pre-wrap"
+                       [ text ~value:input ~white_space:`pre_wrap
                            ~foreground:"muted-foreground"
                            ~style_class:"lui-ai-tool-io" [] ]
                    | _ -> [])
                   @ (match call.output with
                      | Some output when output <> "" ->
-                         [ text ~value:output ~white_space:"pre-wrap"
+                         [ text ~value:output ~white_space:`pre_wrap
                              ~style_class:"lui-ai-tool-io" [] ]
                      | _ -> [])
                   @ (match call.output_truncated, cfg.on_load_full with
@@ -220,7 +220,7 @@ let tool_card cfg (item_s : item Signal.signal) : t =
       Signal.set open_ (Some (not current))
     in
     accordion
-      ~text:(reactive
+      ~title:(reactive
                (fun (i : item) ->
                   match i.tool with
                   | Some call -> tool_headline call
@@ -285,7 +285,7 @@ let tool_group cfg (row_s : row Signal.signal) : t =
       Signal.set open_ (Some (not current))
     in
     content_row cfg (accordion
-      ~text:(reactive
+      ~title:(reactive
                (fun (items : item list) (active : bool) ->
                   let n = List.length items in
                   let plural = if n = 1 then "" else "s" in
@@ -391,7 +391,7 @@ let jump_pill pinned rows_s scroll_to scroll_animated : t =
   in
   align `bottom
     (if_ ~test:(reactive (fun p -> not p) (Signal.value pinned))
-       (button ~icon:`arrow_down ~variant:`secondary ~size:`icon
+       (icon_button ~icon:`arrow_down ~variant:`secondary ~size:`icon
           ~width:36 ~height:36 ~corner_radius:18 ~label:"Jump to latest"
           ~accessibility_identifier:"lui-ai-jump" ~on_press:jump_now []))
 

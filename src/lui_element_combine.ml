@@ -40,12 +40,11 @@ let action_text = function
 
 let glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press =
   let icon_only = Option.is_none text in
-  button
+  let make = match text with
+    | Some text -> button ~text ?text_signal:None ~icon ~label ~size:`default
+    | None -> icon_button ~icon ~label ~size:`icon in
+  make
     ~variant:`ghost
-    ~size:(if icon_only then `icon else `default)
-    ~icon
-    ?text
-    ~label
     ~foreground:"foreground"
     ?background
     ?corner_radius
@@ -142,13 +141,13 @@ let composer_send_button context ?send_icon ?(send_label = "Send")
   let apple_icon = Option.value send_icon ~default:(`arrow_up : icon) in
   if Lui_ui.platform context = Lui_protocol.AndroidOS
   then
-      button
+      icon_button
         ~icon:android_icon ~variant:`ghost ~width:36 ~height:36
         ~background:"black" ~foreground:"white" ~corner_radius:18
         ~label:send_label ~accessibility_identifier:"button.send"
         ?disabled_signal:send_disabled ~on_press:on_send []
   else
-    button
+    icon_button
       ~icon:apple_icon ~variant:`ghost ~width:36 ~height:36
       ~background:"black" ~foreground:"white" ~corner_radius:18
       ~label:send_label ~accessibility_identifier:"button.send"
@@ -307,13 +306,14 @@ let composer_attachment ?(disabled = false) ?status ~key ~path ~title ~file_type
                 ; text ~value:details ~text_alignment:`start ~max_width:96 ~foreground:"muted-foreground"
                     ~style_class:"single-line caption composer-attachment-label" [] ])
          ] @ (if image then [] else
-            [button ~width:120 ~height:120 ~variant:`ghost ~background:"transparent"
+            [button ~text:("Preview " ^ name) ~foreground:"transparent"
+               ~width:120 ~height:120 ~variant:`ghost ~background:"transparent"
                ~label:("Preview " ^ name) ~on_press:show []]) @ [
            align `top_trailing
              (overlay ~width:44 ~height:44
                 [ column ~width:44 ~height:44 ~main:`center ~cross:`center
                     [box ~width:28 ~height:28 ~background:"#00000066" ~corner_radius:14 []]
-                ; button ~icon:`x ~size:`sm ~width:44 ~height:44 ~variant:`ghost
+                ; icon_button ~icon:`x ~size:`sm ~width:44 ~height:44 ~variant:`ghost
                     ~background:"transparent" ~foreground:"white"
                     ~disabled ~label:("Remove " ^ name)
                     ~accessibility_identifier:("composer-attachment-remove:" ^ key)
@@ -434,7 +434,7 @@ let form_sheet
   sheet
     ?key
     ?accessibility_identifier
-    ~text:title
+    ~title
     ~style_class:"navigation-form"
     ?on_dismiss
     ([ column ~style_class:"form" content ] @ actions)
@@ -705,6 +705,7 @@ let suggestion_list
                 ~variant:`ghost
                 ~text_alignment:`start
                 ~corner_radius:8
+                ~text:(label (get item_signal))
                 ~text_signal:(map label item_signal)
                 ?icon_signal:(Option.map (fun f -> map f item_signal) icon)
                 ~on_press:(fun event -> on_select (get item_signal) event)

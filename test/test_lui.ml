@@ -1216,7 +1216,7 @@ let test_glass_buttons_require_an_action () =
 let test_styled_accordion_mounts () =
   let view _context _model _send =
     Lui_elements.column
-      [ Lui_elements.accordion ~text:"Thinking" ~style_class:"thought"
+      [ Lui_elements.accordion ~title:"Thinking" ~style_class:"thought"
           [ Lui_elements.text ~value:"Inspect the repository." [] ] ]
   in
   let app =
@@ -1242,6 +1242,69 @@ let test_styled_accordion_mounts () =
          | _ -> false)
        ops);
   ignore (Lui_app.dispose app)
+
+let test_button_identity () =
+  let presses = ref 0 in
+  let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_elements.column [
+      Lui_elements.button ~text:"Save" ~icon:`save ~variant:`primary ~size:`sm
+        ~on_press:(fun _ -> incr presses) [];
+      Lui_elements.icon_button ~icon:`plus ~label:"Add" ~size:`icon
+        ~variant:`outline ~disabled:true [];
+      Lui_elements.icon_button ~icon:`edit ~label:"Edit" ~on_press:(fun _ -> incr presses)
+        [Lui_elements.text ~value:"Custom child" []]
+    ]) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let labelled label = Drive.Model.Prop
+      ("accessibility-label", Lui_protocol.StringValue label) in
+    let save = drive_node session (Drive.Model.Prop ("text", Lui_protocol.StringValue "Save")) in
+    let add = drive_node session (labelled "Add") in
+    let edit = drive_node session (labelled "Edit") in
+    Alcotest.(check string) "same wire kind" "button" add.Drive.Model.kind;
+    List.iter (fun (node, name, value) ->
+      Alcotest.(check bool) name true (drive_prop session node name = value)) [
+      save, "size", Some (Lui_protocol.StringValue "sm");
+      add, "icon", Some (Lui_protocol.StringValue "plus");
+      add, "size", Some (Lui_protocol.StringValue "icon");
+      add, "variant", Some (Lui_protocol.StringValue "outline");
+      add, "enabled", Some (Lui_protocol.BoolValue false);
+      add, "text", None;
+      edit, "text", None
+    ];
+    Alcotest.(check (list string)) "empty children" [] (drive_kind_names session add);
+    Alcotest.(check (list string)) "custom children retained" ["text"] (drive_kind_names session edit);
+    Drive.Session.press session save.Drive.Model.id;
+    drive_press session (labelled "Edit");
+    Alcotest.(check int) "same press behavior" 2 !presses);
+  let open Lui_protocol in
+  List.iter (fun properties ->
+    Alcotest.(check bool) "empty names still rejected by host validation" false
+      (node_properties_supported Button (Property_map.of_seq (List.to_seq properties))))
+    [[TextValue, StringValue ""];
+     [InlineIconName, StringValue "plus"; AccessibilityLabel, StringValue ""]]
+
+let test_json_view_button_identity () =
+  let open Lui_json_view in
+  List.iter (fun fields ->
+    let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+        (Obj (("kind", Str "button") :: fields))) () in
+    Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+      let node = drive_node session (Drive.Model.Kind "button") in
+      List.iter (fun (name, value) ->
+        let property = if name = "label" then "accessibility-label" else name in
+        match value with
+        | Str value -> Alcotest.(check bool) property true
+            (drive_prop session node property = Some (Lui_protocol.StringValue value))
+        | _ -> assert false) fields))
+    [["text", Str "Save"; "size", Str "sm"];
+     ["icon", Str "plus"; "label", Str "Add"; "size", Str "icon"]];
+  List.iter (fun (fields, missing) ->
+    Alcotest.check_raises missing (Invalid_argument ("Lui_json_view: missing " ^ missing))
+      (fun () -> let _element = render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+        (Obj (("kind", Str "button") :: fields)) in ()))
+    [["icon", Str "plus"], "icon_button.label";
+     ["label", Str "Add"], "icon_button.icon"]
 
 let test_glass_button_text_is_optional () =
   let action : Lui_element_combine.action =
@@ -1387,6 +1450,7 @@ let test_dispatch_drops_value_echoes () =
              Lui_elements.checkbox ~checked:false
                ~on_toggle:(fun _event -> incr toggles) [];
              Lui_elements.button
+               ~text:"Press"
                ~on_press:(fun _event -> incr presses) [];
            ])
       ()
@@ -1410,7 +1474,7 @@ let test_split_pixel_echoes () =
   let received = ref [] in
   let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
     ~view:(fun _ _ _ -> Lui_elements.split
-      ~first_width:246.
+      ~sizing:(Lui_elements.First_width 246.)
       ~on_resize:(fun event -> received := event :: !received)
       (Lui_elements.column []) (Lui_elements.column [])) () in
   let id = (drive_node s (Drive.Model.Kind "split")).Drive.Model.id in
@@ -1587,6 +1651,7 @@ let test_pointer_dispatch () =
          Lui_elements.column
            [
              Lui_elements.button
+               ~text:"Pointer actions"
                ~on_press_detail:(fun _event -> incr details)
                ~on_pointer_enter:(fun _event -> incr enters)
                ~on_pointer_leave:(fun _event -> incr leaves)
@@ -1650,7 +1715,7 @@ let test_value_return_to_default_is_delivered () =
                ~on_input:(fun _event -> incr inputs) [];
              Lui_elements.checkbox ~checked:true
                ~on_toggle:(fun _event -> incr toggles) [];
-             Lui_elements.slider ~value:0.5
+             Lui_elements.slider ~label:"Event value" ~value:0.5
                ~on_change:(fun _event -> incr slides) [];
            ])
       ()
@@ -2452,7 +2517,7 @@ let data_attrs_view context _model _send =
           (Signal.constant context.Lui_ui.ui_scheduler
              [ ("data-mood", "ok") ])
         [];
-      Lui_elements.heading ~level:2 ~as_:`H2 ~text_alignment:`center ~value:"Title" [];
+      Lui_elements.heading ~level:`h2 ~as_:`H2 ~text_alignment:`center ~value:"Title" [];
       Lui_elements.paragraph ~as_:`P ~text_alignment:`end_ ~value:"para" [];
       Lui_elements.label ~as_:`Span ~value:"lbl" [];
       Lui_elements.kbd ~data_attrs:[ ("aria-label", "key") ] ~value:"esc" [];
@@ -2672,11 +2737,11 @@ let test_vocab_batch2 () =
       (fun _context _model_source _send ->
          Lui_elements.column
            [ capture_node popover_node
-               (Lui_elements.popover ~at:(10.0, 20.0)
+               (Lui_elements.popover ~target:(Lui_elements.At (10.0, 20.0))
                   ~available_height:200.0 ~role:`menu ~gap:8 [])
            ; Lui_elements.button ~accessibility_identifier:"filter-trigger" ~text:"Filter" []
            ; capture_node target_node
-               (Lui_elements.popover ~anchor:`below ~anchor_target:"filter-trigger" []) ])
+               (Lui_elements.popover ~target:(Lui_elements.Anchor {side = `below; source = Target "filter-trigger"; align = `start; offset = 0.; align_offset = 0.}) []) ])
   in
   ignore (Lui_app.start app);
   flush_app app;
@@ -2992,8 +3057,8 @@ let test_visual_appearance_props () =
            [ capture_node text_node
                (Lui_elements.text ~font_size:"0.75rem" ~font_weight:500
                   ~line_height:"1.4" ~letter_spacing:(-0.5)
-                  ~white_space:"nowrap" ~text_overflow:"ellipsis"
-                  ~overflow:"hidden" []);
+                  ~white_space:`nowrap ~text_overflow:`ellipsis
+                  ~overflow:`hidden []);
              capture_node row_node (fun context parent ->
                 let node = Lui_elements.row ~grow:1.0 [] context parent in
                 Lui_ui.string_property context node Position "absolute";
@@ -3217,8 +3282,8 @@ let test_sheet_presentation_props () =
       ~reducer:(fun model _action -> model)
       ~view:(fun _context _model_source _send ->
          Lui_elements.column
-           [ Lui_elements.sheet ~text:"Settings"
-               ~detents:"medium,large" ~sizing:"form" [] ])
+           [ Lui_elements.sheet ~title:"Settings"
+               ~detents:"medium,large" ~sizing:`form [] ])
       ()
   in
   let sheet = drive_node s (Drive.Model.Kind "sheet") in
@@ -3248,14 +3313,14 @@ let json_view_json =
   {|{"kind":"column","children":[
       {"kind":"card","children":[{"kind":"text","value":"hi"}]},
       {"kind":"switch","id":"sw","checked":true},
-      {"kind":"slider","id":"sl","value":0.5},
+      {"kind":"slider","id":"sl","label":"Volume","value":0.5},
       {"kind":"icon","name":"plus"},
       {"kind":"toggle-button","id":"b1","text":"Go"},
       {"kind":"table","children":[{"kind":"table-row","children":[
          {"kind":"table-cell","text":"c"}]}]},
-      {"kind":"radio-group","children":[{"kind":"radio","label":"r"}]},
-      {"kind":"stepper","children":[{"kind":"step","text":"s"}]},
-      {"kind":"bottom-tabs","children":[{"kind":"bottom-tab","title":"t"}]},
+      {"kind":"radio-group","label":"Options","children":[{"kind":"radio","label":"r"}]},
+      {"kind":"stepper","active":0,"children":[{"kind":"step","text":"s"}]},
+      {"kind":"bottom-tabs","label":"Navigation","children":[{"kind":"bottom-tab","id":"home","title":"Home"}]},
       {"kind":"input-group","children":[
         {"kind":"textarea","id":"tf"},
         {"kind":"input-group-actions","children":[{"kind":"button","text":"a"}]}]},
@@ -3378,6 +3443,31 @@ let test_json_view_anchor_rect () =
       (Invalid_argument "Invalid popover anchor rectangle")
       (fun () -> let session=mount value in drive_dispose session))
     [Lui_json_view.Str "0 0 -1 2";Str "nan 0 1 2";Str "0 0 1";Num 4.]
+
+let test_json_view_conflicting_modes () =
+  let open Lui_json_view in
+  List.iter (fun (kind, fields, expected) ->
+    let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+        (Obj (("kind", Str kind) :: fields))) () in
+    Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+      let node = drive_node session (Drive.Model.Kind kind) in
+      List.iter (fun (property, value) ->
+        Alcotest.(check bool) (kind ^ "." ^ property) true
+          (Hashtbl.find_opt node.Drive.Model.props property = value)) expected))
+    [ "popover",
+        ["anchor", Str "below"; "anchor-target", Str "trigger";
+         "anchor-rect", Str "invalid losing rectangle"; "x", Num 10.; "y", Num 20.],
+        ["anchor", Some (Lui_protocol.StringValue "below");
+         "anchor-target", Some (Lui_protocol.StringValue "trigger");
+         "anchor-rect", None; "x", None; "y", None]
+    ; "popover", ["anchor-target", Str "orphan"; "x", Num 10.; "y", Num 20.],
+        ["anchor", None; "anchor-target", None;
+         "x", Some (Lui_protocol.FloatValue 10.); "y", Some (Lui_protocol.FloatValue 20.)]
+    ; "popover", ["x", Num 10.], ["anchor", None; "x", None; "y", None]
+    ; "split", ["value", Num 0.25; "first-width", Num 246.],
+        ["value", None; "first-pane-width", Some (Lui_protocol.FloatValue 246.)]
+    ]
 
 let test_context_only_leaf_children () =
   Alcotest.(check bool) "rich table cells keep regular controls" true
@@ -3887,7 +3977,7 @@ let test_composer_separate_input_and_cards () =
     drive_mount ~initial:() ~reducer:(fun model _ -> model)
       ~view:(fun _context _model _send ->
         Lui_element_combine.composer ~placeholder:"Message"
-          ~actions:[Lui_elements.button ~label:"Add attachment" []]
+          ~actions:[Lui_elements.icon_button ~icon:`plus ~label:"Add attachment" []]
           ~on_send:(fun _ -> ())
           ~attachments:(Lui_elements.row ~gap:8
             [Lui_element_combine.composer_attachment
@@ -3948,6 +4038,7 @@ let test_composer_editing_with_busy_action_row () =
             | Lui_protocol.TextChanged (_, text) -> edits := text :: !edits
             | _ -> ())
           ~actions:(List.init 5 (fun n -> Lui_elements.button
+            ~text:("Action " ^ string_of_int n)
             ~width:44 ~height:44 ~label:("Action " ^ string_of_int n)
             ~on_press:(fun _ -> if n = 0 then incr adds else if n = 4 then incr discards) []))
           ~on_send:(fun _ -> incr sends) ()) () in
@@ -6247,6 +6338,8 @@ let () =
       ( "app",
         [
           Alcotest.test_case "composer content sizing" `Quick test_composer_content_sizing;
+          Alcotest.test_case "button mandatory identity" `Quick test_button_identity;
+          Alcotest.test_case "JSON button mandatory identity" `Quick test_json_view_button_identity;
           Alcotest.test_case "composer attachment preview and removal" `Quick test_composer_attachment_preview_and_remove;
           Alcotest.test_case "composer feedback above actions" `Quick test_composer_feedback_above_actions;
           Alcotest.test_case "composer separate input and square cards" `Quick test_composer_separate_input_and_cards;
@@ -6412,6 +6505,7 @@ let () =
           Alcotest.test_case "portable editor and virtual tuning" `Quick test_portable_editor_and_virtual_tuning;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
+          Alcotest.test_case "conflicting modes recover" `Quick test_json_view_conflicting_modes;
         ] );
       ( "extension fingerprints",
         [

@@ -109,6 +109,41 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
     }
     return `view_${type}`;
   }
+  function constructorArguments(name, wire) {
+    const names = [name, ...Object.entries(schema.constructorAliases ?? {})
+      .filter(([, kind]) => kind === wire).map(([alias]) => alias)];
+    const signatures = names.map(name => {
+      const args = functions.get(name);
+      if (!args) throw new Error(`no typed constructor for ${name}`);
+      return args;
+    });
+    if (signatures.length === 1) return signatures[0];
+    const parameters = new Map();
+    const children = signatures[0].filter(arg => !/^\??\w+:/.test(arg));
+    for (const args of signatures) {
+      if (JSON.stringify(args.filter(arg => !/^\??\w+:/.test(arg))) !== JSON.stringify(children)) {
+        throw new Error(`incompatible constructor alias children for ${wire}`);
+      }
+      for (const arg of args) {
+        const match = /^(\??)(\w+):(.*)$/.exec(arg);
+        if (!match) continue;
+        const [, , label, type] = match;
+        const previous = parameters.get(label);
+        if (!previous || previous === type) parameters.set(label, type);
+        else {
+          const before = enumValues(previous), after = enumValues(type);
+          if (before.every(value => after.includes(value))) parameters.set(label, type);
+          else if (!after.every(value => before.includes(value))) {
+            throw new Error(`incompatible constructor alias property ${wire}.${label}`);
+          }
+        }
+      }
+    }
+    return [...parameters].map(([label, type]) => {
+      const required = signatures.every(args => args.some(arg => arg.startsWith(`${label}:`)));
+      return `${required ? '' : '?'}${label}:${type}`;
+    }).concat(children);
+  }
   const properties = new Map(schema.properties.map(({wire, lg}) => [wire, lg]));
   const results = new Set(['t', ...[...source.matchAll(/^type (\w+_el)\s*$/gm)].map(([, name]) => name)]);
   const contracts = [];
@@ -118,7 +153,7 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
       continue;
     }
     const name = wire === 'switch' ? 'switch_' : wire.replace(/-/g, '_');
-    const args = functions.get(name);
+    const args = constructorArguments(name, wire);
     if (!args) throw new Error(`no typed constructor for ${wire}`);
     const result = args.at(-1);
     if (!results.has(result)) throw new Error(`unknown result type ${wire}: ${result}`);
@@ -175,11 +210,26 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         slots.push(`(${quote(wireName(label))}, ${quote(structural[1])}, ${!!structural[2]})`);
         continue;
       }
-      const names = extension ? [wireName(label)] : label === 'value' && type === 'string' ? ['text'] : aliases[label] ?? [wireName(label)];
+      const grouped = !extension && {
+        popover_target: () => [['x', 'ViewFloat'], ['y', 'ViewFloat'], ['anchor', domain('anchor')],
+          ['anchor-target', 'ViewString'], ['anchor-rect', '(ViewFloatTuple 4)'],
+          ['anchor-alignment', domain('anchor_alignment')], ['anchor-offset', 'ViewFloat'],
+          ['anchor-alignment-offset', 'ViewFloat']],
+        split_sizing: () => [['value', 'ViewFloat'], ['first-pane-width', 'ViewFloat']],
+        split_motion: () => [['resize-duration', 'ViewInt'], ['resize-easing', domain('resize_easing')],
+          ['resize-origin', 'ViewFloat']],
+      }[type]?.();
+      if (grouped) {
+        for (const [name, value] of grouped) props.set(properties.get(name), {value, required: false});
+        continue;
+      }
+      const names = extension ? [wireName(label)]
+        : label === 'title' && ['sheet', 'accordion'].includes(wire) ? ['text']
+        : label === 'value' && type === 'string' ? ['text'] : aliases[label] ?? [wireName(label)];
       for (const propName of names) {
         const property = extension ? quote(propName) : properties.get(propName);
         if (!property) throw new Error(`no wire property for typed argument: ${wire}.${label}`);
-        const value = domain(label === 'at' ? 'float' : type);
+        const value = type === 'heading_level' ? 'ViewInt' : domain(label === 'at' ? 'float' : type);
         const previous = props.get(property);
         if (previous && previous.value !== value) throw new Error(`conflicting typed property ${wire}.${propName}`);
         props.set(property, {value, required: !optional || previous?.required === true});
