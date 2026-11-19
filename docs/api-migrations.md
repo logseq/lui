@@ -43,6 +43,11 @@ validators still validate canonical values; low-level integrations can call
 `Lui_protocol.normalize_property_value` and `normalize_size_properties` before
 validating. `size_properties` names the affected pixel-size properties.
 
+Web replays only retained pixel-size properties after normalization. Absent
+pixel dimensions do not clear viewport-derived CSS: for example, setting
+`min-height=10` preserves an existing `width-viewport=0.5` as `50dvw`.
+Explicit pixel-size removals still clear their corresponding CSS dimension.
+
 `opacity`, `hover-opacity`, `pressed-opacity`, `disabled-opacity`, and
 `label-opacity` clamp to `[0,1]`. Non-finite values for these opacity properties
 fall back to the neutral opacity default `1` and emit a stderr diagnostic naming
