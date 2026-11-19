@@ -828,7 +828,7 @@ let switch_range context parent source equal mount =
             application saved parent old_nodes (range_nodes application fresh.range_segment));
           Signal.mount fresh.range_context.Lui_ui.ui_scope;
           finish_replacements ();
-          List.iter (Lui_runtime.retire_checkpoint_dynamic_segments saved) old_nodes;
+          List.iter (Lui_runtime.retire_checkpoint_dynamic_segments application saved) old_nodes;
           retire_range ~drop:false application old.range_segment;
           current := fresh;
           value := next;
