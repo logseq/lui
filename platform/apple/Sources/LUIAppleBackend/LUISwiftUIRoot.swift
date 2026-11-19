@@ -6441,13 +6441,14 @@ enum LUIRowLayoutPolicy {
     }
 
     static func childLayoutPriority(
+        kind: LUINodeKind? = nil,
         grow: Double?,
         styleClass: String?
     ) -> Double {
-        // Grow children take remaining width before non-growing flexible
-        // containers (including empty rows/columns). Explicit single-line
-        // content keeps its higher intrinsic priority; all growers stay equal.
-        max((grow ?? 0) > 0 ? 0.5 : 0,
+        // Intrinsic text precedes growers; flexible containers remain last.
+        let growing = (grow ?? 0) > 0
+        let intrinsicText = kind == .text || kind == .heading || kind == .paragraph
+        return max(growing ? 0.5 : (intrinsicText ? 1 : 0),
             LUITextLinePolicy.layoutPriority(styleClass: styleClass))
     }
 
@@ -6530,6 +6531,7 @@ private struct LUIRowView: View {
                             maxHeight: cross == "stretch" ? .infinity : nil
                         )
                         .layoutPriority(LUIRowLayoutPolicy.childLayoutPriority(
+                            kind: child?.kind,
                             grow: child?.grow,
                             styleClass: child?.styleClass
                         ))
