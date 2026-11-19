@@ -9,7 +9,7 @@ open Lui_elements
 
 (** Optional platform file/photo/camera picker wiring. With [picker],
     the attach control drives an internal request token and the host
-    receives the raw [Picked] event via [on_picked] — decode it with
+    receives the encoded batch string via [on_picked] — decode it with
     [Lui_picked_files.decode] and copy/import files BEFORE
     acknowledging. The library never auto-acks a pick: echo the batch's
     request token through [picker_completion] when the import settles
