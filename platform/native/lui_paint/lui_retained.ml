@@ -959,6 +959,22 @@ let capture_surface rt scene m surface =
   snapshot.fx <- Array.of_list (List.rev local.fx_rev);
   snapshot
 
+let popup_scene rt parent material surface =
+  let part = capture_surface rt parent material surface in
+  let r = surface.resolved in
+  let dx = -.r.x and dy = -.r.y in
+  let scene = Lui_scene.create ~mask_atlas:parent.mask_atlas
+      ~color_atlas:parent.color_atlas in
+  Lui_scene.reset scene ~width:(int_of_float r.w) ~height:(int_of_float r.h)
+    ~scale:parent.scale ~clear:(color 0 0 0 0);
+  scene.text <- parent.text;
+  scene.ops <- List.map (translate_op dx dy) part.pre;
+  scene.glyphs <- Array.to_list (Array.map
+    (fun g -> { g with gx = g.gx +. dx; gy = g.gy +. dy }) part.glyphs);
+  scene.wide <- Array.to_list part.wide;
+  scene.effects <- Array.to_list part.fx;
+  scene
+
 let emit_surface scene m viewport motion alpha zoom_progress =
   (* Scene chrome uses zero as its legacy default opacity. A fully transparent
      animation frame must therefore emit no operations, including its scrim. *)
@@ -1133,6 +1149,7 @@ let present_surfaces rt scene m viewport store ~refresh live =
     rt.surface_order
 
 let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
+    ?present_popup
     ~width ~height ~scale ~clear () =
   let vp = rect 0. 0. (float width) (float height) in
   if vp <> rt.vp || scale <> rt.scale then begin
@@ -1253,11 +1270,21 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
     let motion_enabled = rt.now <> None && not rt.reduced_motion in
     while not (Queue.is_empty drain) do
       let g = Queue.pop drain in
-      if motion_enabled then (if g.emitted then live := g :: !live)
-      else emit_seg scene m g;
+      let presented =
+        g.emitted && not (rect_empty g.resolved)
+        && (match g.kind, present_popup with
+            | ("dropdown-menu" | "context-menu" | "popover" | "tooltip"), Some (present, _) ->
+              present g.self g.kind g.resolved
+                (fun () -> popup_scene rt scene m g)
+            | _ -> false) in
+      if not presented then begin
+        if motion_enabled then (if g.emitted then live := g :: !live)
+        else emit_seg scene m g
+      end;
       List.iter (fun h -> Queue.add h drain) g.sub_pops
     done;
     if motion_enabled then present_surfaces rt scene m vp store ~refresh:refresh_surfaces (List.rev !live);
+    Option.iter (fun (_, finish) -> finish ()) present_popup;
     while not (Queue.is_empty m.m_ctx.Lui_paint.deferred) do
       (Queue.pop m.m_ctx.Lui_paint.deferred) ()
     done;

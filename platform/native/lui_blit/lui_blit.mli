@@ -31,3 +31,16 @@ val present : t -> unit
 (** RenderCopy + RenderPresent. *)
 
 val name : string
+
+module Popups : sig
+  type t
+
+  val create : unit -> t
+  val clear : t -> unit
+  val finish : t -> unit
+  val present :
+    t -> parent:Lui_sdl3.window -> id:int -> tooltip:bool ->
+    scale:float -> rect:(float * float * float * float) ->
+    (unit -> Bytes.t * int) -> bool
+  val route : t -> Lui_sdl3.Event.t -> Lui_sdl3.Event.t option
+end

@@ -24,7 +24,7 @@
      computed by the caller from the node's layout rect plus the
      caret offset — the node rect itself is the default). While a
      composition is active, changes emit [`Move_candidate r] so the
-     driver can call SDL_SetTextInputRect; while idle the rect is
+     driver can update the input method's candidate anchor; while idle the rect is
      only remembered so a later composition starts positioned.
 
    Key events are not fed here: while {!composing} holds (marked text
@@ -47,6 +47,14 @@ val initial : state
 (** True while marked text is non-empty — the flag the window driver
     consults to gate key-driven edits during a composition. *)
 val composing : state -> bool
+
+(** A half-open range of UTF-8 byte offsets into the committed text.
+    Platform hosts translate their native indices at the boundary. *)
+type range = { start : int; stop : int }
+
+type surrounding = { text : string; selection : range; caret : int }
+
+val valid_range : string -> range -> bool
 
 (** {2 Events and actions} *)
 

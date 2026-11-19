@@ -309,6 +309,14 @@ let test_text_session () =
        acts);
   ignore store
 
+let test_unchanged_committed_replacement () =
+  let initial = Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"hello" in
+  let selected, _ = Lui_text_input.select_all initial in
+  let next, actions =
+    Lui_text_input.replace_committed selected { Lui_ime.start = 0; stop = 5 } "hello" in
+  Alcotest.(check int) "selection collapses" 5 (Lui_text_input.sel_lo next);
+  Alcotest.(check bool) "repaint without TextChanged" true (actions = [`Repaint])
+
 let test_text_navigation () =
   List.iter (fun kind ->
     let store = store_of [CreateNode (1,kind);
@@ -1324,6 +1332,7 @@ let () =
       ( "text input",
         [ Alcotest.test_case "navigation" `Quick test_text_navigation;
           Alcotest.test_case "splice" `Quick test_text_session;
+          Alcotest.test_case "unchanged committed replacement" `Quick test_unchanged_committed_replacement;
           Alcotest.test_case "undo" `Quick test_text_undo;
           Alcotest.test_case "caret ops" `Quick test_text_caret_ops;
           Alcotest.test_case "padding hit" `Quick test_text_padding_hit;

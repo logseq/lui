@@ -191,6 +191,66 @@ reset. The Web backend reports apply errors as exceptions rather than `false`;
 this rejection policy does not change its DOM error recovery. Exceptions from `apply_batch` retain the existing
 uncertain-commit semantics. There is no wire-format change.
 
+## Unreleased: SDL popup presentation
+
+Experimental macOS/Linux SDL hosts may now present menu, popover and tooltip
+nodes in child windows. Applications keep their existing retained nodes and event
+handlers; for example, a context menu's normal item handler and Escape dismissal
+still apply. A host embedding `Lui_host` can opt in via
+`Lui_host.set_popup_presenter host (Some (present, finish))`; return `false`
+from `present` to draw that overlay in the parent as before, or pass `None`
+to keep all overlays in-window. SDL lifecycle messages for a child do not resize
+or close its parent.
+
+SDL adapters that translate child coordinates can use
+`Lui_sdl3.Event.map_pointer (fun x y -> (x +. left, y +. top)) event`;
+keyboard, scroll and lifecycle events are not transformed.
+
+## Unreleased: macOS native frame pacing
+
+The experimental Metal host requests frames from the window's display link on
+macOS 14 and newer. Layout is refreshed while the window is being resized;
+applications continue to use their existing resize handlers. Older systems or
+unavailable display links keep the timer-based scheduler. Hosts with their own
+loop can arm the cadence with `Lui_metal.request_frame_tick renderer` after
+`Lui_metal.set_frame_rate renderer fps`.
+
+## Unreleased: SDL3 native host text input
+
+Native SDL host code should replace `Lui_sdl3.set_text_input_rect window rect`
+with `Lui_sdl3.set_text_input_area window rect ~cursor:0` for the old
+positioning, or pass the horizontal caret offset in window pixels relative
+to the area's left edge. `start_text_input window` still starts ordinary
+single-line input; use `start_text_input ~multiline:true window` for a text
+area or `~secure:true` for a password field. No wire changes are required.
+Native drivers can query a focused field with `Lui_window.Assembly.ime_surrounding`.
+For example, pass the returned `selection` to `ime_range_rect` to locate
+it in device pixels, or call `ime_replace assembly selection replacement`
+and apply its actions as for `Assembly.handle`. Ranges use UTF-8 byte
+offsets in the current committed text, not UTF-16 indices or preedit
+offsets. Secure fields do not expose committed text to these requests.
+
+For a character position inside an active preedit, use
+`Lui_window.Assembly.ime_marked_caret_rect asm marked byte_offset`, not
+`ime_range_rect`. Pass the native marked string and an offset in that
+string; query `ime_range_rect` only for committed text.
+
+Input preferences are optional: for example, use
+`Lui_sdl3.start_text_input ~autocorrect:false ~capitalization:Lui_sdl3.None_ window`
+for an identifier field. Omitting the options keeps the SDL defaults.
+Send native-window work from another domain with
+`Lui_sdl3.run_on_main_thread (fun () -> Lui_sdl3.show_window window)`
+after SDL initialization; posted work is asynchronous off the UI thread.
+Use `Lui_sdl3.native_handle window` to query the backend instead of using
+SDL2 WM-info calls; for example, match `Some (Lui_sdl3.Wayland_surface ptr)`
+for a Wayland-only integration and leave other drivers unchanged.
+
+The experimental Win32 driver now handles IMM32 reconversion and document
+feed requests for normal editable fields. A confirmed reconversion replaces
+the requested committed range, instead of inserting the result at the
+current caret. Existing text-change handlers, including those for normal
+IME composition, do not need to change.
+
 ## Unreleased: Web top-level MenuTrigger activation
 
 On Web, a top-level `MenuTrigger` that owns a `DropdownMenu` opens on activation

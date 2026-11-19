@@ -304,6 +304,44 @@ let test_popup_deferred () =
   apply env.store [ SetProp (61, TextValue, StringValue "item!") ];
   frame env ()
 
+let test_popup_presenter () =
+  let env = env () in
+  apply env.store
+    [ CreateNode (1, Column);
+      CreateNode (60, ContextMenu);
+      CreateNode (61, MenuItem);
+      SetProp (61, TextValue, StringValue "item");
+      InsertChild (60, 61, 0);
+      InsertChild (1, 60, 0) ];
+  Lui_layout.sync ~scale:1. ~measure ~width:200. ~height:200. env.eng env.store;
+  let h = { (hooks env) with layout = Lui_layout.layout_hook env.eng } in
+  env.cur := env.kept;
+  let accepted = ref true in
+  let finished = ref 0 in
+  let present id kind bounds make_scene =
+    check int "retained popup id" 60 id;
+    check string "popup kind" "context-menu" kind;
+    let child = make_scene () in
+    check int "local width" (int_of_float bounds.w) child.width;
+    check bool "shared glyph atlas" true (child.mask_atlas == env.kept.mask_atlas);
+    check int "popup-only glyphs" 4 (List.length child.glyphs);
+    check bool "glyphs relative to popup" true
+      (List.for_all (fun g -> g.gx < bounds.x) child.glyphs);
+    !accepted
+  in
+  let paint () =
+    Lui_retained.paint_retained env.rt h env.store env.kept
+      ~present_popup:(present, fun () -> incr finished)
+      ~width:200 ~height:200 ~scale:1. ~clear:(color 0 0 0 0) ()
+  in
+  paint ();
+  check int "accepted glyphs omitted from parent" 0 (List.length env.kept.glyphs);
+  accepted := false;
+  Lui_retained.invalidate env.rt;
+  paint ();
+  check int "rejected popup paints in parent" 4 (List.length env.kept.glyphs);
+  check int "each updated frame finishes" 2 !finished
+
 let test_popup_motion_buffers () =
   let env = env () in
   apply env.store
@@ -891,6 +929,7 @@ let () =
           test_case "display contents" `Quick test_display_contents;
           test_case "opacity cascade" `Quick test_opacity_cascade;
           test_case "popup deferred" `Quick test_popup_deferred;
+          test_case "popup surface extraction and fallback" `Quick test_popup_presenter;
           test_case "popup motion buffers" `Quick test_popup_motion_buffers;
           test_case "state hint" `Quick test_state_hint;
           test_case "drop subtree" `Quick test_drop_subtree;

@@ -42,7 +42,7 @@ type host_window = private nativeint
 val host_of_sdl_window : nativeint -> host_window
 (** [host_of_sdl_window p] takes the raw [SDL_Window*] of an SDL3 host
     window ([Lui_sdl3.unsafe_ptr_of_window]) and resolves the platform
-    window handle via [SDL_GetWindowWMInfo]. Raises [Failure] when SDL
+    window handle via [SDL_GetWindowProperties]. Raises [Failure] when SDL
     cannot report a native handle or the window manager is unsupported
     (e.g. Wayland on Linux). *)
 

@@ -103,10 +103,8 @@ let set_caret st ~off ~extend =
 
 (* Splice [ins] over the current selection, pushing undo and
    emitting the resulting TextChanged. *)
-let splice st ins =
+let splice_at st ~lo ~hi ins =
   let cur = st.text in
-  let lo = min (sel_lo st) (String.length cur)
-  and hi = min (sel_hi st) (String.length cur) in
   let next =
     String.sub cur 0 lo ^ ins
     ^ String.sub cur hi (String.length cur - hi)
@@ -134,8 +132,20 @@ let splice st ins =
         `Repaint ] )
   end
 
+let splice st ins =
+  let n = String.length st.text in
+  splice_at st ~lo:(min (sel_lo st) n) ~hi:(min (sel_hi st) n) ins
+
 let delete_between st lo hi =
   splice { st with anchor = lo; caret = hi } ""
+
+let replace_committed st (range : Lui_ime.range) text =
+  if not (Lui_ime.valid_range st.text range) then st, []
+  else
+    let ime, _ = Lui_ime.feed_event st.ime (`Commit "") in
+    let next, actions = splice_at { st with ime } ~lo:range.start ~hi:range.stop text in
+    if actions = [] && (st.ime.active || st.caret <> next.caret || st.anchor <> next.anchor)
+    then next, [`Repaint] else next, actions
 
 let insert st s = splice st s
 
