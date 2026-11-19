@@ -743,6 +743,20 @@ let apply_title renderer node kind dom_node title =
     W.Element.setAttribute "aria-label" title dom_node
   end
 
+let refresh_link_target renderer node dom_node =
+  let target =
+    match Store.property renderer.web_store node TargetValue with
+    | Some (StringValue target) -> Some target
+    | _ ->
+        Option.map (fun _ -> "_blank")
+          (Store.property renderer.web_store node UrlValue)
+  in
+  (match target with
+   | Some target -> W.Element.setAttribute "target" target dom_node
+   | None -> W.Element.removeAttribute "target" dom_node);
+  if target = Some "_self" then W.Element.removeAttribute "rel" dom_node
+  else W.Element.setAttribute "rel" "noopener noreferrer" dom_node
+
 let apply_media_source renderer node kind dom_node =
   if kind = Avatar then Widgets.update_avatar renderer node dom_node
   else Widgets.update_image renderer node dom_node
@@ -1049,7 +1063,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       if kind = Image then Widgets.update_image renderer node dom_node
       else begin
         W.Element.setAttribute "href" url dom_node;
-        W.Element.setAttribute "target" "_blank" dom_node
+        refresh_link_target renderer node dom_node
       end
   | Opacity, FloatValue value ->
       set_style dom_node "opacity"
@@ -1086,13 +1100,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | PopupX, FloatValue _ | PopupY, FloatValue _ -> ()
   | AvailableHeight, FloatValue _ ->
       refresh_popup_height renderer node kind dom_node
-  | TargetValue, StringValue target ->
-      if kind = Link then begin
-        W.Element.setAttribute "target" target dom_node;
-        if target = "_blank" then
-          W.Element.setAttribute "rel" "noopener noreferrer" dom_node
-        else W.Element.removeAttribute "rel" dom_node
-      end
+  | TargetValue, StringValue _ ->
+      if kind = Link then refresh_link_target renderer node dom_node
   | AltValue, StringValue alt ->
       let image_node = Util.child_element dom_node 0 in
       W.Element.setAttribute "alt" alt image_node;
@@ -1357,7 +1366,7 @@ let remove_property renderer queue_split node kind dom_node property =
            if kind = Image then Widgets.update_image renderer node dom_node
            else begin
              W.Element.removeAttribute "href" dom_node;
-             W.Element.removeAttribute "target" dom_node
+             refresh_link_target renderer node dom_node
            end
        | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight when kind = Image ->
            Widgets.update_image renderer node dom_node
@@ -1404,10 +1413,7 @@ let remove_property renderer queue_split node kind dom_node property =
            if popup_kind kind then
              refresh_popup_height renderer node kind (transition_surface kind dom_node)
        | TargetValue ->
-           if kind = Link then begin
-             W.Element.removeAttribute "target" dom_node;
-             W.Element.setAttribute "rel" "noopener noreferrer" dom_node
-           end
+           if kind = Link then refresh_link_target renderer node dom_node
        | AltValue ->
            let image_node = Util.child_element dom_node 0 in
            W.Element.setAttribute "alt" "" image_node;

@@ -4,12 +4,13 @@ import {readFile} from 'node:fs/promises'
 
 const build=process.env.LUI_TEST_BUILD_DIR??'_build'
 const modules=new URL(`../../../${build}/default/examples/components/web/lui-components-web/node_modules/`,import.meta.url)
-const [Store,Protocol,Schema,Events,Tables]=await Promise.all([
+const [Store,Protocol,Schema,Events,Tables,Props]=await Promise.all([
   import(new URL('lui.web.dom/core/lui_web_store.js',modules)),
   import(new URL('lui/lui_protocol.js',modules)),
   import(new URL('lui/lui_wire_schema.js',modules)),
   import(new URL('lui.web.dom/events/lui_web_events.js',modules)),
   import(new URL('melange/hashtbl.js',modules)),
+  import(new URL('lui.web.dom/render/lui_web_props.js',modules)),
 ])
 const schema=JSON.parse(await readFile(new URL('../../../schema/components.json',import.meta.url)))
 const press=schema.events.findIndex(event=>event.lg==='Press')
@@ -22,8 +23,10 @@ const property=name=>find(Schema.all_properties,Schema.property_name,name)
 const list=values=>values.reduceRight((tl,hd)=>({hd,tl}),0)
 
 function fixture(){
-  const store=Store.create_store(),events=[],listeners=new Map()
-  const element={setAttribute(){},addEventListener(name,callback){listeners.set(name,callback)}}
+  const store=Store.create_store(),events=[],listeners=new Map(),attributes=new Map()
+  const element={setAttribute(name,value){attributes.set(name,value)},
+    removeAttribute(name){attributes.delete(name)},
+    addEventListener(name,callback){listeners.set(name,callback)}}
   const renderer={web_store:store,web_event_handler:{contents:event=>{events.push(event);return true}},
     web_context_hosts:Tables.create(undefined,4),web_pointer_cleanups:Tables.create(undefined,4),
     web_focus_within_observers:Tables.create(undefined,4),
@@ -32,8 +35,16 @@ function fixture(){
   let generation=0
   const apply=ops=>Store.apply_batch(store,()=>element,{generation:++generation,ops:list(ops)})
   apply([Protocol.create_node_op(1,kind)])
-  const set=(name,value)=>apply([Protocol.set_prop_op(1,property(name),{TAG:1,_0:value})])
-  const remove=name=>apply([Protocol.remove_prop_op(1,property(name))])
+  const set=(name,value)=>{
+    const prop=property(name),wire={TAG:typeof value==='string'?0:1,_0:value}
+    apply([Protocol.set_prop_op(1,prop,wire)])
+    if(name==='url'||name==='target')Props.apply_property(renderer,()=>{},1,kind,element,prop,wire)
+  }
+  const remove=name=>{
+    const prop=property(name)
+    apply([Protocol.remove_prop_op(1,prop)])
+    if(name==='url'||name==='target')Props.remove_property(renderer,()=>{},1,kind,element,prop)
+  }
   Events.attach_events(renderer,1,kind,element)
   const send=(name,fields={})=>{
     events.length=0;let prevented=false
@@ -41,8 +52,36 @@ function fixture(){
       ...fields,preventDefault(){prevented=true}})
     return {prevented,events:events.map(event=>({tag:event.TAG,node:event._0}))}
   }
-  return {set,remove,send}
+  return {set,remove,send,attributes}
 }
+
+test('Rendered link targets survive URL application, updates and removal',()=>{
+  for(const targetFirst of [false,true]){
+    const f=fixture()
+    if(targetFirst)f.set('target','_self')
+    f.set('url','#/all-pages?graph-id=fixture')
+    if(!targetFirst)f.set('target','_self')
+    assert.equal(f.attributes.get('target'),'_self')
+    assert.equal(f.attributes.has('rel'),false)
+    assert.throws(()=>f.set('target','invalid'),error=>error._1?.includes('unsupported property value'))
+    assert.equal(f.attributes.get('target'),'_self')
+    f.set('url','')
+    assert.equal(f.attributes.get('href'),'')
+    assert.equal(f.attributes.get('target'),'_self')
+    f.set('url','#/all-pages?graph-id=next')
+    assert.equal(f.attributes.get('href'),'#/all-pages?graph-id=next')
+    assert.equal(f.attributes.get('target'),'_self')
+    f.remove('url')
+    assert.equal(f.attributes.has('href'),false)
+    assert.equal(f.attributes.get('target'),'_self')
+    f.set('url','#/all-pages')
+    f.remove('target')
+    assert.equal(f.attributes.get('target'),'_blank')
+    assert.equal(f.attributes.get('rel'),'noopener noreferrer')
+    f.remove('url')
+    assert.equal(f.attributes.has('target'),false)
+  }
+})
 
 test('URL-only links keep browser navigation and disabled links prevent it',()=>{
   const f=fixture()

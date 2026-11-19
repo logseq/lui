@@ -1,5 +1,18 @@
 # LUI API migration guide
 
+## Web Link targets across URL updates
+
+Web `Link` now preserves an explicit `target` when `url` is applied, changed or
+removed, regardless of patch property order. Previously URL application reset
+the DOM target to `_blank`, even when the retained target was `_self`. Removing
+an explicit target restores `_blank` when a URL is present; removing both URL
+and target removes their DOM attributes. `_blank` retains
+`rel="noopener noreferrer"`; `_self` removes that external-window relation.
+There is no schema or default change and other backends are unchanged.
+
+Use `link ~url ~target:\`self_ children` for in-application navigation. No caller
+workaround or property reordering is required for changing URLs.
+
 ## Unreleased: Web top-level MenuTrigger activation
 
 On Web, a top-level `MenuTrigger` that owns a `DropdownMenu` opens on activation
