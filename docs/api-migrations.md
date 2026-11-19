@@ -79,6 +79,8 @@ anchor and a disposable content anchor; no wire kind or host changes are
 required. As with other transparent anchors, use it where a box is an admissible child, not in
 restricted slots such as direct menu-item lists. It protects owned reactive
 subtree switches, collections, conditionals, and PPX-owned property projections.
+Retained keyed and virtual rows inherit the enclosing boundary's protection,
+including later row-property projections after a successful reconciliation.
 External signal producers, event/timer callbacks, disposal callbacks, backend
 rejections, and explicit reentrant flushes are not error-boundary transactions.
 Outside a boundary, exceptions retain their existing propagation behavior.

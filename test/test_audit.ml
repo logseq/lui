@@ -122,6 +122,41 @@ let boundary_property_projection () =
   Alcotest.(check (list string)) "owned projection failures are isolated" ["fallback"] (text_values app);
   Signal.dispose_scope scope
 
+let boundary_retained_rows () =
+  List.iter (fun virtualized ->
+    let app, scope, context, _ = boundary_fixture () in
+    let source = Signal.state context.ui_scheduler [1, "ok"] in
+    let failures = ref 0 in
+    let mount item_source context parent =
+      let projected = Lui_ui.map context (fun (_, value) ->
+        if value = "bad" then failwith "row projection failed" else value) item_source in
+      let node = Lui_ui.text_signal context projected in
+      Lui_elements.attach context parent node;
+      node in
+    let source = Signal.value source, source in
+    let rows = if virtualized then
+        Lui_elements.virtual_list [Lui_elements.virtual_rows ~source:(fst source)
+          ~key:fst ~cmp:Int.compare ~mount ()]
+      else Lui_elements.column [Lui_elements.keyed ~source:(fst source)
+        ~key:fst ~cmp:Int.compare ~mount] in
+    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr failures; Lui_elements.text ~value:"fallback" []) rows context None);
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check (list string)) "initial row" ["ok"] (text_values app);
+    Signal.set (snd source) [1, "updated"];
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check (list string)) "retained row updates" ["updated"] (text_values app);
+    Signal.set (snd source) [1, "bad"];
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "row failure caught once" 1 !failures;
+    Alcotest.(check (list string)) "row failure isolated" ["fallback"] (text_values app);
+    Signal.set (snd source) [];
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check (list string)) "row fallback stays latched" ["fallback"] (text_values app);
+    Alcotest.(check int) "row subscriptions released" 0 (Lui_runtime.dynamic_segment_count app);
+    Signal.dispose_scope scope) [false; true]
+
 let numeric_normalization () =
   List.iter (fun property ->
     List.iter (fun number ->
@@ -543,6 +578,7 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "boundary reactive failure and latched fallback", boundary_reactive_update;
    "nested boundaries and fallback failures", boundary_nested;
    "boundary owned property projection", boundary_property_projection;
+   "boundary retained keyed and virtual rows", boundary_retained_rows;
    "closure-bearing subtree publications", closure_subtree_publication;
    "numeric normalization and runtime emission", numeric_normalization;
    "duplicate keyed publications", duplicate_keyed_publication;

@@ -295,8 +295,9 @@ let mount_keyed_item context parent segment key_fn compare mount nodes_ref
     item_source =
   let current = Signal.sample item_source in
   let key = key_fn current in
-  let item_context = Lui_ui.context context.Lui_ui.ui_application
-    (Signal.child_scope "keyed-item" context.Lui_ui.ui_scope) in
+  let item_context = { (Lui_ui.context context.Lui_ui.ui_application
+    (Signal.child_scope "keyed-item" context.Lui_ui.ui_scope)) with
+    Lui_ui.ui_protect = context.Lui_ui.ui_protect } in
   let item_scope = item_context.Lui_ui.ui_scope in
   let node = mount item_context item_source in
   nodes_ref := { ui_key = key; ui_node = node } :: !nodes_ref;
@@ -409,7 +410,8 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
         | None ->
           let item_state = Signal.state scheduler item in
           let scope = Signal.scope "keyed-item" in
-          let item_context = Lui_ui.context application scope in
+          let item_context = { (Lui_ui.context application scope) with
+            Lui_ui.ui_protect = context.Lui_ui.ui_protect } in
           let node = try mount item_context (Signal.value item_state)
             with failure ->
               (try Signal.dispose_scope scope with _ -> ());
