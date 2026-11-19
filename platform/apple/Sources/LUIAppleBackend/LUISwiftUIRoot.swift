@@ -868,6 +868,8 @@ private struct LUINodeView: View {
                         .font(typography.font(base: LUIHeadingTypography.isBold(level: headingLevel)
                             ? headingFont.weight(.bold) : headingFont))
                         .luiTypographyMetrics(typography, baseSize: headingSize)
+                        .lineLimit(LUITextLinePolicy.lineLimit(
+                            styleClass: model.derived.styleClass))
                 }
                     .accessibilityAddTraits(.isHeader)
                     .modifier(LUIScrollHeadingModifier(title: model.text,
@@ -881,6 +883,8 @@ private struct LUINodeView: View {
                     .multilineTextAlignment(textAlignment)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
+                    .lineLimit(LUITextLinePolicy.lineLimit(
+                        styleClass: model.derived.styleClass))
             })
         case .label:
             if hasTextRole { return AnyView(LUITextView(model: model, backend: backend)) }
@@ -889,6 +893,8 @@ private struct LUINodeView: View {
                     .luiTypography(typography)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
+                    .lineLimit(LUITextLinePolicy.lineLimit(
+                        styleClass: model.derived.styleClass))
             })
         case .button:
             if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }

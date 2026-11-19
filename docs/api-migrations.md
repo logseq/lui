@@ -1,5 +1,11 @@
 # LUI API migration guide
 
+### Phase 4 review: role-independent Apple text truncation
+
+Apple now applies the single-line limit to `heading`, `paragraph` and `label`
+when `~truncate:true` is supplied without `~role`. Their existing default
+typography and heading accessibility behavior are preserved.
+
 ### Phase 4 review: row content in form sections and data lists
 
 `Ui.form_section` and `Ui.data_list` isolate supplied content inside a flow
