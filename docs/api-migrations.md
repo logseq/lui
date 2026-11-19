@@ -75,9 +75,9 @@ runtime writes are undone, its scope is disposed, and its prior children are
 replaced by the fallback. Runtime mutations use an application-scoped undo
 journal: each boundary takes a constant-size savepoint on mount and at the first
 protected callback in a publication wave. Later callbacks share that savepoint.
-A failure discards all uncommitted runtime writes and pending operations since
-it, including opaque writes made through runtime helpers outside the subtree.
-Earlier pending operations are preserved.
+A failure discards all uncommitted runtime writes since it, including opaque
+writes made through runtime helpers outside the subtree. Runtime state from
+before the savepoint is preserved.
 
 A successful fallback commits its recovery entries. An outer or interleaved
 sibling rollback never resurrects that boundary's disposed content or undoes
@@ -90,11 +90,16 @@ can also unmount a nested fallback normally. A fallback that itself fails does
 not commit its partial recovery.
 Runtime identifiers remain monotonic across boundary rollbacks.
 
-After rollback, structural operations are regenerated against the last accepted
-host child order. Committed insertions therefore receive valid indices even
-when preceding transient siblings were discarded. Text, toggle and numeric
-echo markers have independent undo entries; unrelated recovery styling cannot
-commit the echo marker of a discarded value.
+If the flush has queued operations when rollback occurs, its entire pending
+delta is discarded and Phase 1 authoritative resync is scheduled. After
+recovery settles, the host receives detaches for its previously accepted roots,
+followed by a complete snapshot of the surviving runtime tree. This preserves
+earlier pending state and committed sibling recoveries without replaying stale
+indices, unlinking descendants before subtree removal, or attaching incomplete
+tweaks. Successful publications remain incremental.
+
+Text, toggle and numeric echo markers have independent undo entries; unrelated
+recovery styling cannot commit the echo marker of a discarded value.
 
 Savepoints reset before the next mutation round. The shared journal is compacted
 at flush end, including rejected batches and exceptions, so boundaries retain

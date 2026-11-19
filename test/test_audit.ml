@@ -313,6 +313,139 @@ let boundary_journal_compaction () =
       (Lui_runtime.boundary_savepoint_valid app saved))
     [`Empty; `Applied; `Rejected; `Exception]
 
+let rollback_host_fixture () =
+  let host = Hashtbl.create 16 and parents = Hashtbl.create 16 in
+  let tweaks = Hashtbl.create 16 in
+  let children node = match Hashtbl.find_opt host node with
+    | Some children -> children
+    | None -> Alcotest.failf "host references missing node %d" node in
+  let unlink parent child =
+    let current = children parent in
+    if not (List.mem child current) then Alcotest.fail "host removes a missing edge";
+    Hashtbl.replace host parent (List.filter ((<>) child) current);
+    Hashtbl.remove parents child in
+  let rec detach node =
+    List.iter detach (children node);
+    Option.iter (fun parent -> unlink parent node) (Hashtbl.find_opt parents node);
+    Hashtbl.remove host node in
+  let insert parent child index =
+    ignore (children child);
+    if Hashtbl.mem tweaks child && List.length (children child) <> 1 then
+      Alcotest.fail "host attaches an incomplete tweak";
+    let current = children parent in
+    if index < 0 || index > List.length current then Alcotest.fail "host insert index";
+    Hashtbl.replace host parent (Lui_runtime.insert_list index child current);
+    Hashtbl.replace parents child parent in
+  let registry = Lui_extension.registry () in
+  Lui_extension.register_tweak registry
+    (Lui_extension.tweak "boundary-tweak" [generic_profile ()] []);
+  let app = Lui_runtime.create_with_extensions (Signal.scheduler ())
+    (backend (fun batch ->
+      List.iter (function
+        | CreateNode (node, _) -> Hashtbl.replace host node []
+        | CreateExtension (node, _, _) ->
+            Hashtbl.replace host node []; Hashtbl.replace tweaks node ()
+        | InsertChild (parent, child, index) -> insert parent child index
+        | RemoveChild (parent, child) ->
+            ignore (children child); unlink parent child
+        | MoveChild (parent, child, index) -> unlink parent child; insert parent child index
+        | DropNode node | DetachSubtree node -> detach node
+        | _ -> ()) batch.ops;
+      true)) registry in
+  let scope = Signal.scope "rollback-host" in
+  let verify () =
+    let ids table = Hashtbl.to_seq_keys table |> List.of_seq |> List.sort Int.compare in
+    let expected = List.sort Int.compare
+      (ids app.mounted_nodes @ ids app.runtime_extension_nodes) in
+    Alcotest.(check (list int)) "host has exactly the runtime nodes" expected (ids host);
+    Hashtbl.iter (fun parent actual ->
+      Alcotest.(check (list int)) "host child order matches runtime"
+        (Lui_runtime.children app parent) actual) host in
+  app, scope, Lui_ui.context app scope, verify
+
+let boundary_host_detach_descendants () =
+  let app, scope, context, verify = rollback_host_fixture () in
+  let parent = Lui_ui.column context in
+  let content = Lui_ui.column context in
+  Lui_ui.append context parent content;
+  Lui_ui.append context content (Lui_ui.text context "descendant");
+  ignore (Lui_runtime.flush app);
+  verify ();
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context parent BackgroundValue "#334455";
+  Lui_runtime.rollback_boundary app saved;
+  Lui_runtime.drop_subtree app content;
+  ignore (Lui_runtime.flush app);
+  verify ();
+  Signal.dispose_scope scope
+
+let boundary_host_detach_unlink () =
+  let app, scope, context, verify = rollback_host_fixture () in
+  let parent = Lui_ui.column context in
+  let child = Lui_ui.column context in
+  Lui_ui.append context parent child;
+  Lui_ui.append context child (Lui_ui.text context "descendant");
+  ignore (Lui_runtime.flush app);
+  Lui_runtime.drop_subtree app child;
+  ignore (Lui_runtime.flush app);
+  verify ();
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context parent BackgroundValue "#334455";
+  Lui_runtime.rollback_boundary app saved;
+  ignore (Lui_runtime.flush app);
+  verify ();
+  Signal.dispose_scope scope
+
+let boundary_host_tweak_order () =
+  for offset = 0 to 15 do
+    let app, scope, context, verify = rollback_host_fixture () in
+    for _ = 1 to offset do ignore (Lui_ui.box context) done;
+    let parent = Lui_ui.column context in
+    ignore (Lui_runtime.flush app);
+    let saved = Lui_runtime.boundary_savepoint app in
+    Lui_ui.string_property context parent BackgroundValue "#334455";
+    Lui_runtime.rollback_boundary app saved;
+    let recovery = Lui_runtime.boundary_savepoint app in
+    let tweak = Lui_ui.platform_tweak context "boundary-tweak" in
+    Lui_ui.append context tweak (Lui_ui.text context "fallback");
+    Lui_ui.append context parent tweak;
+    Lui_runtime.commit_boundary_recovery app recovery;
+    ignore (Lui_runtime.flush app);
+    verify ();
+    Signal.dispose_scope scope
+  done
+
+let boundary_resync_selection () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let node = Lui_ui.text context "before" in
+  ignore (Lui_runtime.flush app);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check bool) "empty rollback needs no resync" false
+    !(app.runtime_resync_required);
+  Lui_ui.string_property context node TextValue "successful";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "successful publication stays incremental" false
+    (List.exists (function DetachSubtree _ -> true | _ -> false) !emitted);
+  Lui_ui.string_property context node TextValue "pending";
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node TextValue "partial";
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check bool) "queued rollback schedules authoritative resync" true
+    !(app.runtime_resync_required);
+  Alcotest.(check int) "entire pending delta is discarded" 0
+    (List.length !(app.pending_ops));
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "resync removes the accepted host root" true
+    (List.exists (function DetachSubtree root -> root = node | _ -> false) !emitted);
+  Alcotest.(check bool) "resync preserves earlier pending state" true
+    (List.exists (function SetProp (root, TextValue, StringValue "pending") ->
+      root = node | _ -> false) !emitted);
+  Alcotest.(check bool) "failed writes are not serialized" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true
+      | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
 let boundary_reactive_update () =
   let app, scope, context, emitted = boundary_fixture () in
   let source = Signal.state context.ui_scheduler 0 in
@@ -881,6 +1014,10 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "boundary journal compaction", boundary_journal_compaction;
    "boundary nested mount rollback", boundary_nested_mount_rollback;
    "boundary echo rollback", boundary_echo_rollback;
+   "boundary host detach descendants", boundary_host_detach_descendants;
+   "boundary host detach unlink", boundary_host_detach_unlink;
+   "boundary host tweak order", boundary_host_tweak_order;
+   "boundary resync selection", boundary_resync_selection;
    "boundary reactive failure and latched fallback", boundary_reactive_update;
    "nested boundaries and fallback failures", boundary_nested;
    "boundary owned property projection", boundary_property_projection;
