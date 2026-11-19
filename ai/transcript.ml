@@ -391,7 +391,7 @@ let jump_pill pinned rows_s scroll_to scroll_animated : t =
   in
   align `bottom
     (if_ ~test:(reactive (fun p -> not p) (Signal.value pinned))
-       (button ~icon:`arrow_down ~variant:`secondary ~size:`icon
+       (icon_button ~icon:`arrow_down ~variant:`secondary ~size:`icon
           ~width:36 ~height:36 ~corner_radius:18 ~label:"Jump to latest"
           ~accessibility_identifier:"lui-ai-jump" ~on_press:jump_now []))
 

@@ -1,5 +1,41 @@
 # LUI API migration guide
 
+## Unreleased: Text buttons and accessible icon buttons
+
+`button` now requires `~text:string`. Its `button_size` is closed to
+`` `default | `sm | `lg ``; other controls retain their existing sizes.
+`?text_signal` remains supported and overrides the initial text. Reactive
+text keeps the existing authored syntax:
+
+```ocaml
+button ~text:"Save" ~on_press:save []
+button ~text:(reactive caption) ~on_press:save []
+```
+
+Replace icon-only calls with `icon_button ~icon ~label`; both arguments are
+mandatory, and `label` is the accessible name, not visible text:
+
+```ocaml
+(* Before *)
+button ~icon:`plus ~label:"Add attachment" ~size:`icon children
+(* After: keep the same children list, including menus/custom content. *)
+icon_button ~icon:`plus ~label:"Add attachment" ~size:`icon children
+```
+
+`icon_button` accepts the same styling, variant, disabled state, callbacks,
+icon signal, tooltip and shortcut options as `button`, but no text/text signal.
+Its `control_size` also includes `` `icon ``. Both constructors keep the
+existing defaults and emit the same `Button` wire kind; no wrapper or new
+backend kind is introduced. Composite glass actions choose the appropriate
+constructor based on whether visible text is present. The transparent file
+preview hit target now has meaningful transparent text rather than no text.
+
+JSON keeps `"kind":"button"`: with `text` it uses the text constructor;
+without `text` it requires both `icon` and `label` and uses `icon_button`.
+Host accessible-name validation remains: mandatory OCaml strings can still
+be empty, and a reactive text signal can become empty. Missing arguments are
+compile-time errors, but empty accessible names still need runtime validation.
+
 ## Unreleased: Resilient JSON positioning and sizing conflicts
 
 Conflicting JSON inputs now normalize deterministically and log diagnostics on

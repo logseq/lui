@@ -35,6 +35,12 @@ test('element constructors expose only admitted properties and events', () => {
     context_menu: 'ContextMenuPress', focus_within: 'FocusWithinChanged',
   };
   assert.equal(functions.has('apply_universal'), false, 'apply_universal must stay internal');
+  assert.equal(functions.has('button_impl'), false, 'button_impl must stay internal');
+  assert.deepEqual(schema.mandatoryParameters.button, ['text']);
+  assert.deepEqual(schema.mandatoryParameters.icon_button, ['icon', 'label']);
+  assert.ok(functions.get('button').includes('?size:button_size'));
+  assert.ok(functions.get('icon_button').includes('?size:control_size'));
+  assert.ok(constructors.some(([name, kind]) => name === 'icon_button' && kind === 'button'));
   for (const [constructor, parameters] of Object.entries(schema.mandatoryParameters)) {
     for (const parameter of parameters) {
       assert.ok(functions.get(constructor)?.some(argument => argument.startsWith(`${parameter}:`)),
@@ -57,7 +63,7 @@ test('element constructors expose only admitted properties and events', () => {
       if (parameter.startsWith('on_')) {
         const handler = parameter.slice(3);
         const event = handler === 'change' && constructor === 'slider' ? 'ValueChanged'
-          : handler === 'navigate' ? (['button', 'row', 'box'].includes(constructor) ? 'NavigationKey' : 'NavigateNext')
+          : handler === 'navigate' ? (['button', 'icon_button', 'row', 'box'].includes(constructor) ? 'NavigationKey' : 'NavigateNext')
           : eventAliases[handler] ?? handler.split('_').map(word => word[0].toUpperCase() + word.slice(1)).join('');
         const eventKind = handler === 'dismiss' ? childKind : kind;
         assert.ok(admission.events[event], `unknown event parameter ${constructor}.${parameter}`);
@@ -145,6 +151,7 @@ test('schema summary preserves the pinned public API boundary', () => {
     'span',
   ]);
   assert.ok(summary.supported.includes('button'));
+  assert.ok(summary.supported.includes('icon-button'));
   assert.ok(summary.supported.includes('toggle-button'));
   assert.ok(summary.supported.includes('toggle'));
   assert.ok(summary.supported.includes('radio-group'));

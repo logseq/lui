@@ -62,6 +62,12 @@ let variant_opt = function
   | Some "default" -> Some `default
   | _ -> None
 
+let button_size_opt = function
+  | Some "sm" -> Some `sm
+  | Some "lg" -> Some `lg
+  | Some "default" -> Some `default
+  | _ -> None
+
 let control_size_opt = function
   | Some "sm" -> Some `sm
   | Some "lg" -> Some `lg
@@ -539,8 +545,17 @@ let rec element ~emit (node : value) : E.t =
       E.kbd
       ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?value:(v_str props "value") ?transition:(v_str props "transition") []
     | "button" ->
-      E.button
-      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?variant:(variant_opt (v_str props "variant")) ?size:(control_size_opt (v_str props "size")) ?icon:(icon_prop props "icon") ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?label:(v_str props "label") ?text_alignment:(text_align_opt (v_str props "text-alignment")) ?selected:(v_bool props "selected") ?autofocus:(v_bool props "autofocus") ?disabled:(v_bool props "disabled") ?on_navigate:(ev "navigate" emit props) ?on_press:(ev "press" emit props) ?on_long_press:(ev "long-press" emit props) ?tooltip:(v_str props "tooltip") ?shortcut_hint:(v_str props "shortcut-hint") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+      let make = match v_str props "text" with
+        | Some text ->
+            E.button ~text ?text_signal:None
+              ?icon:(icon_prop props "icon") ?label:(v_str props "label")
+              ?size:(button_size_opt (v_str props "size"))
+        | None ->
+            E.icon_button ~icon:(required "icon_button.icon" (icon_prop props "icon"))
+              ~label:(required "icon_button.label" (v_str props "label"))
+              ?size:(control_size_opt (v_str props "size")) in
+      make
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?variant:(variant_opt (v_str props "variant")) ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?text_alignment:(text_align_opt (v_str props "text-alignment")) ?selected:(v_bool props "selected") ?autofocus:(v_bool props "autofocus") ?disabled:(v_bool props "disabled") ?on_navigate:(ev "navigate" emit props) ?on_press:(ev "press" emit props) ?on_long_press:(ev "long-press" emit props) ?tooltip:(v_str props "tooltip") ?shortcut_hint:(v_str props "shortcut-hint") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
     | "toggle-button" ->
       E.toggle_button
       ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?variant:(variant_opt (v_str props "variant")) ?size:(control_size_opt (v_str props "size")) ?icon:(icon_prop props "icon") ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?label:(v_str props "label") ?text_alignment:(text_align_opt (v_str props "text-alignment")) ?selected:(v_bool props "selected") ?checked:(v_bool props "checked") ?autofocus:(v_bool props "autofocus") ?disabled:(v_bool props "disabled") ?on_toggle:(ev "toggle" emit props) ?on_long_press:(ev "long-press" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)

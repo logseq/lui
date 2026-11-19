@@ -13,7 +13,8 @@ type t = Lui_ui.ui_context -> int option -> int
 type variant =
   [ `default | `primary | `secondary | `outline | `ghost | `destructive ]
 
-type control_size = [ `default | `sm | `lg | `icon ]
+type button_size = [ `default | `sm | `lg ]
+type control_size = [ button_size | `icon ]
 type text_size = [ `heading | `display ]
 type cell_size = [ control_size | text_size ]
 type main_alignment = [ `start | `center | `end_ | `space_between ]
@@ -155,10 +156,13 @@ let variant_value : variant -> string = function
   | `ghost -> "ghost"
   | `destructive -> "destructive"
 
-let control_size_value : control_size -> string = function
+let button_size_value : button_size -> string = function
   | `default -> "default"
   | `sm -> "sm"
   | `lg -> "lg"
+
+let control_size_value : control_size -> string = function
+  | #button_size as size -> button_size_value size
   | `icon -> "icon"
 
 let text_size_value : text_size -> string = function
@@ -1544,7 +1548,7 @@ let kbd ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?background ?f
 
   node
 
-let button ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?selected_signal ?autofocus ?disabled ?disabled_signal ?on_navigate ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition (children : t list) : t =
+let button_impl ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?selected_signal ?autofocus ?disabled ?disabled_signal ?on_navigate ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.button context in
   apply_universal ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
@@ -1581,6 +1585,12 @@ let button ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_ve
   attach context parent node;
   mount_children context node children;
   node
+
+let button ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ~text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?selected_signal ?autofocus ?disabled ?disabled_signal ?on_navigate ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition (children : t list) : t =
+  button_impl ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ~text ?text_signal ?variant ?size:(Option.map (fun (size : button_size) -> (size :> control_size)) size) ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?selected_signal ?autofocus ?disabled ?disabled_signal ?on_navigate ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition children
+
+let icon_button ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?variant ?size ~icon ?icon_signal ?icon_placement ~label ?text_alignment ?selected ?selected_signal ?autofocus ?disabled ?disabled_signal ?on_navigate ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition (children : t list) : t =
+  button_impl ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?variant ?size ~icon ?icon_signal ?icon_placement ~label ?text_alignment ?selected ?selected_signal ?autofocus ?disabled ?disabled_signal ?on_navigate ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition children
 
 let toggle_button ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?checked ?checked_signal ?autofocus ?disabled ?disabled_signal ?on_toggle ?on_long_press ?on_context_menu ?transition (children : t list) : t =
  fun context parent ->

@@ -487,12 +487,15 @@ function renderNestingSchema(schema) {
   });
   const constructors = schema.nodeKinds.flatMap(({ wire, lg }) => {
     const name = wire === 'switch' ? 'switch_' : wire.replace(/-/g, '_');
-    const args = functions.get(name);
-    if (!args) return [];
-    const children = args.slice(0, -1).filter(arg => !/^\??\w+:/.test(arg));
-    const shape = children.length === 1 && children[0].endsWith(' list')
-      ? 'Children_list' : `Child_arguments ${children.length}`;
-    return [`  | "${name}" -> Some (${lg}, ${lg}, ${shape})`];
+    return [name, ...Object.entries(schema.constructorAliases ?? {})
+      .filter(([, kind]) => kind === wire).map(([alias]) => alias)].flatMap(name => {
+      const args = functions.get(name);
+      if (!args) return [];
+      const children = args.slice(0, -1).filter(arg => !/^\??\w+:/.test(arg));
+      const shape = children.length === 1 && children[0].endsWith(' list')
+        ? 'Children_list' : `Child_arguments ${children.length}`;
+      return [`  | "${name}" -> Some (${lg}, ${lg}, ${shape})`];
+    });
   });
   constructors.push('  | "separator" -> Some (Divider, Divider, Children_list)',
     '  | "menu" | "submenu" -> Some (MenuTrigger, DropdownMenu, Children_list)');

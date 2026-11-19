@@ -1243,6 +1243,69 @@ let test_styled_accordion_mounts () =
        ops);
   ignore (Lui_app.dispose app)
 
+let test_button_identity () =
+  let presses = ref 0 in
+  let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_elements.column [
+      Lui_elements.button ~text:"Save" ~icon:`save ~variant:`primary ~size:`sm
+        ~on_press:(fun _ -> incr presses) [];
+      Lui_elements.icon_button ~icon:`plus ~label:"Add" ~size:`icon
+        ~variant:`outline ~disabled:true [];
+      Lui_elements.icon_button ~icon:`edit ~label:"Edit" ~on_press:(fun _ -> incr presses)
+        [Lui_elements.text ~value:"Custom child" []]
+    ]) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let labelled label = Drive.Model.Prop
+      ("accessibility-label", Lui_protocol.StringValue label) in
+    let save = drive_node session (Drive.Model.Prop ("text", Lui_protocol.StringValue "Save")) in
+    let add = drive_node session (labelled "Add") in
+    let edit = drive_node session (labelled "Edit") in
+    Alcotest.(check string) "same wire kind" "button" add.Drive.Model.kind;
+    List.iter (fun (node, name, value) ->
+      Alcotest.(check bool) name true (drive_prop session node name = value)) [
+      save, "size", Some (Lui_protocol.StringValue "sm");
+      add, "icon", Some (Lui_protocol.StringValue "plus");
+      add, "size", Some (Lui_protocol.StringValue "icon");
+      add, "variant", Some (Lui_protocol.StringValue "outline");
+      add, "enabled", Some (Lui_protocol.BoolValue false);
+      add, "text", None;
+      edit, "text", None
+    ];
+    Alcotest.(check (list string)) "empty children" [] (drive_kind_names session add);
+    Alcotest.(check (list string)) "custom children retained" ["text"] (drive_kind_names session edit);
+    Drive.Session.press session save.Drive.Model.id;
+    drive_press session (labelled "Edit");
+    Alcotest.(check int) "same press behavior" 2 !presses);
+  let open Lui_protocol in
+  List.iter (fun properties ->
+    Alcotest.(check bool) "empty names still rejected by host validation" false
+      (node_properties_supported Button (Property_map.of_seq (List.to_seq properties))))
+    [[TextValue, StringValue ""];
+     [InlineIconName, StringValue "plus"; AccessibilityLabel, StringValue ""]]
+
+let test_json_view_button_identity () =
+  let open Lui_json_view in
+  List.iter (fun fields ->
+    let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+        (Obj (("kind", Str "button") :: fields))) () in
+    Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+      let node = drive_node session (Drive.Model.Kind "button") in
+      List.iter (fun (name, value) ->
+        let property = if name = "label" then "accessibility-label" else name in
+        match value with
+        | Str value -> Alcotest.(check bool) property true
+            (drive_prop session node property = Some (Lui_protocol.StringValue value))
+        | _ -> assert false) fields))
+    [["text", Str "Save"; "size", Str "sm"];
+     ["icon", Str "plus"; "label", Str "Add"; "size", Str "icon"]];
+  List.iter (fun (fields, missing) ->
+    Alcotest.check_raises missing (Invalid_argument ("Lui_json_view: missing " ^ missing))
+      (fun () -> let _element = render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+        (Obj (("kind", Str "button") :: fields)) in ()))
+    [["icon", Str "plus"], "icon_button.label";
+     ["label", Str "Add"], "icon_button.icon"]
+
 let test_glass_button_text_is_optional () =
   let action : Lui_element_combine.action =
     Lui_element_combine.Press
@@ -1387,6 +1450,7 @@ let test_dispatch_drops_value_echoes () =
              Lui_elements.checkbox ~checked:false
                ~on_toggle:(fun _event -> incr toggles) [];
              Lui_elements.button
+               ~text:"Press"
                ~on_press:(fun _event -> incr presses) [];
            ])
       ()
@@ -1587,6 +1651,7 @@ let test_pointer_dispatch () =
          Lui_elements.column
            [
              Lui_elements.button
+               ~text:"Pointer actions"
                ~on_press_detail:(fun _event -> incr details)
                ~on_pointer_enter:(fun _event -> incr enters)
                ~on_pointer_leave:(fun _event -> incr leaves)
@@ -3912,7 +3977,7 @@ let test_composer_separate_input_and_cards () =
     drive_mount ~initial:() ~reducer:(fun model _ -> model)
       ~view:(fun _context _model _send ->
         Lui_element_combine.composer ~placeholder:"Message"
-          ~actions:[Lui_elements.button ~label:"Add attachment" []]
+          ~actions:[Lui_elements.icon_button ~icon:`plus ~label:"Add attachment" []]
           ~on_send:(fun _ -> ())
           ~attachments:(Lui_elements.row ~gap:8
             [Lui_element_combine.composer_attachment
@@ -3973,6 +4038,7 @@ let test_composer_editing_with_busy_action_row () =
             | Lui_protocol.TextChanged (_, text) -> edits := text :: !edits
             | _ -> ())
           ~actions:(List.init 5 (fun n -> Lui_elements.button
+            ~text:("Action " ^ string_of_int n)
             ~width:44 ~height:44 ~label:("Action " ^ string_of_int n)
             ~on_press:(fun _ -> if n = 0 then incr adds else if n = 4 then incr discards) []))
           ~on_send:(fun _ -> incr sends) ()) () in
@@ -6272,6 +6338,8 @@ let () =
       ( "app",
         [
           Alcotest.test_case "composer content sizing" `Quick test_composer_content_sizing;
+          Alcotest.test_case "button mandatory identity" `Quick test_button_identity;
+          Alcotest.test_case "JSON button mandatory identity" `Quick test_json_view_button_identity;
           Alcotest.test_case "composer attachment preview and removal" `Quick test_composer_attachment_preview_and_remove;
           Alcotest.test_case "composer feedback above actions" `Quick test_composer_feedback_above_actions;
           Alcotest.test_case "composer separate input and square cards" `Quick test_composer_separate_input_and_cards;

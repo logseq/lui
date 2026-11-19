@@ -21,34 +21,36 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
     success(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
       "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
     const cases = [
-      ["context_menu [button []]", "context-menu", "button"],
+      ['context_menu [icon_button ~icon:`plus ~label:"Add" []]', 'context-menu', 'button'],
+      ['toolbar ~label:"Actions" [icon_button ~icon:`plus ~label:"Add" []]'],
+      ["context_menu [button ~text:{|Action|} []]", "context-menu", "button"],
       ["dropdown_menu [column []]", "dropdown-menu", "column"],
       ["toolbar [column []]", "toolbar", "column"],
       ['tree [text ~value:"bad" []]', "tree", "text"],
       ["menu_trigger [menu_item []]", "menu-trigger", "menu-item"],
       ["input_group (text_field [])", "input-group", "text-field"],
-      ["input [button []]", "input", "button"],
-      ["context_menu [if_ ~test:source (button [])]", "context-menu", "button"],
-      ["context_menu [reactive (fun _ -> button []) source]", "context-menu", "button"],
-      ["context_menu [keyed ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> button [])]", "context-menu", "button"],
-      ["context_menu [align `center (button [])]", "context-menu", "button"],
-      ["context_menu [scoped (fun _ -> button [])]", "context-menu", "button"],
+      ["input [button ~text:{|Action|} []]", "input", "button"],
+      ["context_menu [if_ ~test:source (button ~text:{|Action|} [])]", "context-menu", "button"],
+      ["context_menu [reactive (fun _ -> button ~text:{|Action|} []) source]", "context-menu", "button"],
+      ["context_menu [keyed ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> button ~text:{|Action|} [])]", "context-menu", "button"],
+      ["context_menu [align `center (button ~text:{|Action|} [])]", "context-menu", "button"],
+      ["context_menu [scoped (fun _ -> button ~text:{|Action|} [])]", "context-menu", "button"],
       ['context_menu [error_boundary ~fallback:(fun _ -> text ~value:"error" []) (menu_item [])]', "context-menu", "box"],
       ['column [error_boundary ~fallback:(fun _ -> text ~value:"error" []) (reactive (fun _ -> text ~value:"ok" []) source)]'],
-      ["context_menu (List.map (fun _ -> button []) [1])", "context-menu", "button"],
-      ["context_menu ([menu_item []] @ [button []])", "context-menu", "button"],
-      ["context_menu [if true then menu_item [] else button []]", "context-menu", "button"],
-      ["context_menu [match true with true -> menu_item [] | false -> button []]", "context-menu", "button"],
-      ["Lui_elements.context_menu [Lui_elements.button []]", "context-menu", "button"],
-      ["Lui_elements.(context_menu [button []])", "context-menu", "button"],
-      ["let child = button [] in context_menu [child]", "context-menu", "button"],
-      ["let build child = context_menu [child] in build (button [])", "context-menu", "button"],
-      ["let build = context_menu ~disabled:false in build [button []]", "context-menu", "button"],
+      ["context_menu (List.map (fun _ -> button ~text:{|Action|} []) [1])", "context-menu", "button"],
+      ["context_menu ([menu_item []] @ [button ~text:{|Action|} []])", "context-menu", "button"],
+      ["context_menu [if true then menu_item [] else button ~text:{|Action|} []]", "context-menu", "button"],
+      ["context_menu [match true with true -> menu_item [] | false -> button ~text:{|Action|} []]", "context-menu", "button"],
+      ["Lui_elements.context_menu [Lui_elements.button ~text:{|Action|} []]", "context-menu", "button"],
+      ["Lui_elements.(context_menu [button ~text:{|Action|} []])", "context-menu", "button"],
+      ["let child = button ~text:{|Action|} [] in context_menu [child]", "context-menu", "button"],
+      ["let build child = context_menu [child] in build (button ~text:{|Action|} [])", "context-menu", "button"],
+      ["let build = context_menu ~disabled:false in build [button ~text:{|Action|} []]", "context-menu", "button"],
       ["context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]", "context-menu", "box"],
       ["context_menu [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]", "context-menu", "virtual-rows"],
       ["context_menu [menu_item []; divider []]"],
       ["dropdown_menu [menu_trigger [dropdown_menu [menu_item []]]]"],
-      ['toolbar ~label:"Actions" [button []; text ~value:"ok" []; spacer []]'],
+      ['toolbar ~label:"Actions" [button ~text:{|Action|} []; text ~value:"ok" []; spacer []]'],
       ['tree ~label:"Files" [row [text ~value:"ok" []]; virtual_list []]'],
       ["input [context_menu [menu_item []]]"],
       ["context_menu [reactive (fun _ -> menu_item []) source]"],
@@ -218,12 +220,12 @@ let () =
     ; check true ("open Lui_elements type element = t module rec Lui_elements : sig val " ^ name ^ " : unit -> element end = struct let " ^ name ^ " () = menu_item [] end let _ = context_menu [Lui_elements." ^ name ^ " ()]")
   ) constructors;
   check false ("open Lui_elements let _ = context_menu [" ^
-    String.concat ";" (List.init 200 (fun _ -> "menu_item []")) ^ ";button []]");
-  check false "open Lui_elements let _ = let child = button [] in Lui_elements.(context_menu [child])";
-  check false "module E = Lui_elements let _ = E.context_menu [E.button []]";
-  check false "open Lui_elements let wrap child = context_menu [child] let _ = wrap (button [])";
-  check false "open Lui_elements let make = context_menu ~disabled:false let _ = make [button []]";
-  check true "open Lui_elements module List = struct let map _ _ = [menu_item []] end let _ = context_menu (List.map (fun _ -> button []) [1])";
+    String.concat ";" (List.init 200 (fun _ -> "menu_item []")) ^ ";button ~text:{|Action|} []]");
+  check false "open Lui_elements let _ = let child = button ~text:{|Action|} [] in Lui_elements.(context_menu [child])";
+  check false "module E = Lui_elements let _ = E.context_menu [E.button ~text:{|Action|} []]";
+  check false "open Lui_elements let wrap child = context_menu [child] let _ = wrap (button ~text:{|Action|} [])";
+  check false "open Lui_elements let make = context_menu ~disabled:false let _ = make [button ~text:{|Action|} []]";
+  check true "open Lui_elements module List = struct let map _ _ = [menu_item []] end let _ = context_menu (List.map (fun _ -> button ~text:{|Action|} []) [1])";
   let rows = "virtual_rows ~source ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()" in
   List.iter (fun (name, _, _, _) ->
     let p = List.find (fun (candidate, _, _, _) -> candidate = name) constructors in
@@ -235,13 +237,13 @@ let () =
   check false ("open Lui_elements let _ = virtual_list [if_ ~test:source (" ^ rows ^ ")]");
   check false "open Lui_elements let _ = context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]";
   check true "open Lui_elements let _ = column [if_ ~test:source (if_ ~test:source (menu_item []))]";
-  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in if flag then menu_trigger [child] else button [child]";
-  check true "open Lui_elements let f context = let child = if Lui_ui.host context = KotlinHost then dropdown_menu [] else context_menu [] in if Lui_ui.host context = KotlinHost then menu_trigger [child] else button [child]";
-  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in let same = flag in if not same then button [child] else menu_trigger [child]";
-  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in match flag with true -> menu_trigger [child] | false -> button [child]";
-  check false "open Lui_elements let f flag other = let child = if flag then dropdown_menu [] else context_menu [] in let flag = other in if flag then menu_trigger [child] else button [child]";
-  check false "open Lui_elements let f () = let child = if Random.bool () then dropdown_menu [] else context_menu [] in if Random.bool () then menu_trigger [child] else button [child]";
-  check false "open Lui_elements let f flag = let child = if flag then context_menu [] else dropdown_menu [] in if flag then menu_trigger [child] else button [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check true "open Lui_elements let f context = let child = if Lui_ui.host context = KotlinHost then dropdown_menu [] else context_menu [] in if Lui_ui.host context = KotlinHost then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in let same = flag in if not same then button ~text:{|Action|} [child] else menu_trigger [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in match flag with true -> menu_trigger [child] | false -> button ~text:{|Action|} [child]";
+  check false "open Lui_elements let f flag other = let child = if flag then dropdown_menu [] else context_menu [] in let flag = other in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check false "open Lui_elements let f () = let child = if Random.bool () then dropdown_menu [] else context_menu [] in if Random.bool () then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check false "open Lui_elements let f flag = let child = if flag then context_menu [] else dropdown_menu [] in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
   for _ = 1 to 2000 do
     let pick () = List.nth constructors (Random.State.int random (List.length constructors)) in
     let p1 = pick () and p2 = pick () and c1 = pick () and c2 = pick () in
@@ -440,12 +442,25 @@ let () =
   let project value = incr conversions; value *. 2. in
   let source value = incr evaluations; value in
   let view _context model _send =
-    Lui_elements.progress ~value:(reactive project (source model)) [] in
+    Lui_elements.column [
+      Lui_elements.progress ~value:(reactive project (source model)) [];
+      Lui_elements.button ~text:(reactive string_of_float model) [];
+      Lui_elements.icon_button ~icon:(reactive (fun value -> if value < 0.3 then \`plus else \`check) model)
+        ~label:"Status" []
+    ] in
   let app = Lui_app.create backend 0.25 (fun _ next -> next) view in
   let check expected =
     let ops = List.concat_map (fun (batch : Lui_protocol.patch_batch) -> batch.ops) !batches in
     assert (List.exists (function
       | Lui_protocol.SetProp (_, Lui_protocol.ProgressValue, Lui_protocol.FloatValue value) -> value = expected
+      | _ -> false) ops);
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.TextValue, Lui_protocol.StringValue text) ->
+          text = string_of_float (expected /. 2.)
+      | _ -> false) ops);
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.InlineIconName, Lui_protocol.StringValue icon) ->
+          icon = (if expected < 0.6 then "plus" else "check")
       | _ -> false) ops) in
   ignore (Lui_app.start app); ignore (Lui_app.flush app);
   check 0.5;
@@ -462,6 +477,19 @@ let () =
       "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
       join(dir, "mandatory.ml"), "-o", join(dir, "mandatory")])
     assert.equal(run([join(dir, "mandatory")]).trim(), "mandatory")
+    for (const expression of [
+      'button []',
+      'button ~text:"Save" ~size:`icon []',
+      'icon_button ~icon:`plus []',
+      'icon_button ~label:"Add" []',
+    ]) {
+      writeFileSync(join(dir, "missing.ml"), `open Lui_elements\nlet _ : t = ${expression}\n`)
+      const result = spawnSync("opam", ["exec", "--", "ocamlfind", "ocamlc", "-package", "ocaml-signal",
+        "-c", "-I", "_build/default/src/.lui.objs/byte", join(dir, "missing.ml")],
+        {cwd: root, encoding: "utf8"})
+      assert.notEqual(result.status, 0, `${expression} unexpectedly compiled`)
+      assert.match(result.stderr, /Error:/)
+    }
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })
 

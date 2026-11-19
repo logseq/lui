@@ -104,7 +104,7 @@ let button_section model_source send : t =
         ; button ~size:`lg ~icon:`chevron_right
             ~icon_placement:`trailing ~text:"Large"
             ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~size:`icon ~icon:`plus ~label:"New note"
+        ; icon_button ~size:`icon ~icon:`plus ~label:"New note"
             ~disabled:(reactive disabled) ~on_press:noop []
         ]
     ; paragraph
@@ -992,7 +992,7 @@ let tooltip_section : t =
   section "Tooltip"
     [ row ~gap:16 ~cross:`center
         [ stack
-            [ button ~size:`icon ~icon:`edit ~label:"Edit document"
+            [ icon_button ~size:`icon ~icon:`edit ~label:"Edit document"
                 ~variant:`outline ~on_press:noop []
             ; tooltip ~text:"Edit this document" ~anchor:`above
                 ~anchor_alignment:`end_ ~anchor_offset:8.0
@@ -1600,7 +1600,7 @@ let combine_section ?(picker_available = false) model_source send : t =
         ~text_signal:field_value_
         ~on_input:(on_input send (fun v -> Model.SetFieldValue v))
         ~actions:
-          [ button ~variant:`ghost ~icon:`plus ~width:44 ~height:44
+          [ icon_button ~variant:`ghost ~icon:`plus ~width:44 ~height:44
               ~label:"Add attachment" ~accessibility_identifier:"button.attachment"
               ~disabled:(reactive (fun m -> not picker_available || m.Model.composer_request <> m.Model.composer_completion) model_source)
               ~on_press:(press send (Model.ComposerRequest `files)) []

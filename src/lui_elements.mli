@@ -15,7 +15,8 @@ type t = Lui_ui.ui_context -> int option -> int
 type variant =
   [ `default | `primary | `secondary | `outline | `ghost | `destructive ]
 
-type control_size = [ `default | `sm | `lg | `icon ]
+type button_size = [ `default | `sm | `lg ]
+type control_size = [ button_size | `icon ]
 type text_size = [ `heading | `display ]
 
 (** [table_cell] accepts control sizes and text sizes on its [~size]. *)
@@ -1977,6 +1978,9 @@ val kbd :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?value:string -> ?value_signal:string Signal.signal ->
   ?transition:string -> nothing list -> t
+
+(** A text button. [text] is the initial value; [text_signal], when supplied,
+    wins. Children remain supported. Use [icon_button] for icon-only content. *)
 val button :
   ?key:string ->
   ?gap:int ->
@@ -2016,14 +2020,80 @@ val button :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?text:string ->
+  text:string ->
   ?text_signal:string Signal.signal ->
   ?variant:variant ->
-  ?size:control_size ->
+  ?size:button_size ->
   ?icon:icon ->
   ?icon_signal:icon Signal.signal ->
   ?icon_placement:icon_placement ->
   ?label:string ->
+  ?text_alignment:text_alignment ->
+  ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
+  ?autofocus:bool ->
+  ?disabled:bool ->
+  ?disabled_signal:bool Signal.signal ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
+  ?on_press:(Lui_protocol.event -> unit) ->
+  ?on_long_press:(Lui_protocol.event -> unit) ->
+  ?on_press_detail:(Lui_protocol.event -> unit) ->
+  ?on_pointer_down:(Lui_protocol.event -> unit) ->
+  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?tooltip:string ->
+  ?tooltip_signal:string Signal.signal ->
+  ?shortcut_hint:string ->
+  ?shortcut_hint_signal:string Signal.signal ->
+  ?transition:string -> t list -> t
+
+(** An icon-only button with a mandatory accessible [label]. Uses the same
+    wire kind, defaults, events and children slot as [button]. *)
+val icon_button :
+  ?key:string ->
+  ?gap:int ->
+  ?main:main_alignment ->
+  ?cross:cross_alignment ->
+  ?grow:float ->
+  ?padding:int ->
+  ?padding_horizontal:int ->
+  ?padding_vertical:int ->
+  ?margin:int ->
+  ?margin_horizontal:int ->
+  ?margin_vertical:int ->
+  ?margin_top:int ->
+  ?margin_right:int ->
+  ?margin_bottom:int ->
+  ?margin_left:int ->
+  ?background:string ->
+  ?foreground:string ->
+  ?border_color:string ->
+  ?border_width:int ->
+  ?corner_radius:int ->
+  ?width:int ->
+  ?height:int ->
+  ?min_width:int ->
+  ?max_width:int ->
+  ?min_height:int ->
+  ?max_height:int ->
+  ?container_relative_frame:frame_axes ->
+  ?container_relative_frame_inset:int ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?foreground_signal:string Signal.signal ->
+  ?background_signal:string Signal.signal ->
+  ?style_class:string ->
+  ?data_attrs:(string * string) list ->
+  ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_appear:(Lui_protocol.event -> unit) ->
+  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?variant:variant ->
+  ?size:control_size ->
+  icon:icon ->
+  ?icon_signal:icon Signal.signal ->
+  ?icon_placement:icon_placement ->
+  label:string ->
   ?text_alignment:text_alignment ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->

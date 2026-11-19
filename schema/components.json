@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
   "mandatoryParameters": {
+    "button": ["text"],
+    "icon_button": ["icon", "label"],
     "icon": ["name"],
     "slider": ["label", "value"],
     "progress": ["value"],
@@ -15,6 +17,7 @@
     "bottom_tabs": ["label"],
     "bottom_tab": ["title", "on_press"]
   },
+  "constructorAliases": {"icon_button": "button"},
   "designTokens": {
     "colors": ["background", "surface", "surface-raised", "card", "foreground", "muted-foreground", "primary", "secondary", "accent", "muted", "destructive", "warning", "success", "info", "border", "input", "ring", "glass", "bar", "transparent"],
     "spaces": ["none", "xs", "sm", "md", "lg", "xl", "page"],
@@ -238,6 +241,10 @@
     },
     {
       "name": "button",
+      "status": "supported"
+    },
+    {
+      "name": "icon-button",
       "status": "supported"
     },
     {

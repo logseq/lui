@@ -109,6 +109,41 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
     }
     return `view_${type}`;
   }
+  function constructorArguments(name, wire) {
+    const names = [name, ...Object.entries(schema.constructorAliases ?? {})
+      .filter(([, kind]) => kind === wire).map(([alias]) => alias)];
+    const signatures = names.map(name => {
+      const args = functions.get(name);
+      if (!args) throw new Error(`no typed constructor for ${name}`);
+      return args;
+    });
+    if (signatures.length === 1) return signatures[0];
+    const parameters = new Map();
+    const children = signatures[0].filter(arg => !/^\??\w+:/.test(arg));
+    for (const args of signatures) {
+      if (JSON.stringify(args.filter(arg => !/^\??\w+:/.test(arg))) !== JSON.stringify(children)) {
+        throw new Error(`incompatible constructor alias children for ${wire}`);
+      }
+      for (const arg of args) {
+        const match = /^(\??)(\w+):(.*)$/.exec(arg);
+        if (!match) continue;
+        const [, , label, type] = match;
+        const previous = parameters.get(label);
+        if (!previous || previous === type) parameters.set(label, type);
+        else {
+          const before = enumValues(previous), after = enumValues(type);
+          if (before.every(value => after.includes(value))) parameters.set(label, type);
+          else if (!after.every(value => before.includes(value))) {
+            throw new Error(`incompatible constructor alias property ${wire}.${label}`);
+          }
+        }
+      }
+    }
+    return [...parameters].map(([label, type]) => {
+      const required = signatures.every(args => args.some(arg => arg.startsWith(`${label}:`)));
+      return `${required ? '' : '?'}${label}:${type}`;
+    }).concat(children);
+  }
   const properties = new Map(schema.properties.map(({wire, lg}) => [wire, lg]));
   const results = new Set(['t', ...[...source.matchAll(/^type (\w+_el)\s*$/gm)].map(([, name]) => name)]);
   const contracts = [];
@@ -118,7 +153,7 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
       continue;
     }
     const name = wire === 'switch' ? 'switch_' : wire.replace(/-/g, '_');
-    const args = functions.get(name);
+    const args = constructorArguments(name, wire);
     if (!args) throw new Error(`no typed constructor for ${wire}`);
     const result = args.at(-1);
     if (!results.has(result)) throw new Error(`unknown result type ${wire}: ${result}`);
