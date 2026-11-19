@@ -73,9 +73,7 @@ let view context source send =
            column [
              text_field ~placeholder:("Editor-" ^ string_of_int id)
                ~text:(reactive (fun row -> row.text) item_source)
-               ~on_input:(function
-                 | Lui_protocol.TextChanged (_, text) -> ignore (send (Edit (id, text)))
-                 | _ -> ()) [];
+               ~on_input:(fun text -> ignore (send (Edit (id, text)))) [];
              text ~value:(reactive (fun row -> row.detail) item_source) [];
            ]) ()]
   ]
