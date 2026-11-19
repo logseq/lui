@@ -125,6 +125,17 @@ test('validation and rendering reject unknown callback events', () => {
   assert.throws(() => renderEventPayloads(schema), /unknown callback event MissingPress/);
 });
 
+test('press registration filters exactly the schema decoder events', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const implementation = readFileSync(join(repository, 'src/lui_elements.ml'), 'utf8');
+  const filter = implementation.match(/let is_press = function([\s\S]*?)\nlet /)[1];
+  const accepted = [...filter.matchAll(/\b([A-Z]\w*) _/g)].map(([, event]) => event);
+  assert.deepEqual(accepted.sort(), [...schema.eventCallbacks.on_press.events].sort());
+  const registration = implementation.match(/let register_press\b([\s\S]*?)\nlet /)[1];
+  assert.match(registration, /on_event context node is_press/);
+  assert.match(registration, /Lui_event_payloads\.on_press/);
+});
+
 test('semantic tag families exactly match emit-time validation', () => {
   const signature = readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8');
   const protocol = readFileSync(join(repository, 'src/lui_protocol.ml'), 'utf8');
