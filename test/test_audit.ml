@@ -696,6 +696,20 @@ let anchorless_boundary_rollback () =
   Alcotest.(check int) "fallback latched" 1 !failures;
   Signal.dispose_scope scope
 
+let anchorless_registration_allocation () =
+  let measure count =
+    let _app, scope, context, _ = boundary_fixture () in
+    let parent = Lui_ui.column context in
+    let items = Signal.constant context.ui_scheduler (List.init count Fun.id) in
+    Gc.full_major ();
+    let before = Gc.allocated_bytes () in
+    Lui_dynamic.keyed_range context parent items Fun.id Int.compare (fun _ _ -> ());
+    let allocated = Gc.allocated_bytes () -. before in
+    Signal.dispose_scope scope;
+    allocated in
+  let small = measure 500 and large = measure 2000 in
+  Alcotest.(check bool) "keyed range registration allocation scales linearly" true (large < small *. 6.)
+
 let anchorless_static_sibling () =
   let app, scope, context, _ = boundary_fixture () in
   let parent = Lui_ui.column context in
@@ -810,6 +824,7 @@ let anchorless_state_lifetime () =
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["anchorless restricted ranges", anchorless_restricted_ranges;
    "anchorless boundary rollback", anchorless_boundary_rollback;
+   "anchorless registration allocation", anchorless_registration_allocation;
    "anchorless static sibling", anchorless_static_sibling;
    "anchorless virtual replacement", anchorless_virtual_replacement;
    "anchorless state lifetime", anchorless_state_lifetime;

@@ -873,7 +873,7 @@ let reorder_ranges application owner ranges =
     | Some parent when parent == owner -> Some segment
     | Some parent -> child_of_owner parent
     | None -> None in
-  let registered = Hashtbl.find application.Lui_runtime.dynamic_segments parent in
+  let registered = List.rev (Hashtbl.find application.Lui_runtime.dynamic_segments parent) in
   List.iter (fun segment -> Option.iter (fun root ->
     let id = root.Lui_runtime.dynamic_segment_id in
     let previous = Option.value (Hashtbl.find_opt groups id) ~default:[] in
@@ -891,7 +891,7 @@ let reorder_ranges application owner ranges =
     | current :: rest when current == owner -> current :: List.rev_append
         (List.rev ordered) (List.filter (fun segment -> not (range_contains owner segment)) rest)
     | current :: rest -> current :: replace rest in
-  Hashtbl.replace application.Lui_runtime.dynamic_segments parent (replace registered)
+  Hashtbl.replace application.Lui_runtime.dynamic_segments parent (List.rev (replace registered))
 
 let keyed_range (type key) context parent source key compare mount =
   let module Keys = Map.Make (struct
