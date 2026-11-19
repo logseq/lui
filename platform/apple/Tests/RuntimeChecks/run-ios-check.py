@@ -18,6 +18,7 @@ CHECKS = {
     "bounded-virtual-rows": ("BoundedVirtualRows.swift", "BoundedVirtualRowsCheck"),
     "drawer-vertical-bars": ("DrawerVerticalBars.swift", "DrawerVerticalBarsCheck"),
     "button-gesture-lifecycle": ("ButtonGestureLifecycle.swift", "ButtonGestureLifecycleCheck"),
+    "read-only-field-delegate": ("ReadOnlyFieldDelegate.swift", "ReadOnlyFieldDelegateCheck"),
 }
 
 
