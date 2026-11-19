@@ -2696,7 +2696,6 @@ let if_radio = if_
 let reactive_radio = dyn
 let if_swipe_action = if_
 let reactive_swipe_action = dyn
-let keyed_input_group_actions = keyed
 let if_input_group_actions = if_
 let reactive_input_group_actions = dyn
 let keyed_dropdown_menu_item = keyed

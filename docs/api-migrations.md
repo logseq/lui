@@ -2,6 +2,26 @@
 
 ## Unreleased: Child capabilities and anchorless segments (ADR 0007 Phase 3c)
 
+`keyed_input_group_actions` is removed: an input group admits at most one
+actions container. Keep `input_group_actions` as the single `~actions` value
+and put keyed content inside it instead:
+
+```ocaml
+input_group
+  ~actions:(input_group_actions
+    [keyed ~source:actions ~key:action_id ~cmp:String.compare ~mount:action_button])
+  (textarea [])
+```
+
+`if_input_group_actions` still permits an absent or single container;
+`reactive_input_group_actions` switches a single container in place.
+
+Experimental EDN `:if` and `:platform` branches use the generated ordinary-view
+compatibility rules when unifying their results. For example,
+`[:if true [:dropdown-menu] [:column]]` is accepted in an ordinary view slot,
+just like explicitly lifting the dropdown with `dropdown_menu_view` in OCaml.
+Restricted slots still check every branch against their own child capability.
+
 Restricted parents now take abstract slot elements, not arbitrary `t` children:
 
 | Parent | Child type | Builders |

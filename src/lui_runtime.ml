@@ -2689,6 +2689,11 @@ let find_dynamic_segment_index segments segment_id =
   in
   loop segments 0
 
+let rec dynamic_segment_contains owner segment =
+  segment == owner || match segment.dynamic_segment_owner with
+  | None -> false
+  | Some parent -> dynamic_segment_contains owner parent
+
 let register_dynamic_segment ?owner ?(exclusive = false) application parent =
   let parent = canonical_node application parent in
   require_node application parent;
@@ -2720,19 +2725,14 @@ let register_dynamic_segment ?owner ?(exclusive = false) application parent =
     | Some segments -> segments
     | None -> []
   in
-  let rec owned_by owner current = current == owner ||
-    match current.dynamic_segment_owner with None -> false | Some parent -> owned_by owner parent in
-  let rec insert = function
-    | [] -> [segment]
-    | current :: rest as all ->
-      if Option.fold ~none:false ~some:(fun owner -> owned_by owner current) owner
-      then current :: insert rest else segment :: all in
+  (* Registrations run in reverse document order so appending within the
+     last owner's range shares all preceding registrations. *)
   let registered = match owner with
-    | None -> current @ [segment]
+    | None -> segment :: current
     | Some owner ->
       let rec seek = function
         | [] -> invalid_arg "dynamic range owner is not registered"
-        | current :: rest -> if current == owner then current :: insert rest
+        | current :: rest as all -> if dynamic_segment_contains owner current then segment :: all
           else current :: seek rest in
       seek current in
   Hashtbl.replace application.dynamic_segments parent registered;
@@ -2807,7 +2807,7 @@ let resize_dynamic_segment application segment delta =
   resize_owner segment.dynamic_segment_owner;
   List.iteri
     (fun index current ->
-       if index > segment_index then
+       if index < segment_index && not (dynamic_segment_contains segment current) then
          current.dynamic_segment_base :=
            !(current.dynamic_segment_base) + delta)
     segments

@@ -696,6 +696,92 @@ let anchorless_boundary_rollback () =
   Alcotest.(check int) "fallback latched" 1 !failures;
   Signal.dispose_scope scope
 
+let anchorless_registration_allocation () =
+  let measure count =
+    let _app, scope, context, _ = boundary_fixture () in
+    let parent = Lui_ui.column context in
+    let items = Signal.constant context.ui_scheduler (List.init count Fun.id) in
+    Gc.full_major ();
+    let before = Gc.allocated_bytes () in
+    Lui_dynamic.keyed_range context parent items Fun.id Int.compare (fun _ _ -> ());
+    let allocated = Gc.allocated_bytes () -. before in
+    Signal.dispose_scope scope;
+    allocated in
+  let small = measure 500 and large = measure 2000 in
+  Alcotest.(check bool) "keyed range registration allocation scales linearly" true (large < small *. 6.)
+
+let anchorless_static_sibling () =
+  let app, scope, context, _ = boundary_fixture () in
+  let parent = Lui_ui.column context in
+  let visible = Signal.state context.ui_scheduler true in
+  let revision = Signal.state context.ui_scheduler 0 in
+  let text context value = ignore (Lui_elements.text ~value [] context (Some parent)) in
+  text context "prefix";
+  Lui_dynamic.switch_range context parent (Signal.value revision) Int.equal
+    (fun branch _ ->
+      text branch "before";
+      Lui_dynamic.conditional_range branch parent (Signal.value visible)
+        (fun nested -> text nested "dynamic");
+      text branch "after");
+  text context "suffix";
+  Signal.mount scope;
+  let check expected =
+    ignore (Lui_runtime.flush app);
+    let values = List.map (fun node -> match Property_map.find_opt TextValue
+      (Hashtbl.find app.runtime_properties node) with
+      | Some (StringValue value) -> value | _ -> "") (Lui_runtime.children app parent) in
+    Alcotest.(check (list string)) "nested toggle preserves static siblings" expected values in
+  check ["prefix"; "before"; "dynamic"; "after"; "suffix"];
+  Signal.set visible false;
+  check ["prefix"; "before"; "after"; "suffix"];
+  Signal.set visible true;
+  check ["prefix"; "before"; "dynamic"; "after"; "suffix"];
+  Signal.set revision 1;
+  check ["prefix"; "before"; "dynamic"; "after"; "suffix"];
+  Signal.set visible false;
+  check ["prefix"; "before"; "after"; "suffix"];
+  Signal.dispose_scope scope;
+  Alcotest.(check int) "all ranges released" 0 (Lui_runtime.dynamic_segment_count app)
+
+let anchorless_virtual_replacement () =
+  let backend = { backend_profile = profile IOS SwiftUIHost; apply_batch = (fun _ -> true) } in
+  let app = Lui_runtime.create ~virtual_capabilities:[Lui_virtual.Shared_viewport_retention_v1]
+    (Signal.scheduler ()) backend in
+  let scope = Signal.scope "range-virtual" in
+  let context = Lui_ui.context app scope in
+  let parent = Lui_ui.column context in
+  let revision = Signal.state context.ui_scheduler 0 in
+  let items = Signal.constant context.ui_scheduler ["row"] in
+  let owner = Lui_virtual.create_owner () in
+  let source = Lui_virtual.root_source owner ~key:"rows" in
+  Lui_dynamic.switch_range context parent (Signal.value revision) Int.equal
+    (fun branch value ->
+      if value = 2 then Signal.on_mount branch.Lui_ui.ui_scope (fun () -> failwith "reject virtual range");
+      let open Lui_elements in
+      ignore (scroll ~virtual_owner:owner
+        [virtual_list ~viewport:source [virtual_rows ~source:items ~key:Fun.id ~cmp:String.compare
+          ~scroll_key:Fun.id ~mount:(fun item -> text ~value:(Signal.sample item) []) ()]]
+        branch (Some parent)));
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  let binding () = Option.get (Signal.sample (Lui_virtual.binding source)) in
+  let first = binding () in
+  Signal.set revision 1;
+  ignore (Lui_runtime.flush app);
+  let second = binding () in
+  Alcotest.(check int) "virtual node reconciled" first.node second.node;
+  Alcotest.(check bool) "replacement receives a fresh lease" true (first.lease <> second.lease);
+  Signal.set revision 2;
+  check_failure "candidate mount is rejected" (attempt (fun () -> ignore (Lui_runtime.flush app)));
+  Alcotest.(check int) "rollback restores the live lease" second.lease (binding ()).lease;
+  Signal.set revision 3;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "replacement still works after rollback" true ((binding ()).lease <> second.lease);
+  Signal.dispose_scope scope;
+  Alcotest.(check bool) "unmount releases the borrowed source binding" true
+    (Signal.sample (Lui_virtual.binding source) = None);
+  Lui_virtual.dispose_owner owner
+
 let anchorless_state_lifetime () =
   let app = runtime () in
   let scope = Signal.scope "range-states" in
@@ -738,6 +824,9 @@ let anchorless_state_lifetime () =
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["anchorless restricted ranges", anchorless_restricted_ranges;
    "anchorless boundary rollback", anchorless_boundary_rollback;
+   "anchorless registration allocation", anchorless_registration_allocation;
+   "anchorless static sibling", anchorless_static_sibling;
+   "anchorless virtual replacement", anchorless_virtual_replacement;
    "anchorless state lifetime", anchorless_state_lifetime;
    "keyed state isolation and lifetime", keyed_states;
    "boundary initial mount rollback", boundary_initial_mount;
