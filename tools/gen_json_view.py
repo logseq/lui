@@ -112,9 +112,32 @@ appear_handler register_resize apply_universal scoped align'''.split())
 
 
 def parse_args(body):
-    return [(n, ' '.join(t.split()))
-            for n, t in re.findall(r'\?(\w+)\s*:\s*([^>\n]+?)(?=\s*->|\?|$)',
-                                   body, re.S)]
+    parts = []
+    brackets = []
+    start = index = 0
+    while index < len(body):
+        char = body[index]
+        if char in '([{':
+            brackets.append(char)
+        elif char in ')]}':
+            if not brackets or brackets.pop() != dict(zip(')]}', '([{'))[char]:
+                raise ValueError('unbalanced argument type')
+        elif not brackets and body.startswith('->', index):
+            parts.append(body[start:index])
+            index += 2
+            start = index
+            continue
+        index += 1
+    if brackets:
+        raise ValueError('unbalanced argument type')
+    parts.append(body[start:])
+    arguments = []
+    for part in parts:
+        match = re.fullmatch(r'\s*\?(\w+)\s*:\s*(.*?)\s*', part, re.S)
+        if match:
+            name, typ = match.groups()
+            arguments.append((name, ' '.join(typ.split())))
+    return arguments
 
 
 def kind_of(name):
