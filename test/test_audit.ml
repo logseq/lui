@@ -696,6 +696,39 @@ let anchorless_boundary_rollback () =
   Alcotest.(check int) "fallback latched" 1 !failures;
   Signal.dispose_scope scope
 
+let anchorless_static_sibling () =
+  let app, scope, context, _ = boundary_fixture () in
+  let parent = Lui_ui.column context in
+  let visible = Signal.state context.ui_scheduler true in
+  let revision = Signal.state context.ui_scheduler 0 in
+  let text context value = ignore (Lui_elements.text ~value [] context (Some parent)) in
+  text context "prefix";
+  Lui_dynamic.switch_range context parent (Signal.value revision) Int.equal
+    (fun branch _ ->
+      text branch "before";
+      Lui_dynamic.conditional_range branch parent (Signal.value visible)
+        (fun nested -> text nested "dynamic");
+      text branch "after");
+  text context "suffix";
+  Signal.mount scope;
+  let check expected =
+    ignore (Lui_runtime.flush app);
+    let values = List.map (fun node -> match Property_map.find_opt TextValue
+      (Hashtbl.find app.runtime_properties node) with
+      | Some (StringValue value) -> value | _ -> "") (Lui_runtime.children app parent) in
+    Alcotest.(check (list string)) "nested toggle preserves static siblings" expected values in
+  check ["prefix"; "before"; "dynamic"; "after"; "suffix"];
+  Signal.set visible false;
+  check ["prefix"; "before"; "after"; "suffix"];
+  Signal.set visible true;
+  check ["prefix"; "before"; "dynamic"; "after"; "suffix"];
+  Signal.set revision 1;
+  check ["prefix"; "before"; "dynamic"; "after"; "suffix"];
+  Signal.set visible false;
+  check ["prefix"; "before"; "after"; "suffix"];
+  Signal.dispose_scope scope;
+  Alcotest.(check int) "all ranges released" 0 (Lui_runtime.dynamic_segment_count app)
+
 let anchorless_virtual_replacement () =
   let backend = { backend_profile = profile IOS SwiftUIHost; apply_batch = (fun _ -> true) } in
   let app = Lui_runtime.create ~virtual_capabilities:[Lui_virtual.Shared_viewport_retention_v1]
@@ -777,6 +810,7 @@ let anchorless_state_lifetime () =
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["anchorless restricted ranges", anchorless_restricted_ranges;
    "anchorless boundary rollback", anchorless_boundary_rollback;
+   "anchorless static sibling", anchorless_static_sibling;
    "anchorless virtual replacement", anchorless_virtual_replacement;
    "anchorless state lifetime", anchorless_state_lifetime;
    "keyed state isolation and lifetime", keyed_states;

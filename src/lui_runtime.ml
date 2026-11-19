@@ -2689,6 +2689,11 @@ let find_dynamic_segment_index segments segment_id =
   in
   loop segments 0
 
+let rec dynamic_segment_contains owner segment =
+  segment == owner || match segment.dynamic_segment_owner with
+  | None -> false
+  | Some parent -> dynamic_segment_contains owner parent
+
 let register_dynamic_segment ?owner ?(exclusive = false) application parent =
   let parent = canonical_node application parent in
   require_node application parent;
@@ -2807,7 +2812,7 @@ let resize_dynamic_segment application segment delta =
   resize_owner segment.dynamic_segment_owner;
   List.iteri
     (fun index current ->
-       if index > segment_index then
+       if index > segment_index && not (dynamic_segment_contains segment current) then
          current.dynamic_segment_base :=
            !(current.dynamic_segment_base) + delta)
     segments
