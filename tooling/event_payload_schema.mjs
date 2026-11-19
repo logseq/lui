@@ -3,7 +3,17 @@ export function callbackContract(schema, constructor, parameter) {
   return schema.eventCallbacks?.[name];
 }
 
+export function validateCallbackEvents(schema) {
+  const events = new Set(schema.events.map(event => event.lg));
+  for (const { events: accepted } of Object.values(schema.eventCallbacks)) {
+    for (const event of accepted) {
+      if (!events.has(event)) throw new Error(`unknown callback event ${event}`);
+    }
+  }
+}
+
 export function renderEventPayloads(schema) {
+  validateCallbackEvents(schema);
   const events = new Map(schema.events.map(event =>
     [event.lg, event.fields.slice(1).map(field => field.replace(/^:/, ''))]));
   const records = schema.eventPayloadRecords;
@@ -26,7 +36,6 @@ export function renderEventPayloads(schema) {
   for (const [name, {payload, events: accepted}] of Object.entries(schema.eventCallbacks)) {
     const cases = accepted.map(event => {
       const types = events.get(event);
-      if (!types) throw new Error(`unknown callback event ${event}`);
       let names, value;
       if (payload === 'unit') { names = types.map(() => '_'); value = '()'; }
       else if (records[payload]) {

@@ -112,6 +112,19 @@ test('raw constructor callbacks and schema payload drift are rejected', () => {
   assert.throws(() => renderEventPayloads(changed), /incompatible callback scalar on_resize/);
 });
 
+test('validation and rendering reject unknown callback events', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const directory = mkdtempSync(join(tmpdir(), 'lui-callback-schema-'));
+  const manifest = join(directory, 'callbacks.json');
+  assert.equal(runGenerator(['--validate']).status, 0);
+  schema.eventCallbacks.on_press.events.push('MissingPress');
+  writeFileSync(manifest, JSON.stringify(schema));
+  const result = runGenerator(['--manifest', manifest, '--validate']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unknown callback event MissingPress/);
+  assert.throws(() => renderEventPayloads(schema), /unknown callback event MissingPress/);
+});
+
 test('semantic tag families exactly match emit-time validation', () => {
   const signature = readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8');
   const protocol = readFileSync(join(repository, 'src/lui_protocol.ml'), 'utf8');
