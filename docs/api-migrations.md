@@ -655,9 +655,14 @@ error_boundary
 The diagnostic contains `exception_`, `message`, `state_path`, and `phase`
 (`Mount` or `Update`). A stderr diagnostic is logged once. The failed content
 scope is disposed, its runtime checkpoint restored, and its prior children
-replaced by the fallback. Partial writes and creates from the failing update
-are discarded; unrelated pending operations are preserved. External side
-effects and signal state changes are not transactional.
+replaced by the fallback. All protected callbacks in one publication wave share
+the first full runtime checkpoint, rather than copying the subtree per binding.
+If a later callback raises, all runtime writes and creates since that checkpoint
+are discarded, including opaque writes outside the boundary's subtree. Pending
+operations from before the wave are preserved. The checkpoint is released by
+a scheduler effect before the next mutation round, so a later publication starts
+a fresh transaction. External side effects and signal state changes are not
+transactional.
 
 Fallbacks **latch**: later publications do not retry the failed child. Remount
 the boundary (for example through an enclosing reactive switch) to retry with

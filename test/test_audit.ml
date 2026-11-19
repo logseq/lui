@@ -45,6 +45,84 @@ let boundary_initial_mount () =
     (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
   Signal.dispose_scope scope
 
+let boundary_shared_publication_work () =
+  let measure count =
+    let app, scope, context, _ = boundary_fixture () in
+    let source = Signal.state context.ui_scheduler "before" in
+    let child context parent =
+      let container = Lui_ui.column context in
+      Lui_elements.attach context parent container;
+      for _ = 1 to count do
+        let node = Lui_ui.text_signal context (Signal.value source) in
+        Lui_elements.attach context (Some container) node
+      done;
+      container in
+    ignore (Lui_elements.error_boundary
+      ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" []) child context None);
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    Gc.full_major ();
+    let allocated = Gc.allocated_bytes () and started = Sys.time () in
+    Signal.set source "after";
+    ignore (Lui_runtime.flush app);
+    let elapsed = Sys.time () -. started in
+    let allocated = Gc.allocated_bytes () -. allocated in
+    Printf.printf "boundary publication N=%d allocated=%.0f bytes time=%.6fs\n%!"
+      count allocated elapsed;
+    Alcotest.(check int) "every binding publishes" count
+      (List.length (List.filter ((=) "after") (text_values app)));
+    Signal.dispose_scope scope;
+    allocated in
+  let small = measure 100 and large = measure 1000 in
+  Alcotest.(check bool) "tenfold fanout has linear checkpoint allocation" true
+    (large < 25. *. small)
+
+let boundary_publication_rollback () =
+  List.iter (fun broken_fallback ->
+    let app, scope, context, emitted = boundary_fixture () in
+    let outside = Lui_ui.text context "outside" in
+    let source = Signal.state context.ui_scheduler "before" in
+    let inner_errors = ref 0 and outer_errors = ref 0 in
+    let child context parent =
+      let first = Lui_ui.map context (fun value ->
+        if value = "bad" then begin
+          Lui_ui.string_property context outside TextValue "partial";
+          "partial"
+        end else value) (Signal.value source) in
+      let node = Lui_ui.text_signal context first in
+      Lui_elements.attach context parent node;
+      let second = Lui_ui.map context (fun value ->
+        if value = "bad" then failwith "late publication failure" else value)
+          (Signal.value source) in
+      let node = Lui_ui.text_signal context second in
+      Lui_elements.attach context parent node;
+      node in
+    let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr inner_errors;
+      if broken_fallback then partial_view else Lui_elements.text ~value:"inner" []) child in
+    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr outer_errors;
+      Lui_elements.text ~value:"outer" [])
+      (Lui_elements.column [Lui_elements.text ~value:"stable" []; inner]) context None);
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    Signal.set source "successful";
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "successful wave updates both bindings" 2
+      (List.length (List.filter ((=) "successful") (text_values app)));
+    Signal.set source "bad";
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "inner boundary catches first" 1 !inner_errors;
+    Alcotest.(check int) "fallback failures propagate outward"
+      (if broken_fallback then 1 else 0) !outer_errors;
+    Alcotest.(check (list string)) "whole publication rolls back opaque writes"
+      (if broken_fallback then ["outer"; "outside"] else ["inner"; "outside"; "stable"])
+      (List.sort String.compare (text_values app));
+    Alcotest.(check bool) "partial writes never reach the host" false
+      (List.exists (function
+        | SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+    Signal.dispose_scope scope) [false; true]
+
 let boundary_reactive_update () =
   let app, scope, context, emitted = boundary_fixture () in
   let source = Signal.state context.ui_scheduler 0 in
@@ -830,6 +908,8 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "anchorless state lifetime", anchorless_state_lifetime;
    "keyed state isolation and lifetime", keyed_states;
    "boundary initial mount rollback", boundary_initial_mount;
+   "boundary shared publication work", boundary_shared_publication_work;
+   "boundary publication rollback", boundary_publication_rollback;
    "boundary reactive failure and latched fallback", boundary_reactive_update;
    "nested boundaries and fallback failures", boundary_nested;
    "boundary owned property projection", boundary_property_projection;
