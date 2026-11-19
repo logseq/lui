@@ -287,6 +287,14 @@ body {
     @apply flex flex-col;
   }
 
+  .lui-row.hstack > * {
+    min-width: 0;
+  }
+
+  .lui-column.vstack > * {
+    min-height: 0;
+  }
+
   .lui-grid {
     @apply grid;
     grid-auto-flow: column;
@@ -531,8 +539,6 @@ body {
   }
 
   .lui-stack,
-  .lui-panel,
-  .lui-card,
   .lui-resizable {
     @apply grid;
   }
@@ -813,8 +819,6 @@ body {
   }
 
   .lui-stack > *,
-  .lui-panel > *,
-  .lui-card > *,
   .lui-resizable > * {
     grid-area: 1 / 1;
     /* Equal stacking contexts preserve child order when a child is positioned. */
@@ -827,11 +831,11 @@ body {
   }
 
   .lui-panel {
-    @apply rounded-xl border bg-card text-card-foreground shadow-sm;
+    @apply flex flex-col items-stretch gap-3 rounded-xl border bg-card p-3 text-card-foreground shadow-sm;
   }
 
   .lui-card {
-    @apply rounded-xl border bg-card p-6 text-card-foreground;
+    @apply flex flex-col items-stretch gap-3 rounded-xl border bg-card p-4 text-card-foreground;
   }
 
   .lui-alert {

@@ -118,8 +118,12 @@ test("the production stylesheet contains Vercel Native overlay surfaces", async 
 
   assert.match(css, /\.lui-stack[^\{]*\{[^}]*display:grid/)
   assert.match(css, /\.lui-panel[^\{]*\{[^}]*border-radius:var\(--radius-xl\)/)
-  assert.match(css, /\.lui-card[^\{]*\{[^}]*padding:calc\(var\(--spacing\)\*6\)/)
-  assert.match(css, /\.lui-(?:stack|panel|card)>\*[^\{]*\{[^}]*grid-area:1\/1/)
+  assert.match(css, /\.lui-card[^\{]*\{[^}]*padding:calc\(var\(--spacing\)\*4\)/)
+  for (const kind of ["card", "panel"]) {
+    assert.match(css, new RegExp(`\\.lui-${kind}[^\\{]*\\{[^}]*flex-direction:column`))
+    assert.match(css, new RegExp(`\\.lui-${kind}[^\\{]*\\{[^}]*gap:calc\\(var\\(--spacing\\)\\*3\\)`))
+  }
+  assert.match(css, /\.lui-stack>\*[^\{]*\{[^}]*grid-area:1\/1/)
   assert.doesNotMatch(css, /\.lui-card-(?:header|content|footer|title|description)/)
 })
 

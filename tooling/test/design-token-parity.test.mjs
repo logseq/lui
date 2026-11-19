@@ -27,6 +27,7 @@ const covers = (backend, category, actual) => {
 };
 
 const colorTables = {
+  TypedAPI: quoted(between(read('src/lui_tokens.ml'), 'let color_value', 'let space_value')),
   Web: [...quoted(between(web, 'let semantic_color_names =', 'let foreground_tokens')),
     ...clauses(web, /color = ("[^"]+")/g)],
   Apple: clauses(between(apple, 'private static func semanticColor(', 'private static func registeredColor('), /case ((?:"[^"]+"\s*,?\s*)+):/g),
@@ -87,6 +88,7 @@ test('spacing and radius scales are complete backend lookup tables', () => {
 
 test('typography roles and modifiers are implemented, not just declared', () => {
   const roles = {
+    TypedAPI: quoted(read('src/lui_tokens.ml').split('let text_role_value')[1]),
     Web: [...css.matchAll(/\.([\w-]+)(?:\s*,|\s*\{)/g)].map(m => m[1]),
     Apple: keys(between(apple, 'static let textRoles:', 'static func role(')),
     Android: [...android.matchAll(/classes.contains\("([^"]+)"\)/g)].map(m => m[1]),

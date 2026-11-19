@@ -1250,6 +1250,80 @@ let property_binding_queued_disposal () =
     Signal.dispose_subscription retiring;
     Signal.dispose_scope scope) [false;true]
 
+let phase4_authoring_contract () =
+  let app, scope, context, _ = boundary_fixture () in
+  let module Compatible : module type of struct include Lui_ui end = Lui.Ui in
+  let raw = Compatible.text context "raw compatibility" in
+  Lui.Raw.padding context raw 3;
+  Alcotest.(check bool) "raw aliases share context and nodes" true
+    (property_value app raw PaddingValue = IntValue 3);
+  let text = Lui_elements.text ~role:`caption ~truncate:true
+    ~style_class:"application" ~value:"long" [] context None in
+  List.iter (fun (property, expected) ->
+    Alcotest.(check bool) "truncation and role emit admitted properties" true
+      (property_value app text property = expected))
+    [WhiteSpace, StringValue "nowrap"; TextOverflow, StringValue "ellipsis";
+     Overflow, StringValue "hidden"; LineClamp, IntValue 1;
+     MinWidth, IntValue 0; StyleClass, StringValue "caption single-line application"];
+  List.iter (fun view ->
+    let node = view context None in
+    Alcotest.(check bool) "every text family supports roles and truncation" true
+      (property_value app node StyleClass = StringValue "body single-line"
+       && property_value app node LineClamp = IntValue 1))
+    [Lui_elements.heading ~role:`body ~truncate:true ~value:"Heading" [];
+     Lui_elements.paragraph ~role:`body ~truncate:true ~value:"Paragraph" [];
+     Lui_elements.label ~role:`body ~truncate:true ~value:"Label" []];
+  let plain = Lui_elements.text ~truncate:false ~value:"" [] context None in
+  Alcotest.(check bool) "empty untruncated text retains existing overflow" false
+    (Property_map.mem WhiteSpace (Hashtbl.find app.Lui_runtime.runtime_properties plain));
+  let row = Lui.Ui.hstack [] context None in
+  let column = Lui.Ui.vstack ~gap:`none [] context None in
+  Alcotest.(check bool) "stack defaults and explicit overrides" true
+    (property_value app row Gap = IntValue 8
+     && property_value app row CrossAlignment = StringValue "center"
+     && property_value app row MinWidth = IntValue 0
+     && property_value app column Gap = IntValue 0
+     && property_value app column MinHeight = IntValue 0);
+  List.iter (fun view -> ignore (view context None))
+    [Lui.Ui.page ~title:"Page" []; Lui.Ui.form_sheet ~title:"Form" [];
+     Lui.Ui.form_section ~title:"Section" [];
+     Lui.Ui.form_field ~label:"Name" (Lui_elements.text_field []);
+     Lui.Ui.form_field ~label:"Invalid" ~help:"hidden help" ~error:"validation error"
+       (Lui_elements.text_field []);
+     Lui.Ui.data_list ~label:"Rows" [];
+     Lui.Ui.data_list ~label:"Rows" ~empty:(Lui_elements.text ~value:"empty rows" []) [];
+     Lui.Ui.nav_bar ~title:"Navigation" ()];
+  Alcotest.(check bool) "validation error takes precedence over help" true
+    (List.mem "validation error" (text_values app) && not (List.mem "hidden help" (text_values app)));
+  let errors = Signal.state context.ui_scheduler None in
+  let control = ref None in
+  ignore (Lui.Ui.form_field ~label:"Reactive name" ~help:"live help"
+    ~error_signal:(Signal.value errors)
+    (fun context parent ->
+      let node = Lui_elements.text_field ~text:"editing" [] context parent in
+      control := Some node; node) context None);
+  let mounted_control = !control in
+  ignore (Lui_runtime.flush app);
+  Signal.set errors (Some "live error");
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "reactive validation preserves control identity and hides help" true
+    (!control = mounted_control && List.mem "live error" (text_values app)
+      && not (List.mem "live help" (text_values app)));
+  Signal.set errors None;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "cleared error restores help without remount" true
+    (!control = mounted_control && List.mem "live help" (text_values app));
+  Alcotest.(check bool) "all composite output passes admission" true (Lui_runtime.flush app);
+  Alcotest.(check string) "custom token is retained" "brand" (Lui_tokens.color_value (`token "brand"));
+  Alcotest.(check string) "empty custom token is safe" "transparent" (Lui_tokens.color_value (`token " "));
+  Alcotest.(check string) "hex encoding" "#123456" (Lui_tokens.color_value (`hex 0x123456));
+  Alcotest.(check int) "negative spacing is normalized" 0 (Lui_tokens.space_value (`px (-1)));
+  Alcotest.(check (list int)) "space scale" [0;4;8;12;16;24;16]
+    (List.map Lui_tokens.space_value [`none;`xs;`sm;`md;`lg;`xl;`page]);
+  Alcotest.(check (list int)) "radius scale and negative escape" [0;4;6;8;12;9999;0]
+    (List.map Lui_tokens.radius_value [`none;`sm;`md;`lg;`xl;`full;`px (-1)]);
+  Signal.dispose_scope scope
+
 let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case name `Quick test)
   ["review wide child reorder", review_wide_reorder;
    "review sibling owner identity", review_sibling_state;
@@ -1268,4 +1342,5 @@ let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case na
    "property binding values", property_binding_values;
    "property binding borrowed source", property_binding_borrowed_source;
    "property binding queued disposal", property_binding_queued_disposal;
-   "property binding diamond", property_binding_diamond]
+   "property binding diamond", property_binding_diamond;
+   "Phase 4 authoring contract", phase4_authoring_contract]

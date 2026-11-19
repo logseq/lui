@@ -856,6 +856,10 @@ private struct LUINodeView: View {
         case .text:
             return AnyView(LUITextView(model: model, backend: backend))
         case .heading:
+            if hasTextRole {
+                return AnyView(LUITextView(model: model, backend: backend)
+                    .accessibilityAddTraits(.isHeader))
+            }
             return AnyView(
                 LUIQueryableText(model: model, backend: backend) {
                     Text(verbatim: model.text)
@@ -870,6 +874,7 @@ private struct LUINodeView: View {
                         enabled: model.derived.styleClassTokens.contains("scroll-section-title")))
             )
         case .paragraph:
+            if hasTextRole { return AnyView(LUITextView(model: model, backend: backend)) }
             return AnyView(LUIQueryableText(model: model, backend: backend) {
                 Text(verbatim: model.text)
                     .luiTypography(typography)
@@ -878,6 +883,7 @@ private struct LUINodeView: View {
                     .luiTypographyMetrics(typography, baseSize: 17)
             })
         case .label:
+            if hasTextRole { return AnyView(LUITextView(model: model, backend: backend)) }
             return AnyView(LUIQueryableText(model: model, backend: backend) {
                 Text(verbatim: model.text)
                     .luiTypography(typography)
@@ -1117,6 +1123,10 @@ private struct LUINodeView: View {
 
     private var visibleChildren: [Int] {
         model.visibleChildren
+    }
+
+    private var hasTextRole: Bool {
+        LUIDesignTokens.textRoles.keys.contains { model.derived.styleClassTokens.contains($0) }
     }
 
     private var headingFont: Font {
@@ -2122,21 +2132,26 @@ private struct LUIStackView: View {
         }
     }
 
+    @ViewBuilder
     private func stackChildren(excluding excludedIDs: [Int]) -> some View {
-        let childIDs = model.flowChildren.filter { !excludedIDs.contains($0) }
-        let hasPositionedChildren = childIDs.contains {
-            model.childData.layout[$0]?.derived.absoluteInsets != nil
-        }
-        // AnyLayout preserves control identity as positioned children appear.
-        let layout = hasPositionedChildren
-            ? AnyLayout(LUIPositionedStackLayout(direction: layoutDirection))
-            : AnyLayout(ZStackLayout())
-        return layout {
-            ForEach(childIDs, id: \.self) { childID in
-                let insets = model.childData.layout[childID]?.derived.absoluteInsets
-                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
-                    .environment(\.luiPositionedChildID, insets == nil ? nil : childID)
-                    .layoutValue(key: LUIAbsoluteInsetsKey.self, value: insets)
+        if model.kind == .card || model.kind == .panel {
+            LUIColumnView(model: model, backend: backend, excludedIDs: excludedIDs)
+        } else {
+            let childIDs = model.flowChildren.filter { !excludedIDs.contains($0) }
+            let hasPositionedChildren = childIDs.contains {
+                model.childData.layout[$0]?.derived.absoluteInsets != nil
+            }
+            // AnyLayout preserves control identity as positioned children appear.
+            let layout = hasPositionedChildren
+                ? AnyLayout(LUIPositionedStackLayout(direction: layoutDirection))
+                : AnyLayout(ZStackLayout())
+            layout {
+                ForEach(childIDs, id: \.self) { childID in
+                    let insets = model.childData.layout[childID]?.derived.absoluteInsets
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        .environment(\.luiPositionedChildID, insets == nil ? nil : childID)
+                        .layoutValue(key: LUIAbsoluteInsetsKey.self, value: insets)
+                }
             }
         }
     }
@@ -6550,9 +6565,12 @@ enum LUIColumnLayoutPolicy {
 private struct LUIColumnView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    var excludedIDs: [Int] = []
 
     private var flowChildren: [Int] {
-        model.flowChildren.filter { model.childData.layout[$0]?.derived.absoluteInsets == nil }
+        model.flowChildren.filter {
+            !excludedIDs.contains($0) && model.childData.layout[$0]?.derived.absoluteInsets == nil
+        }
     }
 
     var body: some View {
@@ -6615,7 +6633,7 @@ private struct LUIColumnView: View {
         }
     }
 
-    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
+    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? (model.kind == .card || model.kind == .panel ? 12 : 0)) }
     private var cross: String {
         model.property(.cross)?.stringValue ?? "stretch"
     }
@@ -8552,7 +8570,8 @@ private struct LUISurfaceModifier: ViewModifier {
         let isTabs = model.kind == .tabs &&
             !LUISegmentedTabsView.supports(model: model)
         let defaultPadding = switch model.kind {
-        case .card: 24
+        case .card: 16
+        case .panel: 12
         case .alert: 16
         case .bubble: 12
         default: isTabs ? 2 : 0

@@ -181,6 +181,10 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         if (type !== (label === 'overscan' ? 'int' : 'float')) throw new Error(`unknown virtualization argument ${label}`);
         continue;
       }
+      // Authoring recipes expand to existing wire properties, whose domains
+      // are already described by the corresponding primitive arguments.
+      if (!extension && ['text', 'heading', 'paragraph', 'label'].includes(wire)
+        && ['role', 'truncate'].includes(label)) continue;
       if (label.endsWith('_signal')) {
         const base = label.slice(0, -7);
         const normalized = (type) => type.replace(/^\(([^()]*)\)$/, '$1');

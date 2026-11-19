@@ -346,7 +346,11 @@ object LuiTypography {
     }
 
     @Composable
-    fun headingStyle(level: Int): TextStyle {
+    fun headingStyle(level: Int, styleClass: String? = null): TextStyle {
+        val classes = styleClass?.split(' ').orEmpty()
+        if (classes.any { it in setOf("display", "title", "title2", "headline", "subheadline", "body", "caption", "footnote", "code") }) {
+            return textStyle(null, styleClass)
+        }
         val theme = MaterialTheme.typography
         return when (level) {
             1 -> theme.headlineLarge

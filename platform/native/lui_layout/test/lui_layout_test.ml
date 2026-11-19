@@ -2037,6 +2037,29 @@ let test_positioned_overlay_child kind position () =
     verify 640 720 64. 20.) [1.;2.])
     [Stack;Overlay;Panel;Card;Resizable;ViewThatFits]
 
+let test_surface_defaults () =
+  List.iter (fun (kind, padding) ->
+    List.iter (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store [CreateNode (1, Root); CreateNode (2, kind);
+        InsertChild (1,2,0); SetProp (2,WidthValue,IntValue 200);
+        CreateNode (3,Box); CreateNode (4,Box);
+        InsertChild (2,3,0); InsertChild (2,4,1);
+        SetProp (3,HeightValue,IntValue 20); SetProp (4,HeightValue,IntValue 30)];
+      let verify padding gap =
+        Lui_layout.sync ~scale ~width:(400. *. scale) ~height:(400. *. scale) layout store;
+        let first = Option.get (Lui_layout.rect layout 3)
+        and second = Option.get (Lui_layout.rect layout 4) in
+        check (float eps) "surface padding" (padding *. scale) first.x;
+        check (float eps) "surface stretches children" ((200. -. 2. *. padding) *. scale) first.w;
+        check (float eps) "vertical gap, not overlap" ((20. +. gap) *. scale) (second.y -. first.y)
+      in
+      verify padding 12.;
+      apply store [SetProp (2,PaddingValue,IntValue 0);SetProp (2,Gap,IntValue 0)];
+      verify 0. 0.
+    ) [1.; 2.]
+  ) [Card,16.;Panel,12.]
+
 let test_popover_available_height () =
   List.iter
     (fun scale ->
@@ -2514,7 +2537,8 @@ let test_auto_field_height () =
 let () =
   run "lui_layout"
     [ ("layout",
-       [ test_case "table shared columns" `Quick test_table_shared_columns;
+       [ test_case "surface vertical defaults" `Quick test_surface_defaults;
+         test_case "table shared columns" `Quick test_table_shared_columns;
          test_case "table structure and memo" `Quick test_table_structure_and_memo;
          test_case "nested table and empty cells" `Quick test_table_nested_and_empty_cells;
          test_case "table cell content alignment" `Quick test_table_cell_content_alignment;

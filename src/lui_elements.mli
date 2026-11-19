@@ -6,6 +6,10 @@
     reactive form: [~p:(reactive f s)] rewrites to a prop signal and a
     [reactive f s] expression in a children list rewrites to [dyn f s]. *)
 
+module Tokens = Lui_tokens
+
+type text_role = [ `display | `title | `headline | `subheadline | `body | `caption | `footnote | `code ]
+
 type t = Lui_ui.ui_context -> int option -> int
 
 type pointer_detail = Lui_protocol.pointer_detail
@@ -1759,6 +1763,8 @@ val icon :
   ?shortcut_hint_signal:string Signal.signal ->
   ?transition:string -> nothing list -> t
 val text :
+  ?role:text_role ->
+  ?truncate:bool ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -1815,6 +1821,8 @@ val text :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val heading :
+  ?role:text_role ->
+  ?truncate:bool ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -1866,6 +1874,8 @@ val heading :
   ?overflow:overflow ->
   ?transition:string -> t list -> t
 val paragraph :
+  ?role:text_role ->
+  ?truncate:bool ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -1916,6 +1926,8 @@ val paragraph :
   ?overflow:overflow ->
   ?transition:string -> t list -> t
 val label :
+  ?role:text_role ->
+  ?truncate:bool ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4712,6 +4724,8 @@ val toolbar_divider :
   ?orientation:orientation ->
   ?transition:string -> nothing list -> toolbar_el
 val toolbar_text :
+  ?role:text_role ->
+  ?truncate:bool ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->

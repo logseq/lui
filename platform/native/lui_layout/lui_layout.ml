@@ -301,6 +301,13 @@ let uniform_edges ~scale store id name : Lui_flex.edges =
 (* Axis props override the uniform padding shorthand. *)
 let padding_edges ~scale store id : Lui_flex.edges =
   let base = uniform_edges ~scale store id "padding" in
+  let base =
+    if Lui_store.prop store id "padding" <> None then base
+    else match Lui_store.kind store id with
+    | "card" -> { base with all = Pt (16. *. scale) }
+    | "panel" -> { base with all = Pt (12. *. scale) }
+    | _ -> base
+  in
   let side name uniform =
     match Lui_store.prop store id name with
     | None -> uniform
@@ -405,7 +412,7 @@ let popup_kind = function
    the box, later children overlay it (mirrors the web grid 1/1
    treatment). *)
 let zstack_kind = function
-  | "overlay" | "stack" | "panel" | "card" | "resizable"
+  | "overlay" | "stack" | "resizable"
   | "view-that-fits" -> true
   | _ -> false
 
@@ -516,6 +523,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       | "button-group" | "toggle-group" | "breadcrumb" -> Pt (4. *. scale)
       | "input-group-actions" -> Pt (6. *. scale)
       | "pagination" -> Pt (2. *. scale)
+      | "card" | "panel" -> Pt (12. *. scale)
       | "dialog" | "sheet" -> Pt (16. *. scale)
       | "popover" | "alert" | "list-item" -> Pt (8. *. scale)
       | _ -> Unset)
