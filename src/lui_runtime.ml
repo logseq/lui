@@ -1881,8 +1881,9 @@ let reconcile_forest ?range application saved parent old_roots candidate_roots =
          | None -> ()))
     candidate_nodes;
   let all_parents =
-    List.map (fun candidate -> map_node mapping candidate) candidate_nodes
-    @ [ parent ]
+    List.rev_append
+      (List.map (fun candidate -> map_node mapping candidate) candidate_nodes)
+      [ parent ]
   in
   (* reparented children detach from their old parent before any insert so
      a stale actual-parent remove cannot undo the move *)
