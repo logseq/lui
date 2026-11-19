@@ -413,7 +413,7 @@ let get = Signal.get
 let get_state = Signal.get_state
 
 let owned_map context project source =
-  Signal.own_signal context.Lui_ui.ui_scope (Signal.map project source)
+  Lui_ui.map context project source
 
 let attach context parent node =
   match parent with

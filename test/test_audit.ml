@@ -122,6 +122,35 @@ let boundary_property_projection () =
   Alcotest.(check (list string)) "owned projection failures are isolated" ["fallback"] (text_values app);
   Signal.dispose_scope scope
 
+let boundary_reactive_attributes () =
+  let app, scope, context, _ = boundary_fixture () in
+  let attributes = Signal.state context.ui_scheduler [] in
+  let failures = ref 0 in
+  let child = Lui_elements.row ~data_attrs_signal:(Signal.value attributes)
+    [Lui_elements.text ~value:"child" []] in
+  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
+    incr failures;
+    Alcotest.(check bool) "attribute update diagnostic" true (error.phase = `Update);
+    Lui_elements.text ~value:"fallback" []) child context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "empty attributes mount" ["child"] (text_values app);
+  Signal.set attributes ["data-state", "ready"];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "valid attributes publish" true
+    (Hashtbl.fold (fun _ properties found -> found ||
+      Property_map.find_opt DataAttrs properties =
+        Some (StringValue (data_attrs_encode ["data-state", "ready"])))
+      app.Lui_runtime.runtime_properties false);
+  Signal.set attributes ["id", "unsupported"];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "encoding failure caught once" 1 !failures;
+  Alcotest.(check (list string)) "attribute failure isolated" ["fallback"] (text_values app);
+  Signal.set attributes [];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "attribute fallback stays latched" ["fallback"] (text_values app);
+  Signal.dispose_scope scope
+
 let boundary_retained_rows () =
   List.iter (fun virtualized ->
     let app, scope, context, _ = boundary_fixture () in
@@ -578,6 +607,7 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "boundary reactive failure and latched fallback", boundary_reactive_update;
    "nested boundaries and fallback failures", boundary_nested;
    "boundary owned property projection", boundary_property_projection;
+   "boundary reactive attribute encoding", boundary_reactive_attributes;
    "boundary retained keyed and virtual rows", boundary_retained_rows;
    "closure-bearing subtree publications", closure_subtree_publication;
    "numeric normalization and runtime emission", numeric_normalization;

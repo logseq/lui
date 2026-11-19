@@ -81,6 +81,9 @@ restricted slots such as direct menu-item lists. It protects owned reactive
 subtree switches, collections, conditionals, and PPX-owned property projections.
 Retained keyed and virtual rows inherit the enclosing boundary's protection,
 including later row-property projections after a successful reconciliation.
+Element-owned signal encoders also run inside that protection: publishing an
+unsupported reactive `data_attrs` name mounts the fallback instead of raising
+from signal stabilization. Empty and valid attribute lists behave as before.
 External signal producers, event/timer callbacks, disposal callbacks, backend
 rejections, and explicit reentrant flushes are not error-boundary transactions.
 Outside a boundary, exceptions retain their existing propagation behavior.
