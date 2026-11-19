@@ -518,12 +518,26 @@ let error_boundary ~fallback child : t =
   attach context parent anchor;
   let content = Lui_ui.child_context context (Lui_ui.owner_name context "error-boundary") in
   let failed = ref false and running = ref false and mounted = ref false in
+  let publication_checkpoint = ref None in
+  let checkpoint () =
+    match !publication_checkpoint with
+    | Some saved -> saved
+    | None ->
+        let saved = Lui_runtime.checkpoint application in
+        if !mounted then begin
+          publication_checkpoint := Some saved;
+          (* Effects run before the next publication, after this observer wave. *)
+          Signal.enqueue_effect context.Lui_ui.ui_scheduler (fun () ->
+            publication_checkpoint := None)
+        end;
+        saved
+  in
   let protect action =
     context.Lui_ui.ui_protect (fun () ->
       if not !failed then
         if !running then action ()
         else begin
-          let saved = Lui_runtime.checkpoint_subtree application anchor anchor in
+          let saved = checkpoint () in
           running := true;
           Fun.protect ~finally:(fun () -> running := false) (fun () ->
             try action () with exception_ ->
@@ -556,7 +570,9 @@ let error_boundary ~fallback child : t =
         end)
   in
   let content = { content with Lui_ui.ui_protect = protect } in
-  Signal.on_dispose context.Lui_ui.ui_scope (fun () -> failed := true);
+  Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
+    failed := true;
+    publication_checkpoint := None);
   protect (fun () ->
     let container = Lui_ui.box content in
     Lui_ui.string_property content container DisplayValue "contents";
