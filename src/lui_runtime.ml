@@ -57,7 +57,36 @@ type flush_diagnostics = {
   flush_signal_dirty_task_count : int;
 }
 
+type journal_table =
+  | Mounted_nodes | Extension_nodes | Properties | Extension_properties
+  | Children | Parents | Pending_creates | Elision_ghosts | Elision_root
+  | Elision_members | Elision_edges | Echo | Event_handlers | Dynamic_segments
+  | Reload_keys | Node_aliases | Alias_targets | Virtual_sources | Virtual_owners
+  | Virtual_receipts | Virtual_state | Segment_base | Segment_size
+  | Segment_active | Segment_on_property | Pending_operation
+  | Property_value of property | Extension_value of string
+  | Child_position | Handler_member | Segment_member
+
+type rollback_entry = {
+  rollback_position : int;
+  rollback_undo : unit -> unit;
+  rollback_operation : patch_op option;
+  mutable rollback_committed : bool;
+}
+
+type rollback_journal = {
+  mutable journal_entries : rollback_entry list;
+  journal_versions : (journal_table * int, int) Hashtbl.t;
+  mutable journal_position : int;
+  mutable journal_epoch : int;
+  mutable journal_enabled : bool;
+  mutable journal_replaying : bool;
+}
+
+type boundary_savepoint = { savepoint_epoch : int; savepoint_position : int }
+
 type application = {
+  runtime_journal : rollback_journal;
   runtime_scheduler : Signal.scheduler;
   runtime_backend : backend;
   runtime_virtual_rows : bool;
@@ -192,6 +221,11 @@ let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler 
   if virtual_capabilities <> [] && not virtual_rows then
     invalid_arg "shared virtual viewport requires virtual rows";
   {
+    runtime_journal = {
+      journal_entries = []; journal_versions = Hashtbl.create 16;
+      journal_position = 0; journal_epoch = 0;
+      journal_enabled = false; journal_replaying = false;
+    };
     runtime_scheduler = scheduler;
     runtime_backend = backend;
     runtime_virtual_rows = virtual_rows;
@@ -240,29 +274,339 @@ let clock application = application.runtime_clock
 let create ?virtual_rows ?virtual_capabilities scheduler backend =
   create_with_extensions ?virtual_rows ?virtual_capabilities scheduler backend (Lui_extension.registry ())
 
+let journal_recording application =
+  let journal = application.runtime_journal in
+  journal.journal_enabled && not journal.journal_replaying
+
+let journal_record ?operation application location undo =
+  if journal_recording application then begin
+    let journal = application.runtime_journal in
+    let previous = Option.value ~default:0 (Hashtbl.find_opt journal.journal_versions location) in
+    journal.journal_position <- journal.journal_position + 1;
+    let position = journal.journal_position in
+    Hashtbl.replace journal.journal_versions location position;
+    let undo () =
+      (* A committed later write owns this cell even across older savepoints. *)
+      if Hashtbl.find_opt journal.journal_versions location = Some position then begin
+        undo ();
+        if previous = 0 then Hashtbl.remove journal.journal_versions location
+        else Hashtbl.replace journal.journal_versions location previous
+      end in
+    journal.journal_entries <- {
+      rollback_position = position; rollback_undo = undo;
+      rollback_operation = operation; rollback_committed = false;
+    } :: journal.journal_entries
+  end
+
+let journal_replace application slot table key value =
+  if journal_recording application then begin
+    let previous = Hashtbl.find_opt table key in
+    journal_record application (slot, key) (fun () ->
+      match previous with
+      | None -> Hashtbl.remove table key
+      | Some value -> Hashtbl.replace table key value)
+  end;
+  Hashtbl.replace table key value
+
+let journal_remove application slot table key =
+  if journal_recording application then begin
+    let previous = Hashtbl.find_opt table key in
+    journal_record application (slot, key) (fun () ->
+      match previous with
+      | None -> Hashtbl.remove table key
+      | Some value -> Hashtbl.replace table key value)
+  end;
+  Hashtbl.remove table key
+
+let journal_clear application slot table =
+  if journal_recording application then begin
+    let keys = Hashtbl.create (Hashtbl.length table) in
+    Hashtbl.iter (fun key _ -> Hashtbl.replace keys key ()) table;
+    Hashtbl.iter (fun (candidate, key) _ ->
+      if candidate = slot then Hashtbl.replace keys key ())
+      application.runtime_journal.journal_versions;
+    Hashtbl.iter (fun key () -> journal_remove application slot table key) keys
+  end;
+  Hashtbl.clear table
+
+let journal_ref application slot key reference value =
+  if journal_recording application then begin
+    let previous = !reference in
+    journal_record application (slot, key) (fun () -> reference := previous)
+  end;
+  reference := value
+
+let journal_capture application slot key capture =
+  if journal_recording application then
+    journal_record application (slot, key) (capture ())
+
+let journal_restore_pending application operations =
+  let previous = !(application.pending_ops) in
+  journal_record application (Pending_operation, 0) (fun () ->
+    application.pending_ops := previous);
+  application.pending_ops := operations
+
+let restore_identity application identity previous =
+  identity := if journal_recording application then max !identity previous else previous
+
+module Journal_map (Values : Map.S) = struct
+  let replace application table_slot value_slot table node (desired : wire_value Values.t) =
+    if not (Hashtbl.mem table node) then
+      journal_replace application table_slot table node Values.empty;
+    if journal_recording application then begin
+      let previous = Hashtbl.find table node in
+      ignore (Values.merge (fun key before after ->
+        if before <> after then
+          journal_record application (value_slot key, node) (fun () ->
+            match Hashtbl.find_opt table node with
+            | None -> ()
+            | Some current ->
+                let restored = match before with
+                  | None -> Values.remove key current
+                  | Some value -> Values.add key value current in
+                Hashtbl.replace table node restored);
+        None) previous desired)
+    end;
+    Hashtbl.replace table node desired
+
+  let remove application table_slot value_slot table node =
+    replace application table_slot value_slot table node Values.empty;
+    journal_remove application table_slot table node
+end
+
+module Journal_properties = Journal_map (Property_map)
+module Journal_extension_properties = Journal_map (String_map)
+
+let journal_properties application =
+  Journal_properties.replace application Properties (fun property -> Property_value property)
+    application.runtime_properties
+
+let journal_extension_properties application =
+  Journal_extension_properties.replace application Extension_properties
+    (fun property -> Extension_value property) application.runtime_extension_properties
+
+let insert_list index value values =
+  let rec insert index = function
+    | rest when index = 0 -> value :: rest
+    | [] -> [value]
+    | first :: rest -> first :: insert (index - 1) rest in
+  insert index values
+
+let journal_member ?(new_member = false) application slot table parent identify identity =
+  if journal_recording application then begin
+    let previous = Option.value ~default:[] (Hashtbl.find_opt table parent) in
+    let rec find index = function
+      | [] -> None
+      | value :: _ when identify value = identity -> Some (index, value)
+      | _ :: rest -> find (index + 1) rest in
+    let previous = if new_member then None else find 0 previous in
+    journal_record application (slot, identity) (fun () ->
+      if Hashtbl.mem application.mounted_nodes parent
+         || Hashtbl.mem application.runtime_extension_nodes parent then begin
+        let current = Option.value ~default:[] (Hashtbl.find_opt table parent) in
+        let current = List.filter (fun value -> identify value <> identity) current in
+        let restored = match previous with
+          | None -> current
+          | Some (index, value) -> insert_list index value current in
+        if restored = [] then Hashtbl.remove table parent
+        else Hashtbl.replace table parent restored
+      end)
+  end
+
+let journal_list application slot table parent identify desired =
+  if journal_recording application then begin
+    let previous = Option.value ~default:[] (Hashtbl.find_opt table parent) in
+    let positions = Hashtbl.create (List.length previous) in
+    List.iteri (fun index value -> Hashtbl.replace positions (identify value) index) previous;
+    let desired_positions = Hashtbl.create (List.length desired) in
+    List.iteri (fun index value ->
+      let identity = identify value in
+      Hashtbl.replace desired_positions identity index;
+      if Hashtbl.find_opt positions identity <> Some index then
+        journal_member application slot table parent identify identity) desired;
+    List.iter (fun value ->
+      let identity = identify value in
+      if not (Hashtbl.mem desired_positions identity) then
+        journal_member application slot table parent identify identity) previous
+  end;
+  if desired = [] then Hashtbl.remove table parent
+  else Hashtbl.replace table parent desired
+
+let journal_child ?parent:target application child =
+  if journal_recording application then begin
+    let previous = Option.bind (Hashtbl.find_opt application.runtime_parents child) (fun parent ->
+      Option.bind (Hashtbl.find_opt application.runtime_children parent) (fun children ->
+        Option.map (fun index -> parent, index) (Lui_sequence.index children child))) in
+    journal_record application (Child_position, child) (fun () ->
+      let parents = List.sort_uniq Int.compare
+        (Option.to_list target
+         @ Option.to_list (Hashtbl.find_opt application.runtime_parents child)
+         @ Option.to_list (Option.map fst previous)) in
+      List.iter (fun parent ->
+        Option.iter (fun children ->
+          Option.iter (fun index ->
+            Hashtbl.replace application.runtime_children parent (Lui_sequence.remove children index))
+            (Lui_sequence.index children child))
+          (Hashtbl.find_opt application.runtime_children parent))
+        parents;
+      Hashtbl.remove application.runtime_parents child;
+      Option.iter (fun (parent, index) ->
+        match Hashtbl.find_opt application.runtime_children parent with
+        | Some children when Hashtbl.mem application.mounted_nodes child
+                             || Hashtbl.mem application.runtime_extension_nodes child ->
+            Hashtbl.replace application.runtime_children parent
+              (Lui_sequence.insert children (min index (Lui_sequence.length children)) child);
+            Hashtbl.replace application.runtime_parents child parent
+        | _ -> ()) previous)
+  end
+
+let replace_journal_table ?nodes table source remove replace =
+  let keys = match nodes with
+    | Some nodes -> nodes
+    | None -> List.of_seq (Hashtbl.to_seq_keys table) in
+  List.iter remove keys;
+  Hashtbl.iter replace source
+
+let replace_property_table ?nodes application source =
+  replace_journal_table ?nodes application.runtime_properties source
+    (Journal_properties.remove application Properties (fun key -> Property_value key)
+      application.runtime_properties)
+    (journal_properties application)
+
+let replace_extension_property_table ?nodes application source =
+  replace_journal_table ?nodes application.runtime_extension_properties source
+    (Journal_extension_properties.remove application Extension_properties
+      (fun key -> Extension_value key) application.runtime_extension_properties)
+    (journal_extension_properties application)
+
+let replace_list_table ?nodes application slot table source identify =
+  replace_journal_table ?nodes table source
+    (fun parent -> journal_list application slot table parent identify [])
+    (fun parent values -> journal_list application slot table parent identify values)
+
+let replace_children_table ?nodes application source =
+  let keys = match nodes with
+    | Some nodes -> nodes
+    | None -> List.of_seq (Hashtbl.to_seq_keys application.runtime_children) in
+  if journal_recording application then begin
+    let targets = Hashtbl.create 16 in
+    Hashtbl.iter (fun parent children -> Lui_sequence.iter
+      (fun child -> Hashtbl.replace targets child parent) children) source;
+    let children = Hashtbl.create 16 in
+    List.iter (fun parent -> Option.iter
+      (Lui_sequence.iter (fun child -> Hashtbl.replace children child ()))
+      (Hashtbl.find_opt application.runtime_children parent)) keys;
+    Hashtbl.iter (fun child _ -> Hashtbl.replace children child ()) targets;
+    Hashtbl.iter (fun child () ->
+      journal_child ?parent:(Hashtbl.find_opt targets child) application child) children
+  end;
+  List.iter (Hashtbl.remove application.runtime_children) keys;
+  Hashtbl.iter (Hashtbl.replace application.runtime_children) source
+
+let boundary_savepoint application =
+  let journal = application.runtime_journal in
+  journal.journal_enabled <- true;
+  { savepoint_epoch = journal.journal_epoch; savepoint_position = journal.journal_position }
+
+let boundary_savepoint_valid application saved =
+  saved.savepoint_epoch = application.runtime_journal.journal_epoch
+
+let commit_boundary_recovery application saved =
+  let rec commit = function
+    | entry :: rest when entry.rollback_position > saved.savepoint_position ->
+        entry.rollback_committed <- true;
+        commit rest
+    | _ -> () in
+  commit application.runtime_journal.journal_entries
+
+module Operation_set = Hashtbl.Make (struct
+  type t = patch_op
+  let equal = ( == )
+  let hash = Hashtbl.hash
+end)
+
+let rollback_boundary application saved =
+  let journal = application.runtime_journal in
+  if not (boundary_savepoint_valid application saved) then
+    invalid_arg "cannot restore a stale boundary savepoint";
+  let removed = Operation_set.create 16 in
+  let rec rollback kept = function
+    | entry :: rest when entry.rollback_position > saved.savepoint_position ->
+        if entry.rollback_committed then rollback (entry :: kept) rest
+        else begin
+          entry.rollback_undo ();
+          Option.iter (fun operation -> Operation_set.replace removed operation ())
+            entry.rollback_operation;
+          rollback kept rest
+        end
+    | rest -> List.rev_append kept rest in
+  journal.journal_replaying <- true;
+  (match rollback [] journal.journal_entries with
+  | entries -> journal.journal_entries <- entries; journal.journal_replaying <- false
+  | exception failure -> journal.journal_replaying <- false; raise failure);
+  let pending = List.filter (fun operation ->
+    not (Operation_set.mem removed operation)) !(application.pending_ops) in
+  let present = Operation_set.create (List.length pending) in
+  List.iter (fun operation -> Operation_set.replace present operation ()) pending;
+  let positions = Operation_set.create (List.length journal.journal_entries) in
+  let missing = List.filter_map (fun entry ->
+    Option.bind entry.rollback_operation (fun operation ->
+      Operation_set.replace positions operation entry.rollback_position;
+      if entry.rollback_committed && not (Operation_set.mem present operation)
+      then Some (entry.rollback_position, operation) else None))
+      journal.journal_entries in
+  let rec merge missing pending =
+    match missing, pending with
+    | [], rest -> rest
+    | rest, [] -> List.map snd rest
+    | (position, operation) :: rest, current :: tail ->
+        if position > Option.value ~default:0 (Operation_set.find_opt positions current)
+        then operation :: merge rest pending
+        else current :: merge missing tail in
+  application.pending_ops := merge missing pending;
+  application.runtime_handler_count := Hashtbl.fold (fun _ handlers count ->
+    count + List.length handlers) application.event_handlers 0;
+  application.runtime_dynamic_segment_count := Hashtbl.fold (fun _ segments count ->
+    count + List.length segments) application.dynamic_segments 0;
+  Hashtbl.reset application.runtime_alias_targets;
+  Hashtbl.iter (fun alias target ->
+    let aliases = Option.value ~default:[]
+      (Hashtbl.find_opt application.runtime_alias_targets target) in
+    Hashtbl.replace application.runtime_alias_targets target (alias :: aliases))
+    application.runtime_node_aliases;
+  application.runtime_extension_dirty := true
+
+let compact_boundary_journal application =
+  let journal = application.runtime_journal in
+  journal.journal_entries <- [];
+  Hashtbl.reset journal.journal_versions;
+  journal.journal_position <- 0;
+  journal.journal_epoch <- journal.journal_epoch + 1;
+  journal.journal_enabled <- false
+
 let remove_alias application candidate =
   match Hashtbl.find_opt application.runtime_node_aliases candidate with
   | None -> ()
   | Some target ->
-    Hashtbl.remove application.runtime_node_aliases candidate;
+    journal_remove application Node_aliases application.runtime_node_aliases candidate;
     let aliases = match Hashtbl.find_opt application.runtime_alias_targets target with
       | Some aliases -> List.filter ((<>) candidate) aliases | None -> [] in
-    if aliases = [] then Hashtbl.remove application.runtime_alias_targets target
-    else Hashtbl.replace application.runtime_alias_targets target aliases
+    if aliases = [] then journal_remove application Alias_targets application.runtime_alias_targets target
+    else journal_replace application Alias_targets application.runtime_alias_targets target aliases
 
 let set_alias application candidate target =
   remove_alias application candidate;
-  Hashtbl.replace application.runtime_node_aliases candidate target;
+  journal_replace application Node_aliases application.runtime_node_aliases candidate target;
   let aliases = match Hashtbl.find_opt application.runtime_alias_targets target with
     | Some aliases -> aliases | None -> [] in
-  Hashtbl.replace application.runtime_alias_targets target (candidate :: aliases)
+  journal_replace application Alias_targets application.runtime_alias_targets target (candidate :: aliases)
 
 let remove_target_aliases application target =
   match Hashtbl.find_opt application.runtime_alias_targets target with
   | None -> ()
   | Some aliases ->
-    List.iter (Hashtbl.remove application.runtime_node_aliases) aliases;
-    Hashtbl.remove application.runtime_alias_targets target
+    List.iter (journal_remove application Node_aliases application.runtime_node_aliases) aliases;
+    journal_remove application Alias_targets application.runtime_alias_targets target
 
 (* Entry-sized snapshot. [Hashtbl.copy] duplicates the bucket array, which
    [Hashtbl.clear] does not shrink, so a checkpoint after a large flush
@@ -419,63 +763,64 @@ let restore application saved =
       in
       Some (nodes @ created), orphans
   in
-  application.next_node_id := saved.checkpoint_next_node_id;
-  application.next_virtual_generation := saved.checkpoint_next_virtual_generation;
-  Hashtbl.reset application.runtime_virtual_sources;
-  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_sources) saved.checkpoint_virtual_sources;
-  Hashtbl.reset application.runtime_virtual_owners;
-  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_owners) saved.checkpoint_virtual_owners;
-  Hashtbl.reset application.runtime_virtual_receipts;
-  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_receipts) saved.checkpoint_virtual_receipts;
+  restore_identity application application.next_node_id saved.checkpoint_next_node_id;
+  restore_identity application application.next_virtual_generation saved.checkpoint_next_virtual_generation;
+  journal_clear application Virtual_sources application.runtime_virtual_sources;
+  Hashtbl.iter (journal_replace application Virtual_sources application.runtime_virtual_sources) saved.checkpoint_virtual_sources;
+  journal_clear application Virtual_owners application.runtime_virtual_owners;
+  Hashtbl.iter (journal_replace application Virtual_owners application.runtime_virtual_owners) saved.checkpoint_virtual_owners;
+  journal_clear application Virtual_receipts application.runtime_virtual_receipts;
+  Hashtbl.iter (journal_replace application Virtual_receipts application.runtime_virtual_receipts) saved.checkpoint_virtual_receipts;
   List.iter (fun restore -> restore ()) saved.checkpoint_restore_virtual;
-  let replace target source =
-    (match affected with None -> Hashtbl.reset target
-    | Some nodes -> List.iter (Hashtbl.remove target) nodes);
-    Hashtbl.iter (fun key value -> Hashtbl.replace target key value) source
+  let replace slot target source =
+    (match affected with None -> journal_clear application slot target
+    | Some nodes -> List.iter (journal_remove application slot target) nodes);
+    Hashtbl.iter (fun key value -> journal_replace application slot target key value) source
   in
-  replace application.mounted_nodes saved.checkpoint_mounted_nodes;
-  replace application.runtime_extension_nodes saved.checkpoint_extension_nodes;
-  replace application.runtime_properties saved.checkpoint_properties;
-  replace application.runtime_extension_properties
-    saved.checkpoint_extension_properties;
-  replace application.runtime_children saved.checkpoint_children;
-  replace application.runtime_parents saved.checkpoint_parents;
-  application.pending_ops := saved.checkpoint_pending_ops;
-  Hashtbl.clear application.pending_creates;
+  replace Mounted_nodes application.mounted_nodes saved.checkpoint_mounted_nodes;
+  replace Extension_nodes application.runtime_extension_nodes saved.checkpoint_extension_nodes;
+  replace_property_table ?nodes:affected application saved.checkpoint_properties;
+  replace_extension_property_table ?nodes:affected application saved.checkpoint_extension_properties;
+  replace_children_table ?nodes:affected application saved.checkpoint_children;
+  replace Parents application.runtime_parents saved.checkpoint_parents;
+  journal_restore_pending application saved.checkpoint_pending_ops;
+  journal_clear application Pending_creates application.pending_creates;
   Hashtbl.iter
-    (fun node () -> Hashtbl.replace application.pending_creates node ())
+    (fun node () -> journal_replace application Pending_creates application.pending_creates node ())
     saved.checkpoint_pending_creates;
-  Hashtbl.clear application.elision_ghosts;
-  Hashtbl.clear application.elision_root;
-  Hashtbl.clear application.elision_members;
-  Hashtbl.clear application.elision_edges;
+  journal_clear application Elision_ghosts application.elision_ghosts;
+  journal_clear application Elision_root application.elision_root;
+  journal_clear application Elision_members application.elision_members;
+  journal_clear application Elision_edges application.elision_edges;
   Hashtbl.iter
-    (fun node () -> Hashtbl.replace application.elision_ghosts node ())
+    (fun node () -> journal_replace application Elision_ghosts application.elision_ghosts node ())
     saved.checkpoint_elision_ghosts;
   Hashtbl.iter
-    (fun id root -> Hashtbl.replace application.elision_root id root)
+    (fun id root -> journal_replace application Elision_root application.elision_root id root)
     saved.checkpoint_elision_root;
   Hashtbl.iter
-    (fun root ids -> Hashtbl.replace application.elision_members root ids)
+    (fun root ids -> journal_replace application Elision_members application.elision_members root ids)
     saved.checkpoint_elision_members;
   Hashtbl.iter
-    (fun child parent -> Hashtbl.replace application.elision_edges child parent)
+    (fun child parent -> journal_replace application Elision_edges application.elision_edges child parent)
     saved.checkpoint_elision_edges;
-  replace application.runtime_echo saved.checkpoint_echo;
-  application.next_handler_id := saved.checkpoint_next_handler_id;
-  replace application.event_handlers saved.checkpoint_event_handlers;
-  application.next_dynamic_segment_id :=
+  replace Echo application.runtime_echo saved.checkpoint_echo;
+  restore_identity application application.next_handler_id saved.checkpoint_next_handler_id;
+  replace_list_table ?nodes:affected application Handler_member application.event_handlers
+    saved.checkpoint_event_handlers (fun handler -> handler.handler_id);
+  restore_identity application application.next_dynamic_segment_id
     saved.checkpoint_next_dynamic_segment_id;
-  replace application.dynamic_segments saved.checkpoint_dynamic_segments;
+  replace_list_table ?nodes:affected application Segment_member application.dynamic_segments
+    saved.checkpoint_dynamic_segments (fun segment -> segment.dynamic_segment_id);
   List.iter (fun (segment, base, size, active, on_property) ->
-    segment.dynamic_segment_base := base;
-    segment.dynamic_segment_size := size;
-    segment.dynamic_segment_active := active;
-    segment.dynamic_segment_on_property := on_property)
+    journal_ref application Segment_base segment.dynamic_segment_id segment.dynamic_segment_base base;
+    journal_ref application Segment_size segment.dynamic_segment_id segment.dynamic_segment_size size;
+    journal_ref application Segment_active segment.dynamic_segment_id segment.dynamic_segment_active active;
+    journal_ref application Segment_on_property segment.dynamic_segment_id segment.dynamic_segment_on_property on_property)
     saved.checkpoint_segment_values;
-  replace application.runtime_reload_keys saved.checkpoint_reload_keys;
+  replace Reload_keys application.runtime_reload_keys saved.checkpoint_reload_keys;
   (match affected with
-  | None -> Hashtbl.reset application.runtime_node_aliases; Hashtbl.reset application.runtime_alias_targets
+  | None -> journal_clear application Node_aliases application.runtime_node_aliases; journal_clear application Alias_targets application.runtime_alias_targets
   | Some nodes -> List.iter (fun node -> remove_target_aliases application node; remove_alias application node) nodes);
   Hashtbl.iter (set_alias application) saved.checkpoint_node_aliases;
   application.runtime_handler_count := saved.checkpoint_handler_count;
@@ -683,13 +1028,14 @@ let checkpoint_subtree application parent root =
   let parent = canonical_node application parent in
   checkpoint ~nodes:(parent :: collect_subtree_nodes application.runtime_children root) application
 
-let retire_checkpoint_dynamic_segments saved root =
+let retire_checkpoint_dynamic_segments application saved root =
   List.iter
     (fun node ->
        match Hashtbl.find_opt saved.checkpoint_dynamic_segments node with
        | Some segments ->
          List.iter
-           (fun segment -> segment.dynamic_segment_active := false)
+           (fun segment -> journal_ref application Segment_active
+             segment.dynamic_segment_id segment.dynamic_segment_active false)
            segments
        | None -> ())
     (collect_subtree_nodes saved.checkpoint_children root)
@@ -744,10 +1090,12 @@ let extension_wire_fingerprint application identifier fingerprint =
 let remember_pending_create application operation =
   match operation with
   | CreateNode (node, _) | CreateExtension (node, _, _) ->
-    Hashtbl.replace application.pending_creates node ()
+    journal_replace application Pending_creates application.pending_creates node ()
   | _ -> ()
 
 let enqueue application operation =
+  let position = application.runtime_journal.journal_position + 1 in
+  journal_record ~operation application (Pending_operation, position) (fun () -> ());
   application.pending_ops := operation :: !(application.pending_ops);
   remember_pending_create application operation
 
@@ -891,16 +1239,16 @@ let mark_elided_group application root ids =
   List.iter (fun id -> Hashtbl.replace group id ()) ids;
   List.iter
     (fun id ->
-       Hashtbl.replace application.elision_ghosts id ();
-       Hashtbl.replace application.elision_root id root;
-       Hashtbl.remove application.pending_creates id;
+       journal_replace application Elision_ghosts application.elision_ghosts id ();
+       journal_replace application Elision_root application.elision_root id root;
+       journal_remove application Pending_creates application.pending_creates id;
        if id <> root then
          match Hashtbl.find_opt application.runtime_parents id with
          | Some parent when Hashtbl.mem group parent ->
-             Hashtbl.replace application.elision_edges id parent
+             journal_replace application Elision_edges application.elision_edges id parent
          | _ -> ())
     ids;
-  Hashtbl.replace application.elision_members root ids
+  journal_replace application Elision_members application.elision_members root ids
 
 let enqueue_drop application node =
   if pending_create_exists application node then
@@ -1238,10 +1586,10 @@ let elide_pending_ops application =
          ids;
        List.iter (fun id -> drops := drop_node_op id :: !drops) ids)
     marked_roots;
-  Hashtbl.clear application.elision_ghosts;
-  Hashtbl.clear application.elision_root;
-  Hashtbl.clear application.elision_members;
-  Hashtbl.clear application.elision_edges;
+  journal_clear application Elision_ghosts application.elision_ghosts;
+  journal_clear application Elision_root application.elision_root;
+  journal_clear application Elision_members application.elision_members;
+  journal_clear application Elision_edges application.elision_edges;
   List.rev !out @ List.rev !drops
 let rec emit_dropped_subtree application saved removed_set node =
   if pending_create_exists application node then
@@ -1403,26 +1751,26 @@ let reconcile_subtree application saved parent old_root candidate_root =
   in
   if Hashtbl.find_opt application.mounted_nodes candidate_root = Some Root then
     invalid_arg "runtime root cannot be nested";
-  application.pending_ops := saved.checkpoint_pending_ops;
-  Hashtbl.clear application.pending_creates;
+  journal_restore_pending application saved.checkpoint_pending_ops;
+  journal_clear application Pending_creates application.pending_creates;
   Hashtbl.iter
-    (fun node () -> Hashtbl.replace application.pending_creates node ())
+    (fun node () -> journal_replace application Pending_creates application.pending_creates node ())
     saved.checkpoint_pending_creates;
-  Hashtbl.clear application.elision_ghosts;
-  Hashtbl.clear application.elision_root;
-  Hashtbl.clear application.elision_members;
-  Hashtbl.clear application.elision_edges;
+  journal_clear application Elision_ghosts application.elision_ghosts;
+  journal_clear application Elision_root application.elision_root;
+  journal_clear application Elision_members application.elision_members;
+  journal_clear application Elision_edges application.elision_edges;
   Hashtbl.iter
-    (fun node () -> Hashtbl.replace application.elision_ghosts node ())
+    (fun node () -> journal_replace application Elision_ghosts application.elision_ghosts node ())
     saved.checkpoint_elision_ghosts;
   Hashtbl.iter
-    (fun id root -> Hashtbl.replace application.elision_root id root)
+    (fun id root -> journal_replace application Elision_root application.elision_root id root)
     saved.checkpoint_elision_root;
   Hashtbl.iter
-    (fun root ids -> Hashtbl.replace application.elision_members root ids)
+    (fun root ids -> journal_replace application Elision_members application.elision_members root ids)
     saved.checkpoint_elision_members;
   Hashtbl.iter
-    (fun child parent -> Hashtbl.replace application.elision_edges child parent)
+    (fun child parent -> journal_replace application Elision_edges application.elision_edges child parent)
     saved.checkpoint_elision_edges;
   List.iter
     (fun candidate ->
@@ -1517,22 +1865,21 @@ let reconcile_subtree application saved parent old_root candidate_root =
   let affected = match saved.checkpoint_nodes with
     | None -> None
     | Some nodes -> Some (nodes @ candidate_nodes) in
-  let replace target source =
-    (match affected with None -> Hashtbl.reset target
-    | Some nodes -> List.iter (Hashtbl.remove target) nodes);
-    Hashtbl.iter (fun key value -> Hashtbl.replace target key value) source
+  let replace slot target source =
+    (match affected with None -> journal_clear application slot target
+    | Some nodes -> List.iter (journal_remove application slot target) nodes);
+    Hashtbl.iter (fun key value -> journal_replace application slot target key value) source
   in
-  replace application.mounted_nodes desired_standard;
-  replace application.runtime_extension_nodes desired_extensions;
-  replace application.runtime_properties desired_properties;
-  Hashtbl.reset application.runtime_virtual_sources;
-  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_sources) desired_virtual_sources;
-  Hashtbl.reset application.runtime_virtual_owners;
-  Hashtbl.iter (Hashtbl.replace application.runtime_virtual_owners) desired_virtual_owners;
-  replace application.runtime_echo desired_echo;
-  replace application.runtime_extension_properties
-    desired_extension_properties;
-  replace application.runtime_children desired_children;
+  replace Mounted_nodes application.mounted_nodes desired_standard;
+  replace Extension_nodes application.runtime_extension_nodes desired_extensions;
+  replace_property_table ?nodes:affected application desired_properties;
+  journal_clear application Virtual_sources application.runtime_virtual_sources;
+  Hashtbl.iter (journal_replace application Virtual_sources application.runtime_virtual_sources) desired_virtual_sources;
+  journal_clear application Virtual_owners application.runtime_virtual_owners;
+  Hashtbl.iter (journal_replace application Virtual_owners application.runtime_virtual_owners) desired_virtual_owners;
+  replace Echo application.runtime_echo desired_echo;
+  replace_extension_property_table ?nodes:affected application desired_extension_properties;
+  replace_children_table ?nodes:affected application desired_children;
   let new_parents = rebuild_parents desired_children in
   (match saved.checkpoint_nodes with
   | Some _ ->
@@ -1540,9 +1887,11 @@ let reconcile_subtree application saved parent old_root candidate_root =
     | Some owner -> Hashtbl.replace new_parents parent owner
     | None -> ())
   | None -> ());
-  replace application.runtime_parents new_parents;
-  replace application.event_handlers desired_handlers;
-  replace application.dynamic_segments desired_segments;
+  replace Parents application.runtime_parents new_parents;
+  replace_list_table ?nodes:affected application Handler_member application.event_handlers
+    desired_handlers (fun handler -> handler.handler_id);
+  replace_list_table ?nodes:affected application Segment_member application.dynamic_segments
+    desired_segments (fun segment -> segment.dynamic_segment_id);
   application.runtime_handler_count :=
     (match saved.checkpoint_nodes with None -> 0 | Some _ ->
       saved.checkpoint_handler_count - Hashtbl.fold
@@ -1557,7 +1906,7 @@ let reconcile_subtree application saved parent old_root candidate_root =
     + Hashtbl.fold
       (fun _parent segments total -> total + List.length segments)
       desired_segments 0;
-  replace application.runtime_reload_keys desired_reload_keys;
+  replace Reload_keys application.runtime_reload_keys desired_reload_keys;
   application.runtime_extension_dirty :=
     saved.checkpoint_extension_dirty || Hashtbl.length desired_extensions > 0;
   (* Aliases established by earlier reconciles still map other branches'
@@ -1624,9 +1973,9 @@ let next_node application =
 
 let create_node application kind =
   let node = next_node application in
-  Hashtbl.replace application.mounted_nodes node kind;
-  Hashtbl.replace application.runtime_properties node Property_map.empty;
-  Hashtbl.replace application.runtime_children node Lui_sequence.empty;
+  journal_replace application Mounted_nodes application.mounted_nodes node kind;
+  journal_replace application Properties application.runtime_properties node Property_map.empty;
+  journal_replace application Children application.runtime_children node Lui_sequence.empty;
   enqueue application (create_node_op node kind);
   node
 
@@ -1644,10 +1993,10 @@ let create_extension_node application identifier =
          application.runtime_backend.backend_profile)
   then invalid_arg "extension is unsupported by backend profile";
   let node = next_node application in
-  Hashtbl.replace application.runtime_extension_nodes node identifier;
-  Hashtbl.replace application.runtime_extension_properties node
+  journal_replace application Extension_nodes application.runtime_extension_nodes node identifier;
+  journal_replace application Extension_properties application.runtime_extension_properties node
     String_map.empty;
-  Hashtbl.replace application.runtime_children node Lui_sequence.empty;
+  journal_replace application Children application.runtime_children node Lui_sequence.empty;
   application.runtime_extension_dirty := true;
   enqueue
     application
@@ -1671,10 +2020,10 @@ let create_tweak_node application identifier =
          application.runtime_backend.backend_profile)
   then invalid_arg "tweak is unsupported by backend profile";
   let node = next_node application in
-  Hashtbl.replace application.runtime_extension_nodes node identifier;
-  Hashtbl.replace application.runtime_extension_properties node
+  journal_replace application Extension_nodes application.runtime_extension_nodes node identifier;
+  journal_replace application Extension_properties application.runtime_extension_properties node
     String_map.empty;
-  Hashtbl.replace application.runtime_children node Lui_sequence.empty;
+  journal_replace application Children application.runtime_children node Lui_sequence.empty;
   application.runtime_extension_dirty := true;
   enqueue
     application
@@ -1686,7 +2035,7 @@ let create_tweak_node application identifier =
 let set_reload_key application node key =
   let node = canonical_node application node in
   require_node application node;
-  Hashtbl.replace application.runtime_reload_keys node key
+  journal_replace application Reload_keys application.runtime_reload_keys node key
 
 let children application node =
   match
@@ -1726,11 +2075,11 @@ and mark_created_subtree application root =
      | Some parent -> (
        try unlink_child application parent root
        with Invalid_argument _ ->
-         Hashtbl.remove application.runtime_parents root)
+         journal_remove application Parents application.runtime_parents root)
      | None -> ());
     List.iter
       (fun id -> if id <> root then unmount_node application id) ids;
-    Hashtbl.replace application.runtime_children root Lui_sequence.empty;
+    journal_replace application Children application.runtime_children root Lui_sequence.empty;
     unmount_node application root;
     true
 
@@ -1753,7 +2102,7 @@ and drop_subtree application node =
        | Some parent ->
            (try unlink_child application parent node
             with Invalid_argument _ ->
-              Hashtbl.remove application.runtime_parents node)
+              journal_remove application Parents application.runtime_parents node)
        | None -> ());
       unmount_subtree application node;
       enqueue application (detach_subtree_op node)
@@ -1773,15 +2122,15 @@ and drop_subtree_ops application node =
      | Some parent ->
          (try remove_child application parent node
           with Invalid_argument _ ->
-            Hashtbl.remove application.runtime_parents node)
+            journal_remove application Parents application.runtime_parents node)
      | None -> ());
     (match Hashtbl.find_opt application.runtime_children node with
      | Some children ->
          let kids = Lui_sequence.to_list children in
-         Hashtbl.replace application.runtime_children node Lui_sequence.empty;
+         journal_replace application Children application.runtime_children node Lui_sequence.empty;
          List.iter
            (fun child ->
-              Hashtbl.remove application.runtime_parents child;
+              journal_remove application Parents application.runtime_parents child;
               enqueue application (remove_child_op node child);
               drop_subtree application child)
            kids;
@@ -1796,7 +2145,7 @@ and unmount_subtree application node =
    | Some children ->
        List.iter
          (fun child ->
-            Hashtbl.remove application.runtime_parents child;
+            journal_remove application Parents application.runtime_parents child;
             unmount_subtree application child)
          (Lui_sequence.to_list children)
    | None -> ());
@@ -1806,26 +2155,27 @@ and unmount_node application node =
   (match Hashtbl.find_opt application.dynamic_segments node with
   | Some segments ->
     List.iter
-      (fun segment -> segment.dynamic_segment_active := false)
+      (fun segment -> journal_ref application Segment_active
+        segment.dynamic_segment_id segment.dynamic_segment_active false)
       segments;
     application.runtime_dynamic_segment_count :=
       !(application.runtime_dynamic_segment_count) - List.length segments;
-    Hashtbl.remove application.dynamic_segments node
+    journal_remove application Dynamic_segments application.dynamic_segments node
   | None -> ());
   (* Aliases targeting a dropped node belong to the branch that died
      with it; clearing them keeps the table bounded (they would resolve
      to a dead id anyway). *)
   remove_target_aliases application node;
-  Hashtbl.remove application.mounted_nodes node;
-  Hashtbl.remove application.runtime_extension_nodes node;
-  Hashtbl.remove application.runtime_properties node;
-  Hashtbl.remove application.runtime_virtual_sources node;
-  Hashtbl.remove application.runtime_virtual_owners node;
-  Hashtbl.remove application.runtime_extension_properties node;
-  Hashtbl.remove application.runtime_children node;
-  Hashtbl.remove application.runtime_parents node;
-  Hashtbl.remove application.runtime_reload_keys node;
-  Hashtbl.remove application.runtime_echo node;
+  journal_remove application Mounted_nodes application.mounted_nodes node;
+  journal_remove application Extension_nodes application.runtime_extension_nodes node;
+  journal_remove application Properties application.runtime_properties node;
+  journal_remove application Virtual_sources application.runtime_virtual_sources node;
+  journal_remove application Virtual_owners application.runtime_virtual_owners node;
+  journal_remove application Extension_properties application.runtime_extension_properties node;
+  journal_remove application Children application.runtime_children node;
+  journal_remove application Parents application.runtime_parents node;
+  journal_remove application Reload_keys application.runtime_reload_keys node;
+  journal_remove application Echo application.runtime_echo node;
   application.runtime_extension_dirty := true
 
 and drop_node application node =
@@ -1842,6 +2192,7 @@ and unlink_child application parent child =
   let current = Hashtbl.find application.runtime_children parent in
   match Lui_sequence.index current child with
   | Some index ->
+    journal_child ~parent application child;
     Hashtbl.replace application.runtime_children parent
       (Lui_sequence.remove current index);
     Hashtbl.remove application.runtime_parents child;
@@ -1864,8 +2215,8 @@ let echo_state application node =
 let put_echo application node state =
   match state with
   | { echo_text = None; echo_toggle = None; echo_value = None } ->
-    Hashtbl.remove application.runtime_echo node
-  | _ -> Hashtbl.replace application.runtime_echo node state
+    journal_remove application Echo application.runtime_echo node
+  | _ -> journal_replace application Echo application.runtime_echo node state
 
 let note_sent_echo application node property value =
   let state = echo_state application node in
@@ -1956,7 +2307,7 @@ let set_prop application node property value =
     (* A segment callback may have updated another property on this node. *)
     let current = Option.value
       (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
-    Hashtbl.replace application.runtime_properties node
+    journal_properties application node
       (Property_map.add property value current);
     note_sent_echo application node property value;
     enqueue application (set_prop_op node property value)
@@ -1978,7 +2329,7 @@ let remove_prop application node property =
     notify_segment_property application node property None;
     let current = Option.value
       (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
-    Hashtbl.replace application.runtime_properties node
+    journal_properties application node
       (Property_map.remove property current);
     note_removed_echo application node property;
     enqueue application (remove_prop_op node property)
@@ -1999,7 +2350,7 @@ let set_extension_prop application node property value =
     | None -> String_map.empty
   in
   if String_map.find_opt property current <> Some value then begin
-    Hashtbl.replace application.runtime_extension_properties node
+    journal_extension_properties application node
       (String_map.add property value current);
     application.runtime_extension_dirty := true;
     enqueue application (set_extension_prop_op node property value)
@@ -2016,7 +2367,7 @@ let remove_extension_prop application node property =
     | Some values -> values
     | None -> String_map.empty
   in
-  Hashtbl.replace application.runtime_extension_properties node
+  journal_extension_properties application node
     (String_map.remove property current);
   application.runtime_extension_dirty := true;
   enqueue application (remove_extension_prop_op node property)
@@ -2168,8 +2519,8 @@ let insert_child application parent child index =
   if descendant application child parent then
     invalid_arg "child insertion would create a cycle";
   validate_flat_virtual_insertion application parent child;
-  Hashtbl.replace application.runtime_children parent
-    (Lui_sequence.insert current index child);
+  journal_child ~parent application child;
+  Hashtbl.replace application.runtime_children parent (Lui_sequence.insert current index child);
   Hashtbl.replace application.runtime_parents child parent;
   application.runtime_extension_dirty := true;
   enqueue application (insert_child_op parent child index)
@@ -2178,6 +2529,7 @@ let remove_child_at application parent child index =
   let current = Hashtbl.find application.runtime_children parent in
   if Lui_sequence.get current index <> child then
     invalid_arg "child index does not match";
+  journal_child ~parent application child;
   Hashtbl.replace application.runtime_children parent (Lui_sequence.remove current index);
   Hashtbl.remove application.runtime_parents child;
   application.runtime_extension_dirty := true;
@@ -2189,6 +2541,7 @@ let move_child_at application parent child current_index index =
     invalid_arg "child index does not match";
   if index < 0 || index >= Lui_sequence.length current then
     invalid_arg "child index is out of bounds";
+  journal_child ~parent application child;
   Hashtbl.replace application.runtime_children parent
     (Lui_sequence.insert (Lui_sequence.remove current current_index) index child);
   application.runtime_extension_dirty := true;
@@ -2238,6 +2591,8 @@ let remove_handler application node handler_id =
     application.runtime_handler_count :=
       !(application.runtime_handler_count)
       - (List.length handlers - List.length remaining);
+    journal_member application Handler_member application.event_handlers node
+      (fun handler -> handler.handler_id) handler_id;
     if remaining = [] then Hashtbl.remove application.event_handlers node
     else Hashtbl.replace application.event_handlers node remaining
   | None -> ()
@@ -2255,6 +2610,8 @@ let on_event scope application node callback =
     | Some current -> current
     | None -> []
   in
+  journal_member ~new_member:true application Handler_member application.event_handlers node
+    (fun handler -> handler.handler_id) handler_id;
   Hashtbl.replace application.event_handlers node (handlers @ [ handler ]);
   incr application.runtime_handler_count;
   Signal.on_dispose scope
@@ -2558,13 +2915,13 @@ let apply_pending_batch application batch operation_count next_generation =
 let publish_virtual_receipts application =
   let pending = Hashtbl.fold (fun node owner pending -> (node, owner) :: pending)
     application.runtime_virtual_receipts [] in
-  Hashtbl.clear application.runtime_virtual_receipts;
+  journal_clear application Virtual_receipts application.runtime_virtual_receipts;
   let rec publish = function
     | [] -> ()
     | (_, owner) :: rest as pending ->
       (try Lui_virtual.Internal.flush_receipts owner with failure ->
         List.iter (fun (node, owner) ->
-          Hashtbl.replace application.runtime_virtual_receipts node owner) pending;
+          journal_replace application Virtual_receipts application.runtime_virtual_receipts node owner) pending;
         raise failure);
       publish rest in
   publish pending
@@ -2635,7 +2992,7 @@ let rec flush application =
            in the next batch instead of being re-sent under a stale
            generation *)
         application.pending_ops := [];
-        Hashtbl.clear application.pending_creates;
+        journal_clear application Pending_creates application.pending_creates;
         if operations = [] && not recovering then record_diagnostics application NoBatch 0 0
         else begin
           let next_generation = !(application.runtime_generation) + 1 in
@@ -2645,9 +3002,11 @@ let rec flush application =
             next_generation
         end
       with e ->
+        compact_boundary_journal application;
         application.runtime_flushing := false;
         raise e
     in
+    compact_boundary_journal application;
     application.runtime_flushing := false;
     if !(application.runtime_flush_dirty) then begin
       application.runtime_flush_dirty := false;
@@ -2702,6 +3061,8 @@ let register_dynamic_segment ?(exclusive = false) application parent =
     | Some segments -> segments
     | None -> []
   in
+  journal_member ~new_member:true application Segment_member application.dynamic_segments parent
+    (fun segment -> segment.dynamic_segment_id) segment.dynamic_segment_id;
   Hashtbl.replace application.dynamic_segments parent (current @ [ segment ]);
   incr application.runtime_dynamic_segment_count;
   segment
@@ -2766,12 +3127,12 @@ let resize_dynamic_segment application segment delta =
   let next_size = !(segment.dynamic_segment_size) + delta in
   if next_size < 0 then
     invalid_arg "dynamic segment size cannot be negative";
-  segment.dynamic_segment_size := next_size;
+  journal_ref application Segment_size segment.dynamic_segment_id segment.dynamic_segment_size next_size;
   List.iteri
     (fun index current ->
        if index > segment_index then
-         current.dynamic_segment_base :=
-           !(current.dynamic_segment_base) + delta)
+         journal_ref application Segment_base current.dynamic_segment_id current.dynamic_segment_base
+           (!(current.dynamic_segment_base) + delta))
     segments
 
 (* Teardown counterpart of [resize_dynamic_segment]: the registration can
@@ -2784,8 +3145,8 @@ let release_dynamic_segment application segment =
     match segment_registration application segment with
     | Some _ -> resize_dynamic_segment application segment (-1)
     | None ->
-      segment.dynamic_segment_size :=
-        max 0 (!(segment.dynamic_segment_size) - 1)
+      journal_ref application Segment_size segment.dynamic_segment_id segment.dynamic_segment_size
+        (max 0 (!(segment.dynamic_segment_size) - 1))
 
 let unregister_dynamic_segment application segment =
   if !(segment.dynamic_segment_active) then begin
@@ -2802,8 +3163,9 @@ let unregister_dynamic_segment application segment =
              current.dynamic_segment_id <> segment.dynamic_segment_id)
           segments
       in
-      if remaining = [] then
-        Hashtbl.remove application.dynamic_segments parent
+      journal_member application Segment_member application.dynamic_segments parent
+        (fun segment -> segment.dynamic_segment_id) segment.dynamic_segment_id;
+      if remaining = [] then Hashtbl.remove application.dynamic_segments parent
       else Hashtbl.replace application.dynamic_segments parent remaining;
       if List.length remaining < List.length segments then
         decr application.runtime_dynamic_segment_count
@@ -2832,12 +3194,12 @@ let unregister_dynamic_segment application segment =
                    <> segment.dynamic_segment_id)
                 segments
             in
-            if remaining = [] then
-              Hashtbl.remove application.dynamic_segments key
-            else
-              Hashtbl.replace application.dynamic_segments key remaining;
+            journal_member application Segment_member application.dynamic_segments key
+              (fun segment -> segment.dynamic_segment_id) segment.dynamic_segment_id;
+            if remaining = [] then Hashtbl.remove application.dynamic_segments key
+            else Hashtbl.replace application.dynamic_segments key remaining;
             decr application.runtime_dynamic_segment_count
           | None -> ())
        | None -> ()));
-    segment.dynamic_segment_active := false
+    journal_ref application Segment_active segment.dynamic_segment_id segment.dynamic_segment_active false
   end
