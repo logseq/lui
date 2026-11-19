@@ -11,3 +11,11 @@ test('Apple roleless heading, paragraph and label apply the single-line policy',
     assert.match(legacy, /\.lineLimit\(LUITextLinePolicy\.lineLimit\(\s*styleClass: model\.derived\.styleClass\)\)/, kind);
   }
 });
+
+test('Apple navigation forms consume explicit sections and their slot content', () => {
+  const form = apple.slice(apple.indexOf('private struct LUINavigationFormRows:'),
+    apple.indexOf('enum LUINavigationFormSectionPolicy'));
+  assert.match(form, /LUIListSectionPolicy\.explicitSections\(/);
+  assert.match(form, /sectionSlot\(header\)/);
+  assert.match(form, /sectionSlot\(footer\)/);
+});

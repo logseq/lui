@@ -1270,6 +1270,34 @@ let phase4_rows_are_not_disclosures () =
     [(fun row -> Lui.Ui.form_section [row]);
      (fun row -> Lui.Ui.data_list ~label:"Rows" [row])]
 
+let phase4_form_sheet_sections () =
+  let app, scope, context, _ = boundary_fixture () in
+  let sheet = Lui.Ui.form_sheet ~title:"Edit"
+    [Lui.Ui.form_section ~title:"Identity" ~footer:"Required"
+       [Lui.Ui.form_field ~label:"Name" (Lui_elements.text_field []);
+        Lui_elements.toggle ~text:"Enabled" []];
+     Lui.Ui.form_section ~title:"Other" [Lui_elements.text_field []]]
+    context None in
+  let form = List.hd (Lui_runtime.children app sheet) in
+  let list = List.hd (Lui_runtime.children app form) in
+  Alcotest.(check bool) "explicit sections have an admitted list parent" true
+    (Lui_runtime.require_standard_node_kind app list = ListContainer);
+  let sections = Lui_runtime.children app list in
+  Alcotest.(check int) "separate native sections" 2 (List.length sections);
+  List.iter2 (fun section row_count ->
+    let children = Lui_runtime.children app section in
+    let kind node = Lui_runtime.require_standard_node_kind app node in
+    Alcotest.(check bool) "section headers remain explicit" true
+      (List.exists (fun node -> kind node = ListSectionHeader) children);
+    Alcotest.(check int) "each control remains a native row" row_count
+      (List.length (List.filter (fun node -> kind node = ListItem) children)))
+    sections [2;1];
+  Alcotest.(check bool) "footer remains in its section" true
+    (List.exists (fun node ->
+      Lui_runtime.require_standard_node_kind app node = ListSectionFooter)
+      (Lui_runtime.children app (List.hd sections)));
+  Signal.dispose_scope scope
+
 let phase4_authoring_contract () =
   let app, scope, context, _ = boundary_fixture () in
   let module Compatible : module type of struct include Lui_ui end = Lui.Ui in
@@ -1364,4 +1392,5 @@ let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case na
    "property binding queued disposal", property_binding_queued_disposal;
    "property binding diamond", property_binding_diamond;
    "Phase 4 row visibility", phase4_rows_are_not_disclosures;
+   "Phase 4 native form sections", phase4_form_sheet_sections;
    "Phase 4 authoring contract", phase4_authoring_contract]

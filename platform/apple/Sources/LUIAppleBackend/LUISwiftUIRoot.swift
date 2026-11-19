@@ -3167,23 +3167,23 @@ private struct LUINavigationFormRows: View {
                         Section {
                             rows(section.childIDs)
                         } header: {
-                            Text(verbatim: header.text)
+                            sectionSlot(header)
                         } footer: {
-                            Text(verbatim: footer.text)
+                            sectionSlot(footer)
                         }
                     } else if let headerID = section.headerID,
                               let header = backend.model(id: headerID) {
                         Section {
                             rows(section.childIDs)
                         } header: {
-                            Text(verbatim: header.text)
+                            sectionSlot(header)
                         }
                     } else if let footerID = section.footerID,
                               let footer = backend.model(id: footerID) {
                         Section {
                             rows(section.childIDs)
                         } footer: {
-                            Text(verbatim: footer.text)
+                            sectionSlot(footer)
                         }
                     } else {
                         Section {
@@ -3216,9 +3216,27 @@ private struct LUINavigationFormRows: View {
         }
     }
 
+    @ViewBuilder
+    private func sectionSlot(_ model: LUINodeModel) -> some View {
+        if model.kind == .listSectionHeader || model.kind == .listSectionFooter {
+            LUIAnyNodeView(nodeID: model.id, backend: backend).equatable()
+        } else {
+            Text(verbatim: model.text)
+        }
+    }
+
     private func sections(for content: LUINodeModel) -> [LUIListSection] {
-        LUIListSectionPolicy.sections(
-            childIDs: content.children,
+        let sectionContent: LUINodeModel
+        if content.children.count == 1,
+           let childID = content.children.first,
+           let child = backend.model(id: childID), child.kind == .list {
+            sectionContent = child
+        } else {
+            sectionContent = content
+        }
+        return LUIListSectionPolicy.explicitSections(
+            childIDs: sectionContent.children,
+            model: { backend.model(id: $0) },
             isHeading: { childID in
                 backend.model(id: childID)?.kind == .heading
             },
@@ -3226,8 +3244,9 @@ private struct LUINavigationFormRows: View {
         ).map { section in
             let headerText = section.headerID.flatMap { backend.model(id: $0)?.text }
             return LUIListSection(
-                nodeID: nil,
-                headerID: LUINavigationFormSectionPolicy.visibleHeaderID(
+                nodeID: section.nodeID,
+                headerID: section.nodeID != nil ? section.headerID
+                    : LUINavigationFormSectionPolicy.visibleHeaderID(
                     section.headerID,
                     text: headerText
                 ),

@@ -1,5 +1,13 @@
 # LUI API migration guide
 
+### Phase 4 review: explicit sections in form sheets
+
+`Ui.form_sheet` now supplies an inset-grouped list as its content container,
+so `Ui.form_section` nodes have an admitted list parent. Apple navigation forms
+consume these explicit sections, render their header/footer slot content, and
+keep one native row per supplied control. Existing heading-based raw
+`Lui_element_combine.form_sheet` content remains supported unchanged.
+
 ### Phase 4 review: role-independent Apple text truncation
 
 Apple now applies the single-line limit to `heading`, `paragraph` and `label`

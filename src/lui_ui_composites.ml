@@ -92,6 +92,7 @@ let form_sheet ?key ?accessibility_identifier ~title ?on_dismiss ?cancel ?confir
     | Some _ -> confirm_disabled_signal | None -> confirm_disabled
   in
   Lui_element_combine.form_sheet ?key ?accessibility_identifier ~title ?on_dismiss
-    ?cancel ?confirm ?confirm_disabled ~content ()
+    ?cancel ?confirm ?confirm_disabled
+    ~content:[Lui_elements.list ~style:`inset_grouped content] ()
 
 let confirmation = confirm_dialog
