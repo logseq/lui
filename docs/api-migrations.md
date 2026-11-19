@@ -6,7 +6,7 @@
 they are not remapped to `primary-foreground` or `accent-foreground`. This
 restores pre-ADR-0007 heading and icon contrast, including Android light
 themes where `onPrimary` is white. Theme overrides for `primary` and `accent`
-continue to select that ink. Explicit `*-foreground` values remain available
+continue to select that ink on native backends. Explicit `*-foreground` values remain available
 for content painted on a corresponding filled control.
 
 Container and surface tokens such as `surface`, `card`, `secondary` and
@@ -15,6 +15,15 @@ example, keep `text ~foreground:"primary" ~value:"General" []` for an
 accent-colored heading, and use `~background:"primary"` with
 `~foreground:"primary-foreground"` for text on a primary fill. Background
 and border resolution is unchanged on all backends.
+
+Web separates accent ink from its neutral accent fill: `foreground:"accent"`
+uses `--lui-accent-ink` (`#1d4ed8` in light mode, `#93c5fd` in dark mode,
+including system dark mode). These defaults meet 4.5:1 contrast against
+background, secondary and accent fills. The fill tokens are unchanged;
+`foreground:"primary"` still uses primary ink. Web themes can customize
+`--lui-accent-ink` on their `[data-kb-theme]` scope independently of
+`--lui-accent`. For example, use `--lui-accent-ink: #1d4ed8` for blue text
+while keeping a pale neutral accent fill.
 
 ### Dynamic platform tweak attachment order
 
