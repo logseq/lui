@@ -1,5 +1,13 @@
 # LUI API migration guide
 
+### Phase 4 review: row content in form sections and data lists
+
+`Ui.form_section` and `Ui.data_list` isolate supplied content inside a flow
+container within each native row. Passing an existing `list_item` or
+`settings_row` no longer creates a direct nested list-item pair, which Apple
+interprets as a collapsed disclosure. Existing row callbacks remain on the
+supplied row; no toggle handler or migration is required.
+
 ## ADR 0007 Phase 4: tokens, semantic text and additive composites
 
 `Lui.Ui` keeps **all** existing low-level context/node exports, with the same

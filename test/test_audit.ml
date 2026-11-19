@@ -1250,6 +1250,26 @@ let property_binding_queued_disposal () =
     Signal.dispose_subscription retiring;
     Signal.dispose_scope scope) [false;true]
 
+let phase4_rows_are_not_disclosures () =
+  List.iter (fun build ->
+    List.iter (fun row ->
+      let app, scope, context, _ = boundary_fixture () in
+      let root = build row context None in
+      let rec check node =
+        let children = Lui_runtime.children app node in
+        if Lui_runtime.require_standard_node_kind app node = ListItem then
+          Alcotest.(check bool) "content rows do not become collapsed disclosures" false
+            (List.exists (fun child ->
+              Lui_runtime.require_standard_node_kind app child = ListItem) children);
+        List.iter check children
+      in
+      check root;
+      Signal.dispose_scope scope)
+      [Lui_element_combine.settings_row ~label:"Setting" ();
+       Lui_elements.list_item ~text:"Item" []])
+    [(fun row -> Lui.Ui.form_section [row]);
+     (fun row -> Lui.Ui.data_list ~label:"Rows" [row])]
+
 let phase4_authoring_contract () =
   let app, scope, context, _ = boundary_fixture () in
   let module Compatible : module type of struct include Lui_ui end = Lui.Ui in
@@ -1343,4 +1363,5 @@ let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case na
    "property binding borrowed source", property_binding_borrowed_source;
    "property binding queued disposal", property_binding_queued_disposal;
    "property binding diamond", property_binding_diamond;
+   "Phase 4 row visibility", phase4_rows_are_not_disclosures;
    "Phase 4 authoring contract", phase4_authoring_contract]

@@ -41,7 +41,7 @@ let form_section ?key ?title ?footer children =
   Lui_elements.list_section ?key
     ?header:(Option.map (fun title -> Lui_elements.text ~role:`headline ~value:title []) title)
     ?footer:(Option.map (fun footer -> Lui_elements.text ~role:`footnote ~value:footer []) footer)
-    (List.map (fun child -> Lui_elements.list_section_item [child]) children)
+    (List.map (fun child -> Lui_elements.list_section_item [Lui_elements.column [child]]) children)
 
 let form_field ?key ~label ?help ?help_signal ?error ?error_signal control =
   Lui_elements.scoped (fun context ->
@@ -84,7 +84,7 @@ let data_list ?key ~label ?empty children =
   Lui_elements.list ?key ~style:`inset_grouped
     [Lui_elements.list_section
       ~header:(Lui_elements.text ~role:`headline ~value:label [])
-      (List.map (fun child -> Lui_elements.list_section_item [child]) content)]
+      (List.map (fun child -> Lui_elements.list_section_item [Lui_elements.column [child]]) content)]
 
 let form_sheet ?key ?accessibility_identifier ~title ?on_dismiss ?cancel ?confirm
     ?confirm_disabled ?confirm_disabled_signal content =
