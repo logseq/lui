@@ -70,15 +70,26 @@ error_boundary
 ```
 
 The diagnostic contains `exception_`, `message`, `state_path`, and `phase`
-(`Mount` or `Update`). A stderr diagnostic is logged once. The failed content
-scope is disposed, its runtime checkpoint restored, and its prior children
-replaced by the fallback. All protected callbacks in one publication wave share
-the first full runtime checkpoint, rather than copying the subtree per binding.
-If a later callback raises, all runtime writes and creates since that checkpoint
-are discarded, including opaque writes outside the boundary's subtree. Pending
-operations from before the wave are preserved. The checkpoint is released by
-a scheduler effect before the next mutation round, so a later publication starts
-a fresh transaction. External side effects and signal state changes are not
+(`Mount` or `Update`). A stderr diagnostic is logged once. The failed content's
+runtime writes are undone, its scope is disposed, and its prior children are
+replaced by the fallback. Runtime mutations use an application-scoped undo
+journal: each boundary takes a constant-size savepoint on mount and at the first
+protected callback in a publication wave. Later callbacks share that savepoint.
+A failure discards all uncommitted runtime writes and pending operations since
+it, including opaque writes made through runtime helpers outside the subtree.
+Earlier pending operations are preserved.
+
+A successful fallback commits its recovery entries. An outer or interleaved
+sibling rollback never resurrects that boundary's disposed content or undoes
+its committed writes. Independent properties, children and handlers retain
+their own undo history; a committed recovery wins when it writes the same property.
+Replacing an ancestor's failed subtree can still unmount a nested fallback
+normally. A fallback that itself fails does not commit its partial recovery.
+Runtime identifiers remain monotonic across boundary rollbacks.
+
+Savepoints reset before the next mutation round. The shared journal is compacted
+at flush end, including rejected batches and exceptions, so boundaries retain
+no full-tree snapshots. External side effects and signal state changes are not
 transactional.
 
 Fallbacks **latch**: later publications do not retry the failed child. Remount
