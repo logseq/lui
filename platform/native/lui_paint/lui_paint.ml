@@ -578,8 +578,7 @@ let pbool store id name =
 let foreground_tokens =
   [ "background", "foreground"; "surface", "surface-foreground";
     "surface-raised", "surface-raised-foreground"; "card", "card-foreground";
-    "primary", "primary-foreground"; "secondary", "secondary-foreground";
-    "accent", "accent-foreground"; "muted", "muted-foreground";
+    "secondary", "secondary-foreground"; "muted", "muted-foreground";
     "destructive", "destructive-foreground"; "warning", "warning-foreground";
     "success", "success-foreground"; "info", "info-foreground";
     "glass", "foreground"; "bar", "foreground" ]

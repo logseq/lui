@@ -104,6 +104,16 @@ let test_blur_weight () =
 
 (* ---------- store→paint pipeline ---------- *)
 
+let test_foreground_tokens () =
+  List.iter (fun token ->
+    check string "accent ink and explicit ink tokens stay unchanged" token
+      (Lui_paint.foreground_token token))
+    ["primary"; "accent"; "primary-foreground"; "accent-foreground"; "#123456"];
+  check string "surface colors still select their ink" "surface-foreground"
+    (Lui_paint.foreground_token "surface");
+  check string "secondary containers still select their ink" "secondary-foreground"
+    (Lui_paint.foreground_token "secondary")
+
 let test_pipeline () =
   let t = Lui_store.create () in
   Lui_store.apply_batch t
@@ -142,4 +152,5 @@ let () =
          test_case "backdrop" `Quick test_backdrop_of;
          test_case "blur weight" `Quick test_blur_weight ]);
       ("pipeline",
-       [ test_case "store→paint" `Quick test_pipeline ]) ]
+       [ test_case "foreground tokens" `Quick test_foreground_tokens;
+         test_case "store→paint" `Quick test_pipeline ]) ]

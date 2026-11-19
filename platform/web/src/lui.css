@@ -20,6 +20,7 @@
 }
 
 :root, .dark, [data-kb-theme] {
+  --color-accent-ink: var(--lui-accent-ink);
   --lui-surface: var(--lui-secondary);
   --lui-surface-raised: var(--lui-card);
   --lui-muted: var(--lui-secondary);
@@ -69,6 +70,7 @@
   --lui-secondary: oklch(0.97 0 0);
   --lui-secondary-foreground: oklch(0.205 0 0);
   --lui-accent: oklch(0.97 0 0);
+  --lui-accent-ink: #1d4ed8;
   --lui-accent-foreground: oklch(0.205 0 0);
   --lui-muted-foreground: oklch(0.556 0 0);
   --lui-destructive: oklch(0.577 0.245 27.325);
@@ -98,6 +100,7 @@
   --lui-secondary: oklch(0.269 0 0);
   --lui-secondary-foreground: oklch(0.985 0 0);
   --lui-accent: oklch(0.269 0 0);
+  --lui-accent-ink: #93c5fd;
   --lui-accent-foreground: oklch(0.985 0 0);
   --lui-muted-foreground: oklch(0.708 0 0);
   --lui-destructive: oklch(0.396 0.141 25.723);
@@ -127,6 +130,7 @@
     --lui-secondary: oklch(0.269 0 0);
     --lui-secondary-foreground: oklch(0.985 0 0);
     --lui-accent: oklch(0.269 0 0);
+    --lui-accent-ink: #93c5fd;
     --lui-accent-foreground: oklch(0.985 0 0);
     --lui-muted-foreground: oklch(0.708 0 0);
     --lui-destructive: oklch(0.396 0.141 25.723);

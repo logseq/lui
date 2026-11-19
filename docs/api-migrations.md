@@ -1,5 +1,30 @@
 # LUI API migration guide
 
+### Foreground accent ink compatibility
+
+`primary` and `accent` in a foreground slot retain their accent ink color;
+they are not remapped to `primary-foreground` or `accent-foreground`. This
+restores pre-ADR-0007 heading and icon contrast, including Android light
+themes where `onPrimary` is white. Theme overrides for `primary` and `accent`
+continue to select that ink on native backends. Explicit `*-foreground` values remain available
+for content painted on a corresponding filled control.
+
+Container and surface tokens such as `surface`, `card`, `secondary` and
+`muted` still resolve to their ink counterparts in foreground slots. For
+example, keep `text ~foreground:"primary" ~value:"General" []` for an
+accent-colored heading, and use `~background:"primary"` with
+`~foreground:"primary-foreground"` for text on a primary fill. Background
+and border resolution is unchanged on all backends.
+
+Web separates accent ink from its neutral accent fill: `foreground:"accent"`
+uses `--lui-accent-ink` (`#1d4ed8` in light mode, `#93c5fd` in dark mode,
+including system dark mode). These defaults meet 4.5:1 contrast against
+background, secondary and accent fills. The fill tokens are unchanged;
+`foreground:"primary"` still uses primary ink. Web themes can customize
+`--lui-accent-ink` on their `[data-kb-theme]` scope independently of
+`--lui-accent`. For example, use `--lui-accent-ink: #1d4ed8` for blue text
+while keeping a pale neutral accent fill.
+
 ### Dynamic platform tweak attachment order
 
 Anchorless dynamic segments now reconcile child edges from descendants to
@@ -616,7 +641,8 @@ that need fixed line spacing can supply an explicit `line_height` metric.
 Existing colors, custom colors, theme overrides, and legacy aliases such as
 `title2` and `mono` remain available. Newly admitted colors reuse existing
 platform surfaces and accents rather than introducing a new palette.
-Foreground slots resolve container tokens through their corresponding ink
+Foreground slots resolve container tokens (excluding the accent ink names
+`primary` and `accent`) through their corresponding ink
 token: for example `~foreground:"secondary"` uses `secondary-foreground`, not
 the pale secondary background. Explicit `*-foreground` theme overrides win.
 Apple keeps its adaptive secondary style only when the corresponding

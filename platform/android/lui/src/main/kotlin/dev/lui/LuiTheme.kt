@@ -74,7 +74,7 @@ fun luiHexColor(name: String): Color? {
 /** Resolves a semantic color name against the inherited token table then
  * the Material 3 scheme, mirroring the Flutter `_color` mapping so both
  * mobile hosts agree. [foreground] picks the "on-*" variant for pair
- * tokens like `accent`/`secondary`/`warning`/`success`/`error`. */
+ * tokens like `secondary`/`warning`/`success`/`error`. */
 @Composable
 fun luiThemeColor(name: String?, foreground: Boolean = false): Color? {
     if (name == null || (foreground && name.isBlank())) return null
@@ -100,8 +100,7 @@ internal val LocalLuiInheritedForeground = compositionLocalOf<Color?> { null }
 internal val luiForegroundTokens = mapOf(
     "background" to "foreground", "surface" to "foreground",
     "surface-raised" to "foreground", "card" to "card-foreground",
-    "primary" to "primary-foreground", "secondary" to "secondary-foreground",
-    "accent" to "accent-foreground", "muted" to "muted-foreground",
+    "secondary" to "secondary-foreground", "muted" to "muted-foreground",
     "destructive" to "destructive-foreground", "warning" to "warning-foreground",
     "success" to "success-foreground", "info" to "info-foreground",
     "glass" to "foreground", "bar" to "foreground",

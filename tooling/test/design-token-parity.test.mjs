@@ -42,7 +42,7 @@ test('every canonical color resolves in each backend and both native palettes', 
 });
 
 test('container colors have admitted foreground counterparts rather than raw fills', () => {
-  const nonContainers = new Set(['foreground', 'muted-foreground', 'border', 'input', 'ring', 'transparent']);
+  const nonContainers = new Set(['primary', 'accent', 'foreground', 'muted-foreground', 'border', 'input', 'ring', 'transparent']);
   const containers = vocabulary.colors.filter(name => !nonContainers.has(name));
   const tables = {
     Web: [between(web, 'let foreground_tokens =', 'let space_tokens'), /"([^"]+)",\s*"([^"]+)"/g],
@@ -52,6 +52,9 @@ test('container colors have admitted foreground counterparts rather than raw fil
   };
   for (const [backend, [source, pattern]] of Object.entries(tables)) {
     const pairs = new Map([...source.matchAll(pattern)].map(m => [m[1], m[2]]));
+    for (const name of ['primary', 'accent']) {
+      assert.equal(pairs.get(name), undefined, `${backend} keeps ${name} as accent ink`);
+    }
     const admitted = colorTables[backend === 'Native' ? 'NativeLight' : backend];
     for (const name of containers) {
       const target = pairs.get(name);
