@@ -240,6 +240,13 @@ let refresh_parent_for_prop renderer effects node property =
       | None -> ())
   | None -> ()
 
+let attach_mounted_root renderer node =
+  match Store.node renderer.web_store node,
+    Hashtbl.find_opt renderer.web_mounted_roots node with
+  | Some current, Some host when current.retained_parent = None ->
+      W.Element.appendChild (W.Element.asNode (Lazy.force current.platform_node)) host
+  | _ -> ()
+
 let apply_create renderer node kind =
   let created = Nodes.dom_node renderer node in
   (* the store already holds this batch's `as` prop at DOM-apply time, so a
@@ -261,7 +268,8 @@ let apply_create renderer node kind =
   if kind = Accordion then Util.initialize_accordion_semantics node created;
   if kind = ViewThatFits then Lui_web_fit.attach renderer node created;
   if kind = ListContainer then Lui_web_list.install renderer node;
-  Lui_web_events.attach_events renderer node kind created
+  Lui_web_events.attach_events renderer node kind created;
+  attach_mounted_root renderer node
 
 let popup_container = Nodes.popup_container
 
@@ -868,7 +876,8 @@ let apply_dom_op renderer previous_nodes children_of effects visible
       match Store.node renderer.web_store node with
       | Some current ->
           W.Element.setAttribute "id" (Util.node_dom_id node)
-            (Lazy.force current.platform_node)
+            (Lazy.force current.platform_node);
+          attach_mounted_root renderer node
       | None -> ())
   | DropNode node ->
       if known_node renderer previous_nodes node then begin

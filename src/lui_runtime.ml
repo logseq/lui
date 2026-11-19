@@ -2972,10 +2972,13 @@ let rec stabilize application =
 
 let normalize_pending_sizes application =
   let nodes = Hashtbl.create 8 in
-  List.iter (function
-    | SetProp (node, property, _) | RemoveProp (node, property)
-      when List.mem property size_properties -> Hashtbl.replace nodes node ()
-    | _ -> ()) !(application.pending_ops);
+  if !(application.runtime_resync_required) then
+    Hashtbl.iter (fun node _ -> Hashtbl.replace nodes node ()) application.runtime_properties
+  else
+    List.iter (function
+      | SetProp (node, property, _) | RemoveProp (node, property)
+        when List.mem property size_properties -> Hashtbl.replace nodes node ()
+      | _ -> ()) !(application.pending_ops);
   Hashtbl.iter (fun node () ->
     match Hashtbl.find_opt application.runtime_properties node with
     | None -> ()

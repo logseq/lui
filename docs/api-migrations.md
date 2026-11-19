@@ -361,6 +361,9 @@ followed by a complete snapshot of the surviving runtime tree. This preserves
 earlier pending state and committed sibling recoveries without replaying stale
 indices, unlinking descendants before subtree removal, or attaching incomplete
 tweaks. Successful publications remain incremental.
+Before resync, surviving and restored size properties are normalized even if
+their original operations were discarded (for example, width 10 with
+min-width 100 is stored and sent as width 100).
 
 Text, toggle and numeric echo markers have independent undo entries; unrelated
 recovery styling cannot commit the echo marker of a discarded value.
