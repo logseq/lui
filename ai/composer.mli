@@ -9,7 +9,7 @@ open Lui_elements
 
 (** Optional platform file/photo/camera picker wiring. With [picker],
     the attach control drives an internal request token and the host
-    receives the raw [Picked] event via [on_picked] — decode it with
+    receives the encoded batch string via [on_picked] — decode it with
     [Lui_picked_files.decode] and copy/import files BEFORE
     acknowledging. The library never auto-acks a pick: echo the batch's
     request token through [picker_completion] when the import settles
@@ -44,13 +44,13 @@ val composer :
   ?controls:t list ->
   ?trailing_controls:t list ->
   ?picker:picker ->
-  ?on_picked:(Lui_protocol.event -> unit) ->
-  ?on_picker_dismiss:(Lui_protocol.event -> unit) ->
+  ?on_picked:(string -> unit) ->
+  ?on_picker_dismiss:(unit -> unit) ->
   ?picker_completion:Lui_elements.file_picker_token Signal.signal ->
-  ?on_attach:(Lui_protocol.event -> unit) ->
-  on_input:(Lui_protocol.event -> unit) ->
-  on_send:(Lui_protocol.event -> unit) ->
-  ?on_stop:(Lui_protocol.event -> unit) ->
+  ?on_attach:(unit -> unit) ->
+  on_input:(string -> unit) ->
+  on_send:(unit -> unit) ->
+  ?on_stop:(unit -> unit) ->
   unit ->
   t
 (** - [on_send] fires on the send button and (with [submit_on_enter])

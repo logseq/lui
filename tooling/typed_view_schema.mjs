@@ -1,3 +1,5 @@
+import { callbackContract } from './event_payload_schema.mjs';
+
 // The supported signature grammar is deliberately closed: API changes that
 // cannot be represented must fail generation rather than weaken admission.
 function uncomment(source) {
@@ -198,7 +200,8 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         continue;
       }
       if (label.startsWith('on_')) {
-        if (!(extension ? /^\(\w+ -> unit\)$/.test(type) : type === '(Lui_protocol.event -> unit)')) throw new Error(`unknown event type: ${wire}.${label}`);
+        const contract = callbackContract(schema, name, label);
+        if (!(extension ? /^\([\w.]+ -> unit\)$/.test(type) : contract && type === `(${contract.payload} -> unit)`)) throw new Error(`unknown event type: ${wire}.${label}`);
         const event = label.slice(3);
         for (const value of ((!extension && {value_changed: ['value'], navigate: ['navigate-previous', 'navigate-next', 'navigation-key'],
           press: ['press', 'press-modifiers']}[event]) || [wireName(event)])) events.add(value);

@@ -1495,7 +1495,7 @@ let test_text_navigation_callbacks () =
     drive_send s (NavigatePrevious field);
     drive_send s (NavigateNext field);
     Alcotest.(check bool) "typed handler receives both directions" true
-      (!received = [NavigateNext field;NavigatePrevious field]);
+      (!received = [Lui_elements.Next; Lui_elements.Previous]);
     drive_dispose s)
     ["text-field",(fun f -> Lui_elements.text_field ~on_navigate:f []);
      "secure-field",(fun f -> Lui_elements.secure_field ~on_navigate:f []);
@@ -1512,7 +1512,7 @@ let test_button_navigation_callback () =
   let event = Lui_protocol.NavigationKey (id,"PageDown",true) in
   drive_send s event;
   Alcotest.(check bool) "the public button API delivers typed navigation" true
-    (!received=[event]);
+    (!received=[Lui_elements.Key { key = "PageDown"; shift = true }]);
   drive_dispose s
 
 let test_input_blur_callback () =
@@ -1531,6 +1531,107 @@ let test_input_blur_callback () =
      "input",(fun f -> Lui_elements.input ~kind:`time ~submit_on_blur:true ~on_submit:f []);
      "search-field",(fun f -> Lui_elements.search_field ~submit_on_blur:true ~on_submit:f []);
      "textarea",(fun f -> Lui_elements.textarea ~submit_on_blur:true ~on_submit:f [])]
+
+let test_typed_event_decoders () =
+  let open Lui_protocol in
+  let module E = Lui_event_payloads in
+  Alcotest.(check bool) "unit payload" true (E.on_press (Press 7) = Some ());
+  Alcotest.(check bool) "modified press has a unit payload" true
+    (E.on_press (PressModifiers (7, 3)) = Some ());
+  Alcotest.(check bool) "empty text is a valid payload" true
+    (E.on_input (TextChanged (7, "")) = Some "");
+  Alcotest.(check bool) "text payload" true
+    (E.on_input (TextChanged (7, "hello")) = Some "hello");
+  Alcotest.(check bool) "false is a valid toggle payload" true
+    (E.on_toggle (ToggleChanged (7, false)) = Some false);
+  Alcotest.(check bool) "numeric payload" true
+    (E.on_value_changed (ValueChanged (7, 2.5)) = Some 2.5);
+  Alcotest.(check bool) "picked payload remains the host string" true
+    (E.on_picked (Picked (7, "{}")) = Some "{}");
+  Alcotest.(check bool) "integral scroll token is preserved" true
+    (E.on_scroll_completed (ScrollCompleted (7, 42, "completed"))
+     = Some { E.token = 42; outcome = "completed" });
+  Alcotest.(check bool) "range payload" true
+    (E.on_visible_range (VisibleRange (7, 3, 8))
+     = Some (E.Range { first = 3; last = 8 }));
+  Alcotest.(check bool) "edge payload" true
+    (E.on_visible_range (ScrollEdges (7, true, false))
+     = Some (E.Edges { at_start = true; at_end = false }));
+  Alcotest.(check bool) "toggle modifiers" true
+    (E.on_toggle_detail (ToggleChangedDetail (7, true, 4))
+     = Some { E.checked = true; modifiers = 4 });
+  let detail = { x = 2.; y = 4.; modifiers = 3; button = 1; target_class = "" } in
+  List.iter (fun (decode, event) ->
+    Alcotest.(check bool) "pointer fields are preserved" true (decode event = Some detail))
+    [ E.on_press_detail, PressDetail (7, detail);
+      E.on_pointer_down, PointerDown (7, detail);
+      E.on_pointer_up, PointerUp (7, detail);
+      E.on_pointer_move, PointerMove (7, detail);
+      E.on_pointer_cancel, PointerCancel (7, detail);
+      E.on_context_menu, ContextMenuPress (7, detail) ];
+  Alcotest.(check bool) "wrong event is not decoded" true (E.on_input (Press 7) = None);
+  Alcotest.(check bool) "non-finite number is malformed" true
+    (E.on_resize (ValueChanged (7, Float.nan)) = None);
+  Alcotest.(check bool) "non-finite coordinate is malformed" true
+    (E.on_pointer_down (PointerDown (7, { detail with y = Float.infinity })) = None)
+
+let test_typed_callback_dispatch () =
+  let open Lui_protocol in
+  let presses = ref 0 and inputs = ref [] and toggles = ref [] and values = ref [] in
+  let pointers = ref [] in
+  let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ ->
+      Lui_elements.column
+        [ Lui_elements.button ~text:"Typed"
+            ~on_press:(fun () -> incr presses)
+            ~on_press_detail:(fun detail -> pointers := detail :: !pointers) [];
+          Lui_elements.text_field ~text:"initial"
+            ~on_input:(fun value -> inputs := value :: !inputs) [];
+          Lui_elements.checkbox ~checked:false
+            ~on_toggle:(fun checked -> toggles := checked :: !toggles) [];
+          Lui_elements.slider ~label:"Typed value" ~value:0.
+            ~on_change:(fun value -> values := value :: !values) [] ]) () in
+  let node kind = (drive_node s (Drive.Model.Kind kind)).Drive.Model.id in
+  drive_send s (Press (node "button"));
+  drive_send s (TextChanged (node "text-field", ""));
+  drive_send s (TextChanged (node "text-field", "typed"));
+  drive_send s (ToggleChanged (node "checkbox", true));
+  drive_send s (ValueChanged (node "slider", 0.75));
+  let detail = { x = 1.; y = 2.; modifiers = 8; button = 0; target_class = "target" } in
+  drive_send s (PressDetail (node "button", detail));
+  Alcotest.(check int) "unit handler called" 1 !presses;
+  Alcotest.(check (list string)) "string handler called" ["typed"; ""] !inputs;
+  Alcotest.(check (list bool)) "bool handler called" [true] !toggles;
+  Alcotest.(check bool) "float handler called" true (!values = [0.75]);
+  Alcotest.(check bool) "pointer handler called" true (!pointers = [detail]);
+  let log = Filename.temp_file "lui-event-diagnostic" ".log" in
+  let output = open_out log in
+  let stderr_fd = Unix.descr_of_out_channel stderr in
+  let saved = Unix.dup stderr_fd in
+  flush stderr;
+  Fun.protect ~finally:(fun () ->
+    flush stderr;
+    Unix.dup2 saved stderr_fd;
+    Unix.close saved;
+    close_out output)
+    (fun () ->
+      Unix.dup2 (Unix.descr_of_out_channel output) stderr_fd;
+      drive_send s (ValueChanged (node "slider", Float.nan));
+      drive_send s (PressDetail (node "button", { detail with x = Float.infinity })));
+  let input = open_in log in
+  let diagnostic = really_input_string input (in_channel_length input) in
+  close_in input;
+  Sys.remove log;
+  Alcotest.(check string) "malformed payloads are diagnosed"
+    ("LUI event: malformed on_resize payload; skipping handler\n"
+     ^ "LUI event: malformed on_press_detail payload; skipping handler\n")
+    diagnostic;
+  Alcotest.(check bool) "malformed number skipped" true (!values = [0.75]);
+  Alcotest.(check bool) "malformed pointer skipped" true (!pointers = [detail]);
+  drive_send s (ValueChanged (node "slider", 0.5));
+  Alcotest.(check bool) "valid event after malformed payload still works" true
+    (!values = [0.5; 0.75]);
+  drive_dispose s
 
 let test_pointer_events () =
   let open Lui_protocol in
@@ -2195,11 +2296,8 @@ let test_file_picker () =
            [ Lui_elements.file_picker ~source:`photos
                ~request:(`String "op-1") ~types:"public.image" ~multiple:true
                ~completion:(`String "")
-               ~on_picked:(fun event ->
-                 match event with
-                 | Picked (_, payload) ->
-                   picked_payloads := payload :: !picked_payloads
-                 | _ -> ())
+               ~on_picked:(fun payload ->
+                 picked_payloads := payload :: !picked_payloads)
                ~on_dismiss:(fun _ -> incr dismissed)
                [];
              Lui_elements.file_picker ~request:(`Int 7) [] ])
@@ -3188,11 +3286,8 @@ let test_number_stepper_props () =
          Lui_elements.column
            [ Lui_elements.number_stepper ~value:5.0 ~min:0.0 ~max:3660.0
                ~step:1.0 ~text:"Days"
-               ~on_value_changed:(fun event ->
-                  match event with
-                  | Lui_protocol.ValueChanged (_, value) ->
-                      changes := value :: !changes
-                  | _ -> ())
+               ~on_value_changed:(fun value ->
+                 changes := value :: !changes)
                [] ])
       ()
   in
@@ -4034,9 +4129,7 @@ let test_composer_editing_with_busy_action_row () =
       ~view:(fun _context _model _send ->
         Lui_element_combine.composer ~placeholder:"New thought…"
           ~text:initial
-          ~on_input:(fun event -> match event with
-            | Lui_protocol.TextChanged (_, text) -> edits := text :: !edits
-            | _ -> ())
+          ~on_input:(fun text -> edits := text :: !edits)
           ~actions:(List.init 5 (fun n -> Lui_elements.button
             ~text:("Action " ^ string_of_int n)
             ~width:44 ~height:44 ~label:("Action " ^ string_of_int n)
@@ -4647,9 +4740,8 @@ let fixture ?(host = WebHost) ?(count = 100_000) ?height
            let text = Signal.own_signal context.Lui_ui.ui_scope
              (Signal.map (fun row -> row.text) item_source) in
            Lui_elements.text_field ~text_signal:text
-             ~on_input:(function
-               | TextChanged (_, text) -> ignore (send (Edit (row.identity, text)))
-               | _ -> ()) [] context parent)
+             ~on_input:(fun text ->
+               ignore (send (Edit (row.identity, text)))) [] context parent)
          ()] in
   let app = Lui_app.create backend (rows count) reducer view in
   ignore (Lui_app.start app);
@@ -6450,6 +6542,8 @@ let () =
           Alcotest.test_case "button navigation callback" `Quick test_button_navigation_callback;
           Alcotest.test_case "input blur callback" `Quick test_input_blur_callback;
           Alcotest.test_case "pointer events" `Quick test_pointer_events;
+          Alcotest.test_case "typed event payload decoders" `Quick test_typed_event_decoders;
+          Alcotest.test_case "typed callback dispatch and malformed payloads" `Quick test_typed_callback_dispatch;
           Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
           Alcotest.test_case "pixel split echoes" `Quick test_split_pixel_echoes;
           Alcotest.test_case "value echoes dropped" `Quick

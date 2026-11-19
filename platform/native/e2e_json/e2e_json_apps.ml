@@ -41,10 +41,10 @@ module Menu_app = struct
     column ~padding:8
       [ textarea ~width:200 ~height:40
           ~text_signal:(reactive (fun m -> m.area) ms)
-          ~on_context_menu:(press send Open)
+          ~on_context_menu:(fun _ -> press send Open ())
           ~on_input:(on_input send (fun s -> Area s)) []
       ; button ~text:"menu" ~on_press:(press send Open)
-          ~on_context_menu:(press send Open) []
+          ~on_context_menu:(fun _ -> press send Open ()) []
       ; text ~value:(reactive (fun m -> "picked:" ^ m.picked) ms) []
       ; context_menu
           [ keyed ~source:(map (fun m -> m.menu) ms) ~key:(fun s -> s)

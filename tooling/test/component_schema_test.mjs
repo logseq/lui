@@ -5,7 +5,8 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { typedViewFunctions } from '../typed_view_schema.mjs';
+import { typedViewFunctions, typedViewSchema } from '../typed_view_schema.mjs';
+import { callbackContract, renderEventPayloads } from '../event_payload_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const generator = join(repository, 'tooling/generate_component_schema.mjs');
@@ -61,6 +62,12 @@ test('element constructors expose only admitted properties and events', () => {
       if (constructor === 'scroll' && base === 'virtual_owner' && type === 'Lui_virtual.owner') continue;
       if (constructor === 'virtual_list' && base === 'viewport' && type === 'Lui_virtual.source') continue;
       if (parameter.startsWith('on_')) {
+        assert.notEqual(type, '(Lui_protocol.event -> unit)',
+          `${constructor}.${parameter} exposes a raw event callback`);
+        const contract = callbackContract(schema, constructor, parameter);
+        assert.ok(contract, `missing payload contract for ${constructor}.${parameter}`);
+        assert.equal(type, `(${contract.payload} -> unit)`,
+          `incorrect payload type for ${constructor}.${parameter}`);
         const handler = parameter.slice(3);
         const event = handler === 'change' && constructor === 'slider' ? 'ValueChanged'
           : handler === 'navigate' ? (['button', 'icon_button', 'row', 'box'].includes(constructor) ? 'NavigationKey' : 'NavigateNext')
@@ -91,6 +98,42 @@ test('element constructors expose only admitted properties and events', () => {
     }
   }
   assert.deepEqual(violations, []);
+});
+
+test('raw constructor callbacks and schema payload drift are rejected', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const signature = readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8');
+  const implementation = readFileSync(join(repository, 'src/lui_elements.ml'), 'utf8');
+  const raw = signature.replace('?on_press:(unit -> unit)', '?on_press:(Lui_protocol.event -> unit)');
+  assert.notEqual(raw, signature);
+  assert.throws(() => typedViewSchema(schema, raw, implementation), /unknown event type: table-cell.on_press/);
+  const changed = structuredClone(schema);
+  changed.events.find(event => event.lg === 'ValueChanged').fields[1] = ':int';
+  assert.throws(() => renderEventPayloads(changed), /incompatible callback scalar on_resize/);
+});
+
+test('validation and rendering reject unknown callback events', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const directory = mkdtempSync(join(tmpdir(), 'lui-callback-schema-'));
+  const manifest = join(directory, 'callbacks.json');
+  assert.equal(runGenerator(['--validate']).status, 0);
+  schema.eventCallbacks.on_press.events.push('MissingPress');
+  writeFileSync(manifest, JSON.stringify(schema));
+  const result = runGenerator(['--manifest', manifest, '--validate']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unknown callback event MissingPress/);
+  assert.throws(() => renderEventPayloads(schema), /unknown callback event MissingPress/);
+});
+
+test('press registration filters exactly the schema decoder events', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const implementation = readFileSync(join(repository, 'src/lui_elements.ml'), 'utf8');
+  const filter = implementation.match(/let is_press = function([\s\S]*?)\nlet /)[1];
+  const accepted = [...filter.matchAll(/\b([A-Z]\w*) _/g)].map(([, event]) => event);
+  assert.deepEqual(accepted.sort(), [...schema.eventCallbacks.on_press.events].sort());
+  const registration = implementation.match(/let register_press\b([\s\S]*?)\nlet /)[1];
+  assert.match(registration, /on_event context node is_press/);
+  assert.match(registration, /Lui_event_payloads\.on_press/);
 });
 
 test('semantic tag families exactly match emit-time validation', () => {

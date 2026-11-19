@@ -12,11 +12,8 @@ let view _context model_s send =
   let on_scroll_completed =
     if model.Model.debug then
       Some
-        (fun (ev : Lui_protocol.event) ->
-           match ev with
-           | Lui_protocol.ScrollCompleted (_, _, outcome) ->
-               ignore (send (Model.ScrollOutcome outcome))
-           | _ -> ())
+        (fun { outcome; _ } ->
+           ignore (send (Model.ScrollOutcome outcome)))
     else None
   in
   if model.Model.plain then

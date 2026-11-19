@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { typedViewFunctions, typedViewSchema, typedViewSignature } from './typed_view_schema.mjs';
+import { renderEventPayloads, validateCallbackEvents } from './event_payload_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const defaultManifest = resolve(repository, 'schema/components.json');
@@ -45,6 +46,11 @@ function validate(schema) {
   unique(schema.properties, 'wire', 'property wire name');
   unique(schema.properties, 'swift', 'property Swift name');
   unique(schema.events, 'lg', 'event LG name');
+  try {
+    validateCallbackEvents(schema);
+  } catch (error) {
+    fail(error.message);
+  }
   for (const category of ['colors', 'spaces', 'radii', 'textRoles', 'textModifiers']) {
     const tokens = schema.designTokens?.[category];
     if (!Array.isArray(tokens) || tokens.length === 0) fail(`missing design token vocabulary: ${category}`);
@@ -528,7 +534,10 @@ let exports = function
 }
 
 function artifacts(schema) {
+  const payloads = renderEventPayloads(schema);
   return new Map([
+    ['src/lui_event_payloads.ml', payloads.implementation],
+    ['src/lui_event_payloads.mli', payloads.signature],
     ['ppx/lui_nesting_schema.ml', renderNestingSchema(schema)],
     ['src/lui_protocol.mli', renderProtocolSignature(schema)],
     ['src/lui_wire_schema.ml', renderOCamlWire(schema)],

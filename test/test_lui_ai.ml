@@ -380,7 +380,7 @@ let test_composer_send_stop () =
           ~draft:(Lui_elements.map fst model_s)
           ~generating:(Lui_elements.map snd model_s)
           ~on_input:(fun ev ->
-            match ev with TextChanged (_, t) -> typed := t | _ -> ())
+            typed := ev)
           ~on_send:(fun _ -> incr sent)
           ~on_stop:(fun _ -> incr stopped) ())
   in
@@ -536,7 +536,7 @@ let test_picker_async_ack () =
         ~picker:{ source = `files; types = None; accept = None;
                   multiple = true }
         ~on_picked:(fun ev ->
-          match ev with Picked (_, p) -> picked := p :: !picked | _ -> ())
+          picked := ev :: !picked)
         ~on_input:(fun _ -> ()) ~on_send:(fun _ -> ()) ()) in
   let s = drive_mount ~initial:() ~view in
   let picker =

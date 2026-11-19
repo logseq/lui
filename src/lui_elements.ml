@@ -5,6 +5,15 @@ open Lui_protocol
 
 type t = Lui_ui.ui_context -> int option -> int
 
+type pointer_detail = Lui_protocol.pointer_detail
+type toggle_detail = Lui_event_payloads.toggle_detail = { checked : bool; modifiers : int }
+type navigation_key = Lui_event_payloads.navigation_key = { key : string; shift : bool }
+type scroll_completed = Lui_event_payloads.scroll_completed = { token : int; outcome : string }
+type range = Lui_event_payloads.range = { first : int; last : int }
+type scroll_edges = Lui_event_payloads.scroll_edges = { at_start : bool; at_end : bool }
+type navigation = Lui_event_payloads.navigation = Previous | Next | Key of navigation_key
+type visible_range = Lui_event_payloads.visible_range = Range of range | Edges of scroll_edges
+
 (* Closed vocabularies from the wire schema: fixed-value props are typed as
    polymorphic variants so invalid values fail [dune build] instead of
    erroring inside [emit_patch] at emit time. [icon] also accepts
@@ -651,16 +660,18 @@ let keyed_table_cell = keyed
 let keyed_radio = keyed
 let keyed_swipe_action = keyed
 
-let press send action _event = ignore (send action)
+let press send action () = ignore (send action)
 
-let on_input send wrap event =
-  match event with
-  | TextChanged (_node, text) -> ignore (send (wrap text))
-  | _ -> ()
+let on_input send wrap text = ignore (send (wrap text))
 
 let on_event context node predicate handler =
   Lui_ui.on_event context node (fun event ->
       if predicate event then handler event)
+
+let typed_handler name decode handler event =
+  match decode event with
+  | Some payload -> handler payload
+  | None -> Printf.eprintf "LUI event: malformed %s payload; skipping handler\n%!" name
 
 let is_press = function
   | Press _ | PressModifiers _ -> true
@@ -714,83 +725,91 @@ let require_event_supported context node event label =
 let register_press context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (Press node) "press";
-  ignore (on_event context node is_press handler)
+  ignore (on_event context node is_press (typed_handler "on_press" Lui_event_payloads.on_press handler))
 
 let register_long_press context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (LongPress node) "long-press";
-  ignore (on_event context node is_long_press handler)
+  ignore (on_event context node is_long_press (typed_handler "on_long_press" Lui_event_payloads.on_long_press handler))
 
 let register_double_press context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (DoublePress node) "double-press";
-  ignore (on_event context node is_double_press handler)
+  ignore (on_event context node is_double_press (typed_handler "on_double_press" Lui_event_payloads.on_double_press handler))
 
 let register_change context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (Change node) "change";
-  ignore (on_event context node is_change handler)
+  ignore (on_event context node is_change (typed_handler "on_change" Lui_event_payloads.on_change handler))
 
 let register_input context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (TextChanged (node, "")) "input";
-  ignore (on_event context node is_input handler)
+  ignore (on_event context node is_input (typed_handler "on_input" Lui_event_payloads.on_input handler))
 
 let register_submit context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (Submit node) "submit";
-  ignore (on_event context node is_submit handler)
+  ignore (on_event context node is_submit (typed_handler "on_submit" Lui_event_payloads.on_submit handler))
 
 let register_navigate context node handler =
   enable context node NavigateEnabled;
   let event = if List.mem (Lui_ui.node_kind context node) [Button; Row; Box]
     then NavigationKey (node,"ArrowRight",false) else NavigateNext node in
   require_event_supported context node event "navigate";
-  on_event context node is_navigate handler
+  on_event context node is_navigate (typed_handler "on_navigate" Lui_event_payloads.on_navigate handler)
+
+let register_navigation_key context node handler =
+  enable context node NavigateEnabled;
+  require_event_supported context node
+    (NavigationKey (node, "ArrowRight", false)) "navigation-key";
+  ignore (on_event context node
+    (function NavigationKey _ -> true | _ -> false)
+    (typed_handler "on_navigation_key" Lui_event_payloads.on_navigation_key handler))
 
 let register_toggle context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (ToggleChanged (node, false)) "toggle";
-  ignore (on_event context node is_toggle handler)
+  ignore (on_event context node is_toggle (typed_handler "on_toggle" Lui_event_payloads.on_toggle handler))
 
 let register_toggle_detail context node handler =
   enable context node PointerEnabled;
   enable context node ToggleDetailEnabled;
   require_event_supported context node (ToggleChangedDetail (node, false, 0)) "toggle-detail";
-  ignore (on_event context node is_toggle_detail handler)
+  ignore (on_event context node is_toggle_detail (typed_handler "on_toggle_detail" Lui_event_payloads.on_toggle_detail handler))
 
 let register_dismiss context node handler =
   require_event_supported context node (Dismiss node) "dismiss";
-  ignore (on_event context node is_dismiss handler)
+  ignore (on_event context node is_dismiss (typed_handler "on_dismiss" Lui_event_payloads.on_dismiss handler))
 
 let register_picked context node handler =
   require_event_supported context node (Picked (node, "")) "picked";
-  ignore (on_event context node is_picked handler)
+  ignore (on_event context node is_picked (typed_handler "on_picked" Lui_event_payloads.on_picked handler))
 
 let register_load context node handler =
   require_event_supported context node (Load node) "load";
-  ignore (on_event context node is_load handler)
+  ignore (on_event context node is_load (typed_handler "on_load" Lui_event_payloads.on_load handler))
 
 let appear_handler context node handler =
   enable context node AppearEnabled;
-  ignore (on_event context node is_appear handler)
+  ignore (on_event context node is_appear (typed_handler "on_appear" Lui_event_payloads.on_appear handler))
 
 let register_resize context node handler =
   enable context node ChangeEnabled;
   require_event_supported context node (ValueChanged (node, 0.)) "resize";
-  ignore (on_event context node is_resize handler)
+  ignore (on_event context node is_resize (typed_handler "on_resize" Lui_event_payloads.on_resize handler))
 
 let register_scroll_completed context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (ScrollCompleted (node, 0, ""))
     "scroll-completed";
-  ignore (on_event context node is_scroll_completed handler)
+  ignore (on_event context node is_scroll_completed (typed_handler "on_scroll_completed" Lui_event_payloads.on_scroll_completed handler))
 
 let register_visible_range context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (VisibleRange (node, 0, 0))
     "visible-range";
-  ignore (on_event context node is_visible_range handler)
+  ignore (on_event context node is_visible_range (typed_handler "on_visible_range" Lui_event_payloads.on_visible_range handler))
 
 let is_press_detail = function PressDetail _ -> true | _ -> false
 let is_pointer_down = function PointerDown _ -> true | _ -> false
@@ -809,52 +828,53 @@ let register_press_detail context node handler =
   require_event_supported context node
     (PressDetail (node, pointer_detail_probe))
     "press-detail";
-  ignore (on_event context node is_press_detail handler)
+  ignore (on_event context node is_press_detail (typed_handler "on_press_detail" Lui_event_payloads.on_press_detail handler))
 
 let register_pointer_down context node handler =
   enable context node PointerEnabled;
   require_event_supported context node
     (PointerDown (node, pointer_detail_probe))
     "pointer-down";
-  ignore (on_event context node is_pointer_down handler)
+  ignore (on_event context node is_pointer_down (typed_handler "on_pointer_down" Lui_event_payloads.on_pointer_down handler))
 
 let register_pointer_up context node handler =
   enable context node PointerEnabled;
   require_event_supported context node
     (PointerUp (node, pointer_detail_probe))
     "pointer-up";
-  ignore (on_event context node is_pointer_up handler)
+  ignore (on_event context node is_pointer_up (typed_handler "on_pointer_up" Lui_event_payloads.on_pointer_up handler))
 
 let register_pointer_move context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (PointerMove (node, pointer_detail_probe)) "pointer-move";
-  ignore (on_event context node is_pointer_move handler)
+  ignore (on_event context node is_pointer_move (typed_handler "on_pointer_move" Lui_event_payloads.on_pointer_move handler))
 
 let register_pointer_cancel context node handler =
   enable context node PointerEnabled;
   require_event_supported context node (PointerCancel (node, pointer_detail_probe)) "pointer-cancel";
-  ignore (on_event context node is_pointer_cancel handler)
+  ignore (on_event context node is_pointer_cancel (typed_handler "on_pointer_cancel" Lui_event_payloads.on_pointer_cancel handler))
 
 let register_focus_within context node handler =
   Lui_ui.bool_property context node FocusWithinEnabled true;
   Lui_ui.on_event context node (function
-    | FocusWithinChanged (_, within) -> handler within
+    | FocusWithinChanged _ as event ->
+      typed_handler "on_focus_within" Lui_event_payloads.on_focus_within handler event
     | _ -> ())
 
 let register_pointer_enter context node handler =
   enable context node PointerEnabled;
-  ignore (on_event context node is_pointer_enter handler)
+  ignore (on_event context node is_pointer_enter (typed_handler "on_pointer_enter" Lui_event_payloads.on_pointer_enter handler))
 
 let register_pointer_leave context node handler =
   enable context node PointerEnabled;
-  ignore (on_event context node is_pointer_leave handler)
+  ignore (on_event context node is_pointer_leave (typed_handler "on_pointer_leave" Lui_event_payloads.on_pointer_leave handler))
 
 let register_context_menu_press context node handler =
   enable context node PointerEnabled;
   require_event_supported context node
     (ContextMenuPress (node, pointer_detail_probe))
     "context-menu-press";
-  ignore (on_event context node is_context_menu_press handler)
+  ignore (on_event context node is_context_menu_press (typed_handler "on_context_menu" Lui_event_payloads.on_context_menu handler))
 
 let apply_pointer_events context node ?on_press_detail ?on_pointer_down
     ?on_pointer_up ?on_context_menu () =
@@ -931,7 +951,7 @@ let row ?as_ ?key ?gap ?main ?cross ?grow ?shrink ?orientation ?orientation_sign
   Option.iter (register_pointer_move context node) on_pointer_move;
   Option.iter (register_pointer_up context node) on_pointer_up;
   Option.iter (register_pointer_cancel context node) on_pointer_cancel;
-  Option.iter (fun handler -> ignore (register_navigate context node handler)) on_navigation_key;
+  Option.iter (register_navigation_key context node) on_navigation_key;
   Option.iter (register_focus_within context node) on_focus_within;
   attach context parent node;
   mount_children context node children;
@@ -1082,7 +1102,7 @@ let box ?key ?gap ?main ?cross ?grow ?shrink ?padding ?padding_horizontal ?paddi
   Option.iter (register_pointer_move context node) on_pointer_move;
   Option.iter (register_pointer_up context node) on_pointer_up;
   Option.iter (register_pointer_cancel context node) on_pointer_cancel;
-  Option.iter (fun handler -> ignore (register_navigate context node handler)) on_navigation_key;
+  Option.iter (register_navigation_key context node) on_navigation_key;
   Option.iter (register_focus_within context node) on_focus_within;
   attach context parent node;
   mount_children context node children;
@@ -1751,7 +1771,7 @@ let radio ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_ver
   let press_handler =
     match on_press with
     | Some _ -> on_press
-    | None -> on_toggle
+    | None -> Option.map (fun handler () -> handler true) on_toggle
   in
   (match press_handler with
    | Some handler ->

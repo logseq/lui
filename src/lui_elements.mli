@@ -8,6 +8,15 @@
 
 type t = Lui_ui.ui_context -> int option -> int
 
+type pointer_detail = Lui_protocol.pointer_detail
+type toggle_detail = Lui_event_payloads.toggle_detail = { checked : bool; modifiers : int }
+type navigation_key = Lui_event_payloads.navigation_key = { key : string; shift : bool }
+type scroll_completed = Lui_event_payloads.scroll_completed = { token : int; outcome : string }
+type range = Lui_event_payloads.range = { first : int; last : int }
+type scroll_edges = Lui_event_payloads.scroll_edges = { at_start : bool; at_end : bool }
+type navigation = Lui_event_payloads.navigation = Previous | Next | Key of navigation_key
+type visible_range = Lui_event_payloads.visible_range = Range of range | Edges of scroll_edges
+
 (** Closed vocabularies from the wire schema: every parameter that only
     accepts a fixed set of values is a polymorphic variant so wrong values
     fail [dune build] instead of erroring inside [emit_patch]. *)
@@ -289,17 +298,17 @@ val keyed_swipe_action :
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> swipe_action_el) -> swipe_action_el
 
-(** Event-handler builders: element [~on_*] parameters take an
-    [event -> unit] callback and imply their enable flags automatically
+(** Event-handler builders: element [~on_*] parameters take a
+    payload-specific callback and imply their enable flags automatically
     (never pass [*-enabled] props yourself). [press send action] dispatches
     [action] on press — e.g. [~on_press:(press send Save)]. *)
-val press : ('a -> bool) -> 'a -> Lui_protocol.event -> unit
+val press : ('a -> bool) -> 'a -> unit -> unit
 
-(** [on_input send wrap] builds a text-input handler: decodes the
-    [TextChanged] payload and dispatches [wrap text] — e.g.
+(** [on_input send wrap] builds a text-input handler: dispatches
+    [wrap text] — e.g.
     [~on_input:(on_input send (fun s -> Changed s))]. *)
 val on_input :
-  ('a -> bool) -> (string -> 'a) -> Lui_protocol.event -> unit
+  ('a -> bool) -> (string -> 'a) -> string -> unit
 
 (** [on_event ctx node filter handler] registers [handler] for raw events
     matching [filter] (see {!is_press}, {!is_input}, ...) — the low-level
@@ -319,17 +328,17 @@ val is_dismiss : Lui_protocol.event -> bool
 val is_appear : Lui_protocol.event -> bool
 val is_resize : Lui_protocol.event -> bool
 val register_press :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (unit -> unit) -> unit
 val register_long_press :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (unit -> unit) -> unit
 val register_double_press :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (unit -> unit) -> unit
 val register_change :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (unit -> unit) -> unit
 val register_input :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (string -> unit) -> unit
 val register_submit :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (unit -> unit) -> unit
 
 (** Text inputs opt in to unmodified Up/Down as
     [NavigatePrevious]/[NavigateNext]. Buttons opt in to arrow, Home/End and
@@ -338,15 +347,15 @@ val register_submit :
     For text inputs, Window and Web hosts retain focus and the text selection;
     modified arrows and IME composition keep their editing behavior. *)
 val register_navigate :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (navigation -> unit) -> unit
 val register_toggle :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (bool -> unit) -> unit
 val register_dismiss :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (unit -> unit) -> unit
 val appear_handler :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (unit -> unit) -> unit
 val register_resize :
-  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+  Lui_ui.ui_context -> int -> (float -> unit) -> unit
 
 (** [~data_attrs] / [~data_attrs_signal] attach raw DOM attributes —
     [data-*], [aria-*], [role], [tabindex] and [draggable] only
@@ -394,15 +403,15 @@ val row :
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_focus_within:(bool -> unit) ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?pointer_capture:bool ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_move:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_pointer_cancel:(Lui_protocol.event -> unit) ->
-  ?on_navigation_key:(Lui_protocol.event -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_move:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_pointer_cancel:(pointer_detail -> unit) ->
+  ?on_navigation_key:(navigation_key -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
@@ -450,12 +459,12 @@ val column :
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_focus_within:(bool -> unit) ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
@@ -499,9 +508,9 @@ val grid :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?transition:string -> t list -> t
@@ -538,9 +547,9 @@ val stack :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?transition:string -> t list -> t
@@ -586,9 +595,9 @@ val edge_inset :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   edge:edge ->
   ?visible:bool ->
   ?visible_signal:bool Signal.signal ->
@@ -633,9 +642,9 @@ val overlay :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?alignment:alignment ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
@@ -681,9 +690,9 @@ val view_that_fits :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
@@ -724,9 +733,9 @@ val panel :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?transition:string -> t list -> t
@@ -766,9 +775,9 @@ val card :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?transition:string -> t list -> t
@@ -805,9 +814,9 @@ val alert :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?variant:variant -> ?label:string ->
@@ -847,9 +856,9 @@ val bubble :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?variant:variant -> ?label:string ->
@@ -897,15 +906,15 @@ val box :
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_focus_within:(bool -> unit) ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?pointer_capture:bool ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_move:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_pointer_cancel:(Lui_protocol.event -> unit) ->
-  ?on_navigation_key:(Lui_protocol.event -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_move:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_pointer_cancel:(pointer_detail -> unit) ->
+  ?on_navigation_key:(navigation_key -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
@@ -948,9 +957,9 @@ val scroll :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
@@ -989,9 +998,9 @@ val list :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?style:list_style ->
   ?scroll_target:string ->
   ?scroll_anchor:scroll_anchor ->
@@ -1000,8 +1009,8 @@ val list :
   ?scroll_token_signal:int Signal.signal ->
   ?scroll_animated:bool ->
   ?track_visible_range:bool ->
-  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
-  ?on_visible_range:(Lui_protocol.event -> unit) ->
+  ?on_scroll_completed:(scroll_completed -> unit) ->
+  ?on_visible_range:(visible_range -> unit) ->
    (* Receives [VisibleRange] (intersecting row indices — overscan and
       focus-retained rows excluded) and [ScrollEdges] (whether the
       scroll viewport touches its top/bottom edges — the typed signal
@@ -1058,9 +1067,9 @@ val virtual_list :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?scroll_target:string ->
   ?scroll_anchor:scroll_anchor ->
   ?scroll_token:int ->
@@ -1068,8 +1077,8 @@ val virtual_list :
   ?scroll_token_signal:int Signal.signal ->
   ?scroll_animated:bool ->
   ?track_visible_range:bool ->
-  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
-  ?on_visible_range:(Lui_protocol.event -> unit) ->
+  ?on_scroll_completed:(scroll_completed -> unit) ->
+  ?on_visible_range:(visible_range -> unit) ->
    (* Receives [VisibleRange] (intersecting row indices — overscan and
       focus-retained rows excluded) and [ScrollEdges] (whether the
       scroll viewport touches its top/bottom edges — the typed signal
@@ -1112,9 +1121,9 @@ val tabs :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?label:string -> ?orientation:orientation ->
   ?transition:string -> t list -> t
 val bottom_tabs :
@@ -1131,17 +1140,17 @@ val bottom_tabs :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   label:string -> bottom_tab_el list -> t
 val bottom_tab :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   title:string ->
   ?icon:icon ->
   ?icon_signal:icon Signal.signal ->
@@ -1149,10 +1158,10 @@ val bottom_tab :
   ?selected_signal:bool Signal.signal ->
   ?enabled:bool ->
   ?enabled_signal:bool Signal.signal ->
-  on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) -> t list -> bottom_tab_el
+  on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) -> t list -> bottom_tab_el
 val button_group :
   ?key:string ->
   ?gap:int ->
@@ -1187,9 +1196,9 @@ val button_group :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> t
 val toggle_group :
   ?key:string ->
@@ -1225,9 +1234,9 @@ val toggle_group :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> t
 val breadcrumb :
   ?key:string ->
@@ -1263,9 +1272,9 @@ val breadcrumb :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> t
 val pagination :
   ?key:string ->
@@ -1301,9 +1310,9 @@ val pagination :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> t
 val table :
   ?key:string ->
@@ -1336,9 +1345,9 @@ val table :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?transition:string -> table_row_el list -> t
 val table_row :
   ?key:string ->
@@ -1372,9 +1381,9 @@ val table_row :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?selected:bool -> ?selected_signal:bool Signal.signal ->
   ?transition:string -> table_cell_el list -> table_row_el
 val table_cell :
@@ -1410,9 +1419,9 @@ val table_cell :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?font_size:string ->
@@ -1420,11 +1429,11 @@ val table_cell :
   ?line_height:string ->
   ?size:cell_size ->
   ?text_alignment:text_alignment ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> table_cell_el
 val tree :
   ?key:string ->
@@ -1458,9 +1467,9 @@ val tree :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   label:string ->
   ?transition:string -> t list -> t
 val resizable :
@@ -1496,9 +1505,9 @@ val resizable :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?label:string -> ?resizable_width:int ->
   ?transition:string -> t list -> t
 
@@ -1548,9 +1557,9 @@ val split :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?sizing:split_sizing ->
   ?sizing_signal:split_sizing Signal.signal ->
   ?resize_handle_width:int ->
@@ -1558,7 +1567,7 @@ val split :
   ?resize_handle_offset:float ->
   ?resize_handle_offset_signal:float Signal.signal ->
   ?motion:split_motion ->
-  ?label:string -> ?on_resize:(Lui_protocol.event -> unit) ->
+  ?label:string -> ?on_resize:(float -> unit) ->
   ?transition:string -> t -> t -> t
 val drawer :
   ?key:string ->
@@ -1579,14 +1588,14 @@ val drawer :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?label:string -> ?on_toggle:(Lui_protocol.event -> unit) ->
+  ?label:string -> ?on_toggle:(bool -> unit) ->
   ?transition:string -> t -> t -> t
 val status_bar :
   ?key:string ->
@@ -1621,9 +1630,9 @@ val status_bar :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?value:string ->
   ?value_signal:string Signal.signal -> ?text_alignment:text_alignment ->
   ?transition:string -> nothing list -> t
@@ -1658,9 +1667,9 @@ val spacer :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?transition:string -> nothing list -> t
 val spinner :
   ?key:string ->
@@ -1695,9 +1704,9 @@ val spinner :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?size:control_size ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?size:control_size ->
   ?transition:string -> nothing list -> t
 val icon :
   ?key:string ->
@@ -1732,9 +1741,9 @@ val icon :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   name:icon ->
   ?name_signal:icon Signal.signal -> ?size:control_size ->
   ?point_size:int ->
@@ -1777,9 +1786,9 @@ val text :
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?as_:phrasing_tag ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?value:string ->
   ?value_signal:string Signal.signal ->
   ?text_alignment:text_alignment ->
@@ -1793,11 +1802,11 @@ val text :
   ?white_space:white_space -> ?line_clamp:int ->
   ?text_overflow:text_overflow ->
   ?overflow:overflow ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val heading :
   ?key:string ->
@@ -1833,9 +1842,9 @@ val heading :
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?as_:heading_tag ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?level:heading_level ->
   ?value:string -> ?value_signal:string Signal.signal ->
   ?text_alignment:text_alignment ->
@@ -1884,9 +1893,9 @@ val paragraph :
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?as_:paragraph_tag ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?value:string -> ?value_signal:string Signal.signal ->
   ?text_alignment:text_alignment ->
   ?font_size:string ->
@@ -1934,9 +1943,9 @@ val label :
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?as_:label_tag ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?value:string -> ?value_signal:string Signal.signal ->
   ?font_size:string ->
   ?font_weight:int ->
@@ -1973,9 +1982,9 @@ val kbd :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?value:string -> ?value_signal:string Signal.signal ->
   ?transition:string -> nothing list -> t
 
@@ -2017,9 +2026,9 @@ val button :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   text:string ->
   ?text_signal:string Signal.signal ->
   ?variant:variant ->
@@ -2034,13 +2043,13 @@ val button :
   ?autofocus:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_navigate:(Lui_protocol.event -> unit) ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_long_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?tooltip:string ->
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
@@ -2085,9 +2094,9 @@ val icon_button :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?variant:variant ->
   ?size:control_size ->
   icon:icon ->
@@ -2100,13 +2109,13 @@ val icon_button :
   ?autofocus:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_navigate:(Lui_protocol.event -> unit) ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_long_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?tooltip:string ->
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
@@ -2145,9 +2154,9 @@ val toggle_button :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?variant:variant ->
@@ -2163,9 +2172,9 @@ val toggle_button :
   ?autofocus:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_long_press:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val checkbox :
   ?key:string ->
@@ -2203,9 +2212,9 @@ val checkbox :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?checked:bool ->
@@ -2215,9 +2224,9 @@ val checkbox :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_toggle_detail:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_toggle_detail:(toggle_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val switch_ :
   ?key:string ->
@@ -2252,9 +2261,9 @@ val switch_ :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?checked:bool ->
@@ -2262,8 +2271,8 @@ val switch_ :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val toggle :
   ?key:string ->
@@ -2298,9 +2307,9 @@ val toggle :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?checked:bool ->
@@ -2308,8 +2317,8 @@ val toggle :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val radio_group :
   ?key:string ->
@@ -2342,9 +2351,9 @@ val radio_group :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> label:string ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> label:string ->
   ?transition:string -> radio_el list -> t
 val radio :
   ?key:string ->
@@ -2382,9 +2391,9 @@ val radio :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?checked:bool ->
@@ -2393,13 +2402,13 @@ val radio :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_change:(Lui_protocol.event -> unit) ->
-  ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_change:(unit -> unit) ->
+  ?on_toggle:(bool -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> radio_el
 val slider :
   ?key:string ->
@@ -2434,16 +2443,16 @@ val slider :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   value:float ->
   ?value_signal:float Signal.signal ->
   label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_change:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_change:(float -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val number_stepper :
   ?key:string ->
@@ -2478,9 +2487,9 @@ val number_stepper :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?value:float ->
   ?value_signal:float Signal.signal ->
   ?min:float ->
@@ -2491,8 +2500,8 @@ val number_stepper :
   ?label:string ->
   ?enabled:bool ->
   ?enabled_signal:bool Signal.signal ->
-  ?on_value_changed:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_value_changed:(float -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val progress :
   ?key:string ->
@@ -2525,9 +2534,9 @@ val progress :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   value:float -> ?value_signal:float Signal.signal ->
   ?transition:string -> nothing list -> t
 val divider :
@@ -2561,9 +2570,9 @@ val divider :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
   ?transition:string -> nothing list -> t
 val separator :
@@ -2597,9 +2606,9 @@ val separator :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
   ?transition:string -> nothing list -> t
 
@@ -2638,9 +2647,9 @@ val text_field :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
@@ -2652,10 +2661,10 @@ val text_field :
   ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_navigate:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val secure_field :
   ?key:string ->
@@ -2690,9 +2699,9 @@ val secure_field :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
@@ -2704,10 +2713,10 @@ val secure_field :
   ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_navigate:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val input :
   ?key:string ->
@@ -2742,9 +2751,9 @@ val input :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
@@ -2756,10 +2765,10 @@ val input :
   ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_navigate:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?kind:input_kind ->
   ?transition:string -> t list -> t
 val search_field :
@@ -2795,9 +2804,9 @@ val search_field :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
@@ -2809,10 +2818,10 @@ val search_field :
   ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_navigate:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val textarea :
   ?key:string ->
@@ -2847,9 +2856,9 @@ val textarea :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
@@ -2862,10 +2871,10 @@ val textarea :
   ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_navigate:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_navigate:(navigation -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val input_group :
   ?key:string ->
@@ -2875,17 +2884,17 @@ val input_group :
   ?min_width:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string -> ?actions:input_group_actions_el -> t -> t
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string -> ?actions:input_group_actions_el -> t -> t
 val input_group_actions :
   ?key:string ->
   ?gap:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> t list -> input_group_actions_el
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> t list -> input_group_actions_el
 val select :
   ?key:string ->
   ?gap:int ->
@@ -2920,9 +2929,9 @@ val select :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?label:string ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
@@ -2930,12 +2939,12 @@ val select :
   ?placeholder_signal:string Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_dismiss:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val combobox :
   ?key:string ->
@@ -2971,9 +2980,9 @@ val combobox :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
@@ -2982,14 +2991,14 @@ val combobox :
   ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_input:(Lui_protocol.event -> unit) ->
-  ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_dismiss:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_input:(string -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 
 (** Menu surface mounted in the popup portal. Anchoring is either implicit
@@ -3032,24 +3041,24 @@ val dropdown_menu :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?at:float * float ->
   ?at_signal:(float * float) Signal.signal ->
   ?anchor:anchor ->
   ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->
-  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
   ?transition:string -> t list -> t
 val context_menu :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
+  ?on_dismiss:(unit -> unit) -> t list -> t
 val menu_trigger :
   ?key:string ->
   ?accessibility_identifier:string ->
@@ -3080,7 +3089,7 @@ val menu :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_dismiss:(unit -> unit) -> t list -> t
 val submenu :
   ?key:string ->
   ?text:string ->
@@ -3088,7 +3097,7 @@ val submenu :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_dismiss:(unit -> unit) -> t list -> t
 val dialog :
   ?key:string ->
   ?gap:int ->
@@ -3120,14 +3129,14 @@ val dialog :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?description:string ->
   ?description_signal:string Signal.signal ->
-  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
   ?transition:string -> t list -> t
 val sheet :
   ?key:string ->
@@ -3148,16 +3157,16 @@ val sheet :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   title:string ->
   ?title_signal:string Signal.signal ->
   ?detents:string ->
   ?detents_signal:string Signal.signal ->
   ?sizing:sheet_sizing ->
   ?sizing_signal:sheet_sizing Signal.signal ->
-  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
   ?transition:string -> t list -> t
 val tooltip :
   ?key:string ->
@@ -3165,9 +3174,9 @@ val tooltip :
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?anchor:anchor ->
@@ -3190,13 +3199,13 @@ val toast :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?duration:int ->
   ?label:string ->
   ?toast_class:string ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_dismiss:(unit -> unit) -> t list -> t
 
 (** Non-visual element that presents the platform file/photo/camera picker
     when [~request] changes to a new token. [~on_picked] receives a JSON
@@ -3211,9 +3220,9 @@ val file_picker :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?source:file_picker_source ->
   ?request:file_picker_token ->
   ?request_signal:file_picker_token Signal.signal ->
@@ -3225,8 +3234,8 @@ val file_picker :
   ?disabled_signal:bool Signal.signal ->
   ?completion:file_picker_token ->
   ?completion_signal:file_picker_token Signal.signal ->
-  ?on_picked:(Lui_protocol.event -> unit) ->
-  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?on_picked:(string -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
   ?accept:string ->
   ?accept_signal:string Signal.signal ->
   ?directory:bool ->
@@ -3303,9 +3312,9 @@ val popover :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?target:popover_target ->
@@ -3313,7 +3322,7 @@ val popover :
   ?available_height:float ->
   ?available_height_signal:float Signal.signal ->
   ?role:popover_role ->
-  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(unit -> unit) ->
   ?transition:string -> t list -> t
 val toolbar :
   ?key:string ->
@@ -3329,9 +3338,9 @@ val toolbar :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
   label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:toolbar_placement -> t list -> t
 val accordion :
@@ -3340,16 +3349,16 @@ val accordion :
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
   ?style_class:string ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   title:string ->
   ?title_signal:string Signal.signal ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->
   ?accordion_height:int ->
-  ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_toggle:(bool -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) -> t list -> t
 val menu_item :
   ?key:string ->
   ?gap:int ->
@@ -3386,9 +3395,9 @@ val menu_item :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
@@ -3402,11 +3411,11 @@ val menu_item :
   ?checked_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?tooltip:string ->
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
@@ -3447,9 +3456,9 @@ val list_item :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
@@ -3463,17 +3472,17 @@ val list_item :
   ?selected_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_long_press:(Lui_protocol.event -> unit) ->
-  ?on_double_press:(Lui_protocol.event -> unit) ->
-  ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_toggle:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_long_press:(unit -> unit) ->
+  ?on_double_press:(unit -> unit) ->
+  ?on_submit:(unit -> unit) ->
+  ?on_toggle:(bool -> unit) ->
   ?separator:separator_visibility ->
   ?swipe_actions:swipe_action_el list ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
+  ?on_context_menu:(pointer_detail -> unit) ->
   ?list_marker:list_marker ->
   ?transition:string -> t list -> t
 
@@ -3499,10 +3508,10 @@ val swipe_action :
   ?edge:swipe_edge ->
   ?background:string ->
   ?disabled:bool ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) -> nothing list -> swipe_action_el
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) -> nothing list -> swipe_action_el
 val avatar :
   ?key:string ->
   ?background:string ->
@@ -3525,9 +3534,9 @@ val avatar :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?image:int ->
@@ -3567,9 +3576,9 @@ val image :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?image:int ->
   ?image_signal:int Signal.signal ->
   ?url:string ->
@@ -3577,7 +3586,7 @@ val image :
   ?alt:string ->
   ?loading:image_loading ->
   ?referrer_policy:referrer_policy ->
-  ?on_load:(Lui_protocol.event -> unit) ->
+  ?on_load:(unit -> unit) ->
   ?source_x:float ->
   ?source_y:float ->
   ?source_width:float -> ?source_height:float -> ?label:string ->
@@ -3613,9 +3622,9 @@ val media_surface :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?surface:int ->
   ?surface_signal:int Signal.signal -> ?label:string ->
   ?transition:string -> nothing list -> t
@@ -3657,9 +3666,9 @@ val link :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?url:string ->
   ?url_signal:string Signal.signal ->
   ?target:link_target ->
@@ -3670,7 +3679,7 @@ val link :
   ?icon_placement:icon_placement ->
   ?label:string ->
   ?disabled:bool -> ?disabled_signal:bool Signal.signal ->
-  ?on_press:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
   ?transition:string -> t list -> t
 
 (** Local file image. Fit preserves the whole image by default; fill crops to
@@ -3708,18 +3717,18 @@ val file_image :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   ?path:string ->
   ?path_signal:string Signal.signal ->
   ?max_pixel_size:int ->
   ?fit:image_fit ->
   ?label:string ->
-  ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) ->
   ?transition:string -> nothing list -> t
 val file_preview :
   ?key:string ->
@@ -3727,23 +3736,23 @@ val file_preview :
   ?path_signal:string Signal.signal ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> nothing list -> t
+  ?on_dismiss:(unit -> unit) -> nothing list -> t
 val stepper :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   active:int ->
   ?active_signal:int Signal.signal -> ?label:string -> step_el list -> t
 val step :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   text:string -> ?text_signal:string Signal.signal -> nothing list -> step_el
 val timeline :
   ?key:string ->
@@ -3751,16 +3760,16 @@ val timeline :
   ?grow:float ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string -> timeline_item_el list -> t
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) -> ?label:string -> timeline_item_el list -> t
 val timeline_item :
   ?key:string ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?on_appear:(unit -> unit) ->
+  ?on_pointer_enter:(unit -> unit) ->
+  ?on_pointer_leave:(unit -> unit) ->
   title:string ->
   ?title_signal:string Signal.signal ->
   ?description:string ->
@@ -3770,10 +3779,10 @@ val timeline_item :
   ?icon_signal:icon Signal.signal ->
   ?variant:variant ->
   ?connector:bool ->
-  ?selected:bool -> ?on_press:(Lui_protocol.event -> unit) ->
-  ?on_press_detail:(Lui_protocol.event -> unit) ->
-  ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) -> nothing list -> timeline_item_el
+  ?selected:bool -> ?on_press:(unit -> unit) ->
+  ?on_press_detail:(pointer_detail -> unit) ->
+  ?on_pointer_down:(pointer_detail -> unit) ->
+  ?on_pointer_up:(pointer_detail -> unit) -> nothing list -> timeline_item_el
 
 (** Wraps an element so its subtree resolves semantic color names against
     the given token table, merging over the platform defaults, and

@@ -1,5 +1,74 @@
 # LUI API migration guide
 
+## Unreleased: Typed event callbacks (ADR 0007 Phase 3b)
+
+Element callbacks now receive their payload rather than a raw protocol event.
+Wire events and their constructor order are unchanged. The handwritten element
+interface is checked against schema-owned callback contracts; payload decoders
+and record/variant definitions are generated from those contracts and protocol
+field types.
+
+| Callback family | Argument |
+| --- | --- |
+| Press, long/double press, submit, dismiss, appear, load, pointer enter/leave, ordinary change | `unit` |
+| Input, picked | `string` (picked retains the host's encoded batch; use `Lui_picked_files.decode`) |
+| Toggle, focus-within | `bool` |
+| Slider change, value-changed, split resize | `float` |
+| Press-detail, pointer down/up/move/cancel, context-menu | `pointer_detail` |
+| Toggle-detail | `{ checked : bool; modifiers : int }` |
+| Navigate | `Previous | Next | Key of navigation_key` |
+| Navigation-key | `{ key : string; shift : bool }` |
+| Scroll-completed | `{ token : int; outcome : string }` |
+| Visible-range | `Range of { first : int; last : int } | Edges of { at_start : bool; at_end : bool }` |
+
+The records and variants are exported by `Lui_elements`. Range and edge records
+have named types `range` and `scroll_edges`. Radio's `on_toggle` press fallback
+receives `true`, the checked value of a selected radio.
+
+```ocaml
+(* Before *)
+text_field ~on_input:(function
+  | Lui_protocol.TextChanged (_, value) -> save value
+  | _ -> ()) []
+(* After *)
+text_field ~on_input:save []
+button ~text:"Save" ~on_press:(fun () -> save draft) []
+checkbox ~on_toggle:(fun checked -> set_checked checked) []
+slider ~label:"Volume" ~value:0.5 ~on_change:set_volume []
+button ~text:"Inspect"
+  ~on_press_detail:(fun detail -> inspect detail.x detail.y detail.modifiers) []
+text_field ~on_navigate:(function
+  | Previous -> previous ()
+  | Next -> next ()
+  | Key { key; shift } -> navigate key shift) []
+```
+
+`press send action` now returns `unit -> unit`; `on_input send wrap` returns
+`string -> unit`. Existing uses of these helpers need no call-site change.
+Composite and AI component callbacks use the same payloads, including unit
+callbacks for attach/send/remove/confirm/cancel and string callbacks for picked.
+Suggestion-list selection receives the selected item and `unit`.
+
+Use `on_press_detail` instead of matching pointer details inside `on_press`.
+Where full protocol events, press modifiers, virtual-window/retention metadata,
+or extension events are needed, `Lui_elements.on_event` and `Lui_ui.on_event`
+remain raw escape hatches:
+
+```ocaml
+fun context parent ->
+  let node = button ~text:"Inspect" ~on_press:(fun () -> ()) [] context parent in
+  Lui_elements.on_event context node Lui_elements.is_press (function
+    | Lui_protocol.PressModifiers (_, modifiers) -> inspect_modifiers modifiers
+    | _ -> ());
+  node
+```
+
+Non-finite numeric values and pointer coordinates are malformed typed payloads:
+the runtime logs `LUI event: malformed ... payload; skipping handler` on stderr
+and skips the typed callback without raising. Unrelated events do not call the
+handler. Exceptions raised by application callbacks retain existing error-boundary
+semantics.
+
 ## Unreleased: Text buttons and accessible icon buttons
 
 `button` now requires `~text:string`. Its `button_size` is closed to

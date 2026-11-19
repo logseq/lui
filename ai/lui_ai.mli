@@ -29,8 +29,8 @@ val view :
   ?on_load_full:(Model.id -> unit) ->
   ?on_reach_top:(unit -> unit) ->
   ?on_remove_attachment:(Model.id -> unit) ->
-  ?on_picked:(Lui_protocol.event -> unit) ->
-  ?on_attach:(Lui_protocol.event -> unit) ->
+  ?on_picked:(string -> unit) ->
+  ?on_attach:(unit -> unit) ->
   ?composer_controls:Lui_elements.t list ->
   ?composer_trailing_controls:Lui_elements.t list ->
   ?status:Lui_elements.t ->
@@ -38,10 +38,10 @@ val view :
   draft:string Signal.signal ->
   attachments:Model.attachment list Signal.signal ->
   generating:bool Signal.signal ->
-  on_input:(Lui_protocol.event -> unit) ->
-  on_send:(Lui_protocol.event -> unit) ->
-  ?on_stop:(Lui_protocol.event -> unit) ->
-  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
+  on_input:(string -> unit) ->
+  on_send:(unit -> unit) ->
+  ?on_stop:(unit -> unit) ->
+  ?on_scroll_completed:(Lui_elements.scroll_completed -> unit) ->
   unit ->
   Lui_elements.t
 (** Full chat surface: transcript (grow) over the composer capsule, with
