@@ -72,7 +72,6 @@ type journal_table =
 type rollback_entry = {
   rollback_position : int;
   rollback_undo : unit -> unit;
-  rollback_operation : patch_op option;
   rollback_node_before : (int * bool) option;
   mutable rollback_committed : bool;
   mutable rollback_anchor : int option;
@@ -130,8 +129,6 @@ type application = {
   runtime_generation : int ref;
   runtime_resync_required : bool ref;
   runtime_host_roots : Root_set.t ref;
-  runtime_host_children : (int, int Lui_sequence.t) Hashtbl.t;
-  runtime_reindex_children : bool ref;
   runtime_diagnostics : flush_diagnostics ref;
   next_handler_id : int ref;
   event_handlers : (int, event_handler list) Hashtbl.t;
@@ -259,8 +256,6 @@ let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler 
     runtime_generation = ref 0;
     runtime_resync_required = ref false;
     runtime_host_roots = ref Root_set.empty;
-    runtime_host_children = Hashtbl.create 16;
-    runtime_reindex_children = ref false;
     runtime_diagnostics = ref (empty_diagnostics ());
     next_handler_id = ref 0;
     event_handlers = Hashtbl.create 16;
@@ -286,7 +281,7 @@ let journal_recording application =
   let journal = application.runtime_journal in
   journal.journal_enabled && not journal.journal_replaying
 
-let journal_record ?operation ?node_before application location undo =
+let journal_record ?node_before application location undo =
   if journal_recording application then begin
     let journal = application.runtime_journal in
     let previous = Option.value ~default:0 (Hashtbl.find_opt journal.journal_versions location) in
@@ -302,7 +297,7 @@ let journal_record ?operation ?node_before application location undo =
       end in
     journal.journal_entries <- {
       rollback_position = position; rollback_undo = undo;
-      rollback_operation = operation; rollback_committed = false;
+      rollback_committed = false;
       rollback_node_before = node_before; rollback_anchor = None;
     } :: journal.journal_entries
   end
@@ -569,17 +564,11 @@ let commit_boundary_recovery ?anchor application saved =
     | _ -> () in
   commit application.runtime_journal.journal_entries
 
-module Operation_set = Hashtbl.Make (struct
-  type t = patch_op
-  let equal = ( == )
-  let hash = Hashtbl.hash
-end)
-
 let rollback_boundary application saved =
   let journal = application.runtime_journal in
   if not (boundary_savepoint_valid application saved) then
     invalid_arg "cannot restore a stale boundary savepoint";
-  let removed = Operation_set.create 16 in
+  let had_pending = !(application.pending_ops) <> [] in
   let discarded = Hashtbl.create 16 in
   let changed = ref true in
   while !changed do
@@ -604,8 +593,6 @@ let rollback_boundary application saved =
         then rollback (entry :: kept) rest
         else begin
           entry.rollback_undo ();
-          Option.iter (fun operation -> Operation_set.replace removed operation ())
-            entry.rollback_operation;
           rollback kept rest
         end
     | rest -> List.rev_append kept rest in
@@ -613,27 +600,15 @@ let rollback_boundary application saved =
   (match rollback [] journal.journal_entries with
   | entries -> journal.journal_entries <- entries; journal.journal_replaying <- false
   | exception failure -> journal.journal_replaying <- false; raise failure);
-  let pending = List.filter (fun operation ->
-    not (Operation_set.mem removed operation)) !(application.pending_ops) in
-  let present = Operation_set.create (List.length pending) in
-  List.iter (fun operation -> Operation_set.replace present operation ()) pending;
-  let positions = Operation_set.create (List.length journal.journal_entries) in
-  let missing = List.filter_map (fun entry ->
-    Option.bind entry.rollback_operation (fun operation ->
-      Operation_set.replace positions operation entry.rollback_position;
-      if entry.rollback_committed && not (Operation_set.mem present operation)
-      then Some (entry.rollback_position, operation) else None))
-      journal.journal_entries in
-  let rec merge missing pending =
-    match missing, pending with
-    | [], rest -> rest
-    | rest, [] -> List.map snd rest
-    | (position, operation) :: rest, current :: tail ->
-        if position > Option.value ~default:0 (Operation_set.find_opt positions current)
-        then operation :: merge rest pending
-        else current :: merge missing tail in
-  application.pending_ops := merge missing pending;
-  application.runtime_reindex_children := true;
+  if had_pending || !(application.pending_ops) <> [] then begin
+    application.pending_ops := [];
+    Hashtbl.clear application.pending_creates;
+    Hashtbl.clear application.elision_ghosts;
+    Hashtbl.clear application.elision_root;
+    Hashtbl.clear application.elision_members;
+    Hashtbl.clear application.elision_edges;
+    application.runtime_resync_required := true
+  end;
   application.runtime_handler_count := Hashtbl.fold (fun _ handlers count ->
     count + List.length handlers) application.event_handlers 0;
   application.runtime_dynamic_segment_count := Hashtbl.fold (fun _ segments count ->
@@ -1164,8 +1139,6 @@ let remember_pending_create application operation =
   | _ -> ()
 
 let enqueue application operation =
-  let position = application.runtime_journal.journal_position + 1 in
-  journal_record ~operation application (Pending_operation, position) (fun () -> ());
   application.pending_ops := operation :: !(application.pending_ops);
   remember_pending_create application operation
 
@@ -2957,54 +2930,7 @@ let record_diagnostics application status operation_count
 
 (* Exceptions consume the uncertain generation. Rejection instead schedules
    an authoritative snapshot under the generation the host still expects. *)
-let snapshot_host_children application operations =
-  let changes = Hashtbl.create 16 and visited = Hashtbl.create 16 in
-  let remember node =
-    Hashtbl.replace changes node (Hashtbl.find_opt application.runtime_children node) in
-  let rec subtree node =
-    if not (Hashtbl.mem visited node) then begin
-      Hashtbl.replace visited node ();
-      Option.iter (Lui_sequence.iter subtree)
-        (Hashtbl.find_opt application.runtime_host_children node);
-      remember node
-    end in
-  List.iter (function
-    | CreateNode (node, _) | CreateExtension (node, _, _) -> remember node
-    | InsertChild (parent, _, _) | RemoveChild (parent, _) | MoveChild (parent, _, _) ->
-        remember parent
-    | DropNode node | DetachSubtree node -> subtree node
-    | _ -> ()) operations;
-  changes
-
-let reindex_pending_children application =
-  if !(application.runtime_reindex_children) then begin
-    let operations = List.rev !(application.pending_ops) in
-    application.pending_ops := [];
-    let reparented = Hashtbl.create 16 in
-    Hashtbl.iter (fun parent children -> Lui_sequence.iter (fun child ->
-      if Hashtbl.find_opt application.runtime_parents child <> Some parent then begin
-        Hashtbl.replace reparented child ();
-        enqueue application (remove_child_op parent child)
-      end) children) application.runtime_host_children;
-    Hashtbl.iter (fun parent children ->
-      let old = Option.value ~default:Lui_sequence.empty
-        (Hashtbl.find_opt application.runtime_host_children parent) in
-      emit_child_diff application reparented parent
-        (List.filter (fun child -> not (Hashtbl.mem reparented child)) (Lui_sequence.to_list old))
-        (Lui_sequence.to_list children)) application.runtime_children;
-    let structural = List.rev !(application.pending_ops) in
-    let prefix, suffix = List.fold_right (fun operation (prefix, suffix) ->
-      match operation with
-      | InsertChild _ | RemoveChild _ | MoveChild _ -> prefix, suffix
-      | DropNode _ | DetachSubtree _ -> prefix, operation :: suffix
-      | _ -> operation :: prefix, suffix) operations ([], []) in
-    application.pending_ops := List.rev_append suffix
-      (List.rev_append structural (List.rev prefix));
-    application.runtime_reindex_children := false
-  end
-
 let apply_pending_batch application batch operation_count next_generation =
-  let host_children = snapshot_host_children application batch.ops in
   let roots = List.fold_left (fun roots -> function
     | CreateNode (node, _) | CreateExtension (node, _, _)
     | RemoveChild (_, node) -> Root_set.add node roots
@@ -3020,10 +2946,6 @@ let apply_pending_batch application batch operation_count next_generation =
       raise failure
   in
   if committed then begin
-    Hashtbl.iter (fun node children -> match children with
-      | None -> Hashtbl.remove application.runtime_host_children node
-      | Some children -> Hashtbl.replace application.runtime_host_children node children)
-      host_children;
     application.runtime_host_roots := roots;
     application.runtime_generation := next_generation;
     record_diagnostics application Applied operation_count 0
@@ -3091,7 +3013,6 @@ let rec flush application =
     let flushed =
       try
         stabilize application;
-        reindex_pending_children application;
         normalize_pending_sizes application;
         if !(application.runtime_extension_dirty) then begin
           validate_extension_nodes application;
