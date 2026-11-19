@@ -30,4 +30,5 @@ type 'property view_contract = {
 }
 
 val view_contract : node_kind -> property view_contract option
+val view_slot_accepts : string -> node_kind -> bool
 val extension_view_contract : string -> string view_contract option

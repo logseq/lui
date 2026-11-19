@@ -22,7 +22,7 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
     const cases = [
       ['context_menu [icon_button ~icon:`plus ~label:"Add" []]', 'context-menu', 'button'],
-      ['toolbar ~label:"Actions" [icon_button ~icon:`plus ~label:"Add" []]'],
+      ['toolbar ~label:"Actions" [toolbar_icon_button ~icon:`plus ~label:"Add" []]'],
       ["context_menu [button ~text:{|Action|} []]", "context-menu", "button"],
       ["dropdown_menu [column []]", "dropdown-menu", "column"],
       ["toolbar [column []]", "toolbar", "column"],
@@ -46,22 +46,22 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["let child = button ~text:{|Action|} [] in context_menu [child]", "context-menu", "button"],
       ["let build child = context_menu [child] in build (button ~text:{|Action|} [])", "context-menu", "button"],
       ["let build = context_menu ~disabled:false in build [button ~text:{|Action|} []]", "context-menu", "button"],
-      ["context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]", "context-menu", "box"],
+      ["context_menu [if_context_menu_item ~test:source (if_context_menu_item ~test:source (context_menu_item ~on_press:(fun () -> ()) ()))]"],
       ["context_menu [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]", "context-menu", "virtual-rows"],
-      ["context_menu [menu_item []; divider []]"],
-      ["dropdown_menu [menu_trigger [dropdown_menu [menu_item []]]]"],
-      ['toolbar ~label:"Actions" [button ~text:{|Action|} []; text ~value:"ok" []; spacer []]'],
-      ['tree ~label:"Files" [row [text ~value:"ok" []]; virtual_list []]'],
-      ["input [context_menu [menu_item []]]"],
-      ["context_menu [reactive (fun _ -> menu_item []) source]"],
-      ['list [list_section ~header:(text ~value:"Title" []) [list_item []]]'],
-      ["let button _ = menu_item [] in context_menu [button []]"],
-      ["(fun button -> context_menu [button []]) (fun _ -> menu_item [])"],
-      ["let module Other = struct let button _ = menu_item [] end in context_menu [Other.button []]"],
-      ["(fun opaque -> context_menu [opaque ()]) (fun () -> menu_item [])"],
-      ["let child = menu_item [] in context_menu [child]"],
+      ["context_menu [context_menu_item ~on_press:(fun () -> ()) (); context_menu_separator ()]"],
+      ["dropdown_menu [dropdown_menu_trigger (dropdown_menu [dropdown_menu_item []])]"],
+      ['toolbar ~label:"Actions" [toolbar_button ~text:{|Action|} []; toolbar_text ~value:"ok" []; toolbar_spacer []]'],
+      ['tree ~label:"Files" [tree_row [text ~value:"ok" []]; tree_virtual_list []]'],
+      ["input [context_menu [context_menu_item ~on_press:(fun () -> ()) ()]]"],
+      ["context_menu [reactive_context_menu_item (fun _ -> context_menu_item ~on_press:(fun () -> ()) ()) source]"],
+      ['list [list_section ~header:(text ~value:"Title" []) [list_section_item []]]'],
+      ["let button _ = context_menu_item ~on_press:(fun () -> ()) () in context_menu [button []]"],
+      ["(fun button -> context_menu [button []]) (fun _ -> context_menu_item ~on_press:(fun () -> ()) ())"],
+      ["let module Other = struct let button _ = context_menu_item ~on_press:(fun () -> ()) () end in context_menu [Other.button []]"],
+      ["(fun opaque -> context_menu [opaque ()]) (fun () -> context_menu_item ~on_press:(fun () -> ()) ())"],
+      ["let child = context_menu_item ~on_press:(fun () -> ()) () in context_menu [child]"],
       ["virtual_list [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]"],
-      ["let module E = Lui_elements in E.context_menu [E.menu_item []]"],
+      ["let module E = Lui_elements in E.context_menu [E.context_menu_item ~on_press:(fun () -> ()) ()]"],
     ]
     for (const [expression, parent, child] of cases) {
       writeFileSync(join(dir, "probe.ml"), `open Lui_elements
@@ -84,6 +84,41 @@ let probe (source : bool Signal.signal)
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })
 
+test("phantom slots reject opaque wrong-kind children without the PPX", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-capabilities-"))
+  const run = args => spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+  try {
+    const build = run(["dune", "build", "src/lui.cmxa"])
+    assert.equal(build.status, 0, build.stdout + build.stderr)
+    const cases = [
+      ['toolbar ~label:"Actions" [child]', 'toolbar_el'],
+      ['dropdown_menu [child]', 'dropdown_menu_item_el'],
+      ['context_menu [child]', 'context_menu_item_el'],
+      ['tree ~label:"Files" [child]', 'tree_el'],
+      ['list_section [child]', 'list_section_item_el'],
+      ['menu_trigger ~text:"More" child', 'dropdown_menu_el'],
+    ]
+    for (const [expression, type] of cases) {
+      writeFileSync(join(dir, "probe.ml"), `open Lui_elements\nlet bad (child : t) = ${expression}\n`)
+      const result = run(["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
+        "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")])
+      assert.notEqual(result.status, 0, expression)
+      assert.ok(result.stderr.includes(type), result.stderr)
+    }
+    for (const [expression, type] of [
+      ['context_menu_item ~text:"Bad" ()', 'context_menu_item_el'],
+      ['context_menu_item ~padding:4 ~on_press:(fun () -> ()) ()', 'context_menu_item_el'],
+      ['context_menu_item ~on_press:(fun () -> ()) []', 'context_menu_item_el'],
+      ['menu_trigger ~text:"More" []', 't'],
+    ]) {
+      writeFileSync(join(dir, "probe.ml"), `open Lui_elements\nlet bad : ${type} = ${expression}\n`)
+      const result = run(["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
+        "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")])
+      assert.notEqual(result.status, 0, expression)
+    }
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
 test("nesting properties exhaust constructor pairs and generate static syntax and scopes", () => {
   const dir = mkdtempSync(join(tmpdir(), "lui-nesting-properties-"))
   const run = args => {
@@ -96,7 +131,7 @@ test("nesting properties exhaust constructor pairs and generate static syntax an
     "root", "list-section-header", "list-section-footer",
   ].includes(wire)).map(({wire, lg}) => {
     const name = wire === "switch" ? "switch_" : wire.replaceAll("-", "_")
-    const arity = name === "input_group" ? 1 : ["drawer", "split"].includes(name) ? 2 : 0
+    const arity = ["input_group", "menu_trigger"].includes(name) ? 1 : ["drawer", "split"].includes(name) ? 2 : 0
     return `(${JSON.stringify(name)}, Lui_protocol.${lg}, Lui_protocol.${lg}, ${arity})`
   })
   constructors.push('( "separator", Lui_protocol.Divider, Lui_protocol.Divider, 0)',
@@ -130,6 +165,7 @@ let check expected source =
 let element (name, _, _, arity) =
   match arity with
   | 0 -> name ^ " []"
+  | 1 when name = "menu_trigger" -> name ^ " (dropdown_menu [])"
   | 1 -> name ^ " (textarea [])"
   | _ -> name ^ " (column []) (column [])"
 let parent (name, _, _, arity) child list =
@@ -143,7 +179,7 @@ let allowed parent child = Lui_protocol.can_contain_children parent &&
 let rec mounted detached = function
   | Node kind -> kind, true
   | Dynamic child ->
-    let kind, valid = mounted true child in
+    let kind, valid = mounted false child in
     if detached then Lui_protocol.Box, (valid && allowed Lui_protocol.Box kind)
     else kind, valid
 let expected parent shape =
@@ -235,7 +271,7 @@ let () =
   check false ("open Lui_elements let _ = virtual_list (List.map (fun _ -> " ^ rows ^ ") [1;2])");
   check true ("open Lui_elements let _ = virtual_list (if flag then [" ^ rows ^ "] else [row []; row []])");
   check false ("open Lui_elements let _ = virtual_list [if_ ~test:source (" ^ rows ^ ")]");
-  check false "open Lui_elements let _ = context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]";
+  check true "open Lui_elements let _ = context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]";
   check true "open Lui_elements let _ = column [if_ ~test:source (if_ ~test:source (menu_item []))]";
   check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
   check true "open Lui_elements let f context = let child = if Lui_ui.host context = KotlinHost then dropdown_menu [] else context_menu [] in if Lui_ui.host context = KotlinHost then menu_trigger [child] else button ~text:{|Action|} [child]";
@@ -445,6 +481,8 @@ let () =
     Lui_elements.column [
       Lui_elements.progress ~value:(reactive project (source model)) [];
       Lui_elements.button ~text:(reactive string_of_float model) [];
+      Lui_elements.toolbar ~label:"Actions"
+        [Lui_elements.toolbar_button ~text:(reactive (fun value -> "slot " ^ string_of_float value) model) []];
       Lui_elements.icon_button ~icon:(reactive (fun value -> if value < 0.3 then \`plus else \`check) model)
         ~label:"Status" []
     ] in
@@ -457,6 +495,10 @@ let () =
     assert (List.exists (function
       | Lui_protocol.SetProp (_, Lui_protocol.TextValue, Lui_protocol.StringValue text) ->
           text = string_of_float (expected /. 2.)
+      | _ -> false) ops);
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.TextValue, Lui_protocol.StringValue text) ->
+          text = "slot " ^ string_of_float (expected /. 2.)
       | _ -> false) ops);
     assert (List.exists (function
       | Lui_protocol.SetProp (_, Lui_protocol.InlineIconName, Lui_protocol.StringValue icon) ->

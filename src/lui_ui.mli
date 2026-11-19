@@ -13,6 +13,7 @@ type ui_context = {
   ui_next_owner_id : int ref;
   ui_profile : Lui_protocol.platform_profile;
   ui_protect : (unit -> unit) -> unit;
+  ui_dynamic_owner : Lui_runtime.dynamic_segment option;
 }
 val make_context :
   Lui_runtime.application ->

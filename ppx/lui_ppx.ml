@@ -163,7 +163,7 @@ let dyn_supported args =
    becoming a nonexistent `~test_signal:` parameter. *)
 let signal_only_labels = [ "test"; "source" ]
 
-let scoped_expression ~loc build =
+let scoped_expression ?(adapter = "scoped") ~loc build =
   let context = gen_symbol ~prefix:"__lui_context_" () in
   let own_generated = object
     inherit Ast_traverse.map as super
@@ -177,12 +177,13 @@ let scoped_expression ~loc build =
       | _ -> expression
   end in
   let scoped = B.pexp_ident ~loc
-    { txt = Ldot (Lident "Lui_elements", "scoped"); loc } in
+    { txt = Ldot (Lident "Lui_elements", adapter); loc } in
   apply ~loc scoped [lam ~loc [pvar ~loc context] (build own_generated)]
 
 let structural_constructor expression = match expression.pexp_desc with
-  | Pexp_ident { txt = Lident ("if_" | "keyed" | "virtual_rows")
-      | Ldot (Lident "Lui_elements", ("if_" | "keyed" | "virtual_rows")); _ } -> true
+  | Pexp_ident { txt = Lident name | Ldot (Lident "Lui_elements", name); _ } ->
+      name = "if_" || name = "keyed" || name = "virtual_rows"
+      || Lui_nesting_schema.dynamic_adapter name
   | _ -> false
 
 let rec constructor_name expression = match expression.pexp_desc with
@@ -280,7 +281,8 @@ class mapper =
           super#expression result in
           let plain = transform args (new Ast_traverse.map) in
           if !needs_scope then
-            let scoped = scoped_expression ~loc:expr.pexp_loc (transform constructor_args) in
+            let adapter = Lui_nesting_schema.scoped_adapter (constructor_name fn) in
+            let scoped = scoped_expression ~adapter ~loc:expr.pexp_loc (transform constructor_args) in
             if mount_args = [] then scoped
             else B.pexp_apply ~loc:expr.pexp_loc scoped
               (List.map (fun (label, argument) -> label, super#expression argument) mount_args)

@@ -176,6 +176,14 @@ let compilation_preserves_typed_view_contracts () =
     "typed alignment modifier", true, "[:column {:alignment :center}]";
     "invalid alignment modifier", false, "[:column {:alignment :middle}]";
     "abstract root", false, "[:table-cell]";
+    "typed toolbar slot", true, "[:toolbar {:accessibility-label \"Actions\"} [:button {:text \"Save\"}]]";
+    "invalid toolbar slot", false, "[:toolbar {:accessibility-label \"Actions\"} [:column]]";
+    "typed tree slot", true, "[:tree {:accessibility-label \"Files\"} [:row [:text {:text \"File\"}]]]";
+    "typed list section", true, "[:list [:list-section [:list-item {:text \"Entry\"}]]]";
+    "typed menu slot", true, "[:menu-trigger {:text \"More\"} [:dropdown-menu [:menu-item {:text \"Open\"}]]]";
+    "empty menu slot", false, "[:menu-trigger {:text \"More\"}]";
+    "multiple menu slots", false, "[:menu-trigger {:text \"More\"} [:dropdown-menu] [:dropdown-menu]]";
+    "dropdown view lift", true, "[:column [:dropdown-menu [:menu-item {:text \"Open\"}]]]";
     "internal wire node", false, "[:list-section-header [:text {:text \"title\"}]]";
     "required typed argument", false, "[:edge-inset]";
     "one split pane", false, "[:split {:value 0.5} [:column]]";

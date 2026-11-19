@@ -434,8 +434,6 @@ let nested_dyn_view _context model_source _send =
     [
       Lui_elements.dyn ~equal:(fun a b -> a.outer = b.outer)
         (fun (_m : nested_dyn_model) ->
-          (* A branch that is itself a bare dyn mounts under a transparent
-             anchor instead of raising on parent = None. *)
           Lui_elements.dyn ~equal:(fun a b -> a.inner = b.inner)
             (fun (m : nested_dyn_model) ->
                Lui_elements.text ~value:m.inner [])
@@ -1370,7 +1368,7 @@ let test_glass_button_text_is_optional () =
 let test_glass_button_menu_action () =
   let picked = ref 0 in
   let menu_entries () =
-    [ Lui_elements.menu_item ~text:"Duplicate"
+    [ Lui_elements.dropdown_menu_item ~text:"Duplicate"
         ~on_press:(fun _ -> incr picked) [] ]
   in
   let menu_action : Lui_element_combine.action =
@@ -2893,9 +2891,9 @@ let test_vocab_batch2 () =
       (fun _context _model_source _send ->
          Lui_elements.column
            [ capture_node menu_node
-               (Lui_elements.dropdown_menu ~at:(48.0, 96.0)
+               (Lui_elements.dropdown_menu_view (Lui_elements.dropdown_menu ~at:(48.0, 96.0)
                   ~on_dismiss:(fun _event -> ())
-                  [ Lui_elements.menu_item ~text:"Item" [] ]) ])
+                  [ Lui_elements.dropdown_menu_item ~text:"Item" [] ])) ])
   in
   ignore (Lui_app.start menu_app);
   flush_app menu_app;

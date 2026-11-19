@@ -414,7 +414,11 @@ let rec check_view_type expected = function
         | Standard (P.ListSectionHeader | P.ListSectionFooter) -> "t"
         | Standard kind -> (view_contract kind).S.view_result
         | Extension _ -> "t" in
-      if actual <> expected then fail ("expected " ^ expected ^ " child, got " ^ actual)
+      let compatible = match target with
+        | Standard kind -> S.view_slot_accepts expected kind
+        | Extension _ -> false in
+      if actual <> expected && not compatible then
+        fail ("expected " ^ expected ^ " child, got " ^ actual)
   | Component (_, child) | Slot (Some child) | When (_, child) | Each (_, _, _, child) ->
       check_view_type expected child
   | Choice (_, yes, no) -> check_view_type expected yes; check_view_type expected no

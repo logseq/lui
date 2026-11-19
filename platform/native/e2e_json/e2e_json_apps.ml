@@ -47,12 +47,12 @@ module Menu_app = struct
           ~on_context_menu:(fun _ -> press send Open ()) []
       ; text ~value:(reactive (fun m -> "picked:" ^ m.picked) ms) []
       ; context_menu
-          [ keyed ~source:(map (fun m -> m.menu) ms) ~key:(fun s -> s)
+          [ keyed_context_menu_item ~source:(map (fun m -> m.menu) ms) ~key:(fun s -> s)
               ~cmp:String.compare
               ~mount:(fun s ->
                 let item = sample s in
-                menu_item ~text_signal:(reactive (fun v -> v) s)
-                  ~on_press:(press send (Pick item)) []) ] ]
+                context_menu_item ~text_signal:(reactive (fun v -> v) s)
+                  ~on_press:(press send (Pick item)) ()) ] ]
 end
 
 (* [make name backend] returns a constructor for the boxed app. *)

@@ -383,7 +383,7 @@ let constructor = function
   | "dropdown_menu" -> Some (DropdownMenu, DropdownMenu, Children_list)
   | "context_menu" -> Some (ContextMenu, ContextMenu, Children_list)
   | "menu_item" -> Some (MenuItem, MenuItem, Children_list)
-  | "menu_trigger" -> Some (MenuTrigger, MenuTrigger, Children_list)
+  | "menu_trigger" -> Some (MenuTrigger, MenuTrigger, Child_arguments 1)
   | "list_item" -> Some (ListItem, ListItem, Children_list)
   | "avatar" -> Some (Avatar, Avatar, Children_list)
   | "image" -> Some (Image, Image, Children_list)
@@ -419,6 +419,43 @@ let constructor = function
   | "file_image" -> Some (FileImage, FileImage, Children_list)
   | "file_preview" -> Some (FilePreview, FilePreview, Children_list)
   | "popover" -> Some (Popover, Popover, Children_list)
+  | "toolbar_button" -> Some (Button, Button, Children_list)
+  | "toolbar_icon_button" -> Some (Button, Button, Children_list)
+  | "toolbar_toggle_button" -> Some (ToggleButton, ToggleButton, Children_list)
+  | "toolbar_button_group" -> Some (ButtonGroup, ButtonGroup, Children_list)
+  | "toolbar_toggle_group" -> Some (ToggleGroup, ToggleGroup, Children_list)
+  | "toolbar_checkbox" -> Some (Checkbox, Checkbox, Children_list)
+  | "toolbar_switch" -> Some (SwitchControl, SwitchControl, Children_list)
+  | "toolbar_toggle" -> Some (Toggle, Toggle, Children_list)
+  | "toolbar_radio_group" -> Some (RadioGroup, RadioGroup, Children_list)
+  | "toolbar_select" -> Some (Select, Select, Children_list)
+  | "toolbar_combobox" -> Some (Combobox, Combobox, Children_list)
+  | "toolbar_text_field" -> Some (TextField, TextField, Children_list)
+  | "toolbar_secure_field" -> Some (SecureField, SecureField, Children_list)
+  | "toolbar_input" -> Some (Input, Input, Children_list)
+  | "toolbar_search_field" -> Some (SearchField, SearchField, Children_list)
+  | "toolbar_menu_item" -> Some (MenuItem, MenuItem, Children_list)
+  | "toolbar_menu_trigger" -> Some (MenuTrigger, MenuTrigger, Child_arguments 1)
+  | "toolbar_spacer" -> Some (Spacer, Spacer, Children_list)
+  | "toolbar_divider" -> Some (Divider, Divider, Children_list)
+  | "toolbar_text" -> Some (Text, Text, Children_list)
+  | "toolbar_menu" -> Some (MenuTrigger, DropdownMenu, Children_list)
+  | "toolbar_separator" -> Some (Divider, Divider, Children_list)
+  | "dropdown_menu_item" -> Some (MenuItem, MenuItem, Children_list)
+  | "dropdown_menu_trigger" -> Some (MenuTrigger, MenuTrigger, Child_arguments 1)
+  | "dropdown_menu_submenu" -> Some (MenuTrigger, DropdownMenu, Children_list)
+  | "dropdown_menu_separator" -> Some (Divider, Divider, Children_list)
+  | "dropdown_menu_divider" -> Some (Divider, Divider, Children_list)
+  | "list_section_item" -> Some (ListItem, ListItem, Children_list)
+  | "tree_row" -> Some (Row, Row, Children_list)
+  | "tree_column" -> Some (Column, Column, Children_list)
+  | "tree_panel" -> Some (Panel, Panel, Children_list)
+  | "tree_card" -> Some (Card, Card, Children_list)
+  | "tree_box" -> Some (Box, Box, Children_list)
+  | "tree_list_item" -> Some (ListItem, ListItem, Children_list)
+  | "tree_virtual_list" -> Some (VirtualList, VirtualList, Children_list)
+  | "context_menu_item" -> Some (MenuItem, MenuItem, Child_arguments 1)
+  | "context_menu_separator" -> Some (Divider, Divider, Child_arguments 1)
   | "separator" -> Some (Divider, Divider, Children_list)
   | "menu" | "submenu" -> Some (MenuTrigger, DropdownMenu, Children_list)
   | _ -> None
@@ -439,8 +476,118 @@ let mandatory_labels = function
   | "timeline_item" -> ["title"]
   | "bottom_tabs" -> ["label"]
   | "bottom_tab" -> ["title"; "on_press"]
+  | "toolbar_button" -> ["text"]
+  | "toolbar_icon_button" -> ["icon"; "label"]
+  | "toolbar_radio_group" -> ["label"]
   | _ -> []
 
+let scoped_adapter = function
+  | "keyed_step" -> "scoped_step"
+  | "keyed_timeline_item" -> "scoped_timeline_item"
+  | "keyed_bottom_tab" -> "scoped_bottom_tab"
+  | "keyed_table_row" -> "scoped_table_row"
+  | "keyed_table_cell" -> "scoped_table_cell"
+  | "keyed_radio" -> "scoped_radio"
+  | "keyed_swipe_action" -> "scoped_swipe_action"
+  | "bottom_tab" -> "scoped_bottom_tab"
+  | "table_row" -> "scoped_table_row"
+  | "table_cell" -> "scoped_table_cell"
+  | "radio" -> "scoped_radio"
+  | "input_group_actions" -> "scoped_input_group_actions"
+  | "dropdown_menu" -> "scoped_dropdown_menu"
+  | "swipe_action" -> "scoped_swipe_action"
+  | "step" -> "scoped_step"
+  | "timeline_item" -> "scoped_timeline_item"
+  | "toolbar_button" -> "scoped_toolbar"
+  | "toolbar_icon_button" -> "scoped_toolbar"
+  | "toolbar_toggle_button" -> "scoped_toolbar"
+  | "toolbar_button_group" -> "scoped_toolbar"
+  | "toolbar_toggle_group" -> "scoped_toolbar"
+  | "toolbar_checkbox" -> "scoped_toolbar"
+  | "toolbar_switch" -> "scoped_toolbar"
+  | "toolbar_toggle" -> "scoped_toolbar"
+  | "toolbar_radio_group" -> "scoped_toolbar"
+  | "toolbar_select" -> "scoped_toolbar"
+  | "toolbar_combobox" -> "scoped_toolbar"
+  | "toolbar_text_field" -> "scoped_toolbar"
+  | "toolbar_secure_field" -> "scoped_toolbar"
+  | "toolbar_input" -> "scoped_toolbar"
+  | "toolbar_search_field" -> "scoped_toolbar"
+  | "toolbar_menu_item" -> "scoped_toolbar"
+  | "toolbar_menu_trigger" -> "scoped_toolbar"
+  | "toolbar_spacer" -> "scoped_toolbar"
+  | "toolbar_divider" -> "scoped_toolbar"
+  | "toolbar_text" -> "scoped_toolbar"
+  | "toolbar_menu" -> "scoped_toolbar"
+  | "toolbar_separator" -> "scoped_toolbar"
+  | "dropdown_menu_item" -> "scoped_dropdown_menu_item"
+  | "dropdown_menu_trigger" -> "scoped_dropdown_menu_item"
+  | "dropdown_menu_submenu" -> "scoped_dropdown_menu_item"
+  | "dropdown_menu_separator" -> "scoped_dropdown_menu_item"
+  | "dropdown_menu_divider" -> "scoped_dropdown_menu_item"
+  | "list_section_item" -> "scoped_list_section_item"
+  | "tree_row" -> "scoped_tree"
+  | "tree_column" -> "scoped_tree"
+  | "tree_panel" -> "scoped_tree"
+  | "tree_card" -> "scoped_tree"
+  | "tree_box" -> "scoped_tree"
+  | "tree_list_item" -> "scoped_tree"
+  | "tree_virtual_list" -> "scoped_tree"
+  | "context_menu_item" -> "scoped_context_menu_item"
+  | "context_menu_separator" -> "scoped_context_menu_item"
+  | "if_step" -> "scoped_step"
+  | "reactive_step" -> "scoped_step"
+  | "if_timeline_item" -> "scoped_timeline_item"
+  | "reactive_timeline_item" -> "scoped_timeline_item"
+  | "if_bottom_tab" -> "scoped_bottom_tab"
+  | "reactive_bottom_tab" -> "scoped_bottom_tab"
+  | "if_table_row" -> "scoped_table_row"
+  | "reactive_table_row" -> "scoped_table_row"
+  | "if_table_cell" -> "scoped_table_cell"
+  | "reactive_table_cell" -> "scoped_table_cell"
+  | "if_radio" -> "scoped_radio"
+  | "reactive_radio" -> "scoped_radio"
+  | "if_swipe_action" -> "scoped_swipe_action"
+  | "reactive_swipe_action" -> "scoped_swipe_action"
+  | "keyed_input_group_actions" -> "scoped_input_group_actions"
+  | "if_input_group_actions" -> "scoped_input_group_actions"
+  | "reactive_input_group_actions" -> "scoped_input_group_actions"
+  | "keyed_dropdown_menu_item" -> "scoped_dropdown_menu_item"
+  | "if_dropdown_menu_item" -> "scoped_dropdown_menu_item"
+  | "reactive_dropdown_menu_item" -> "scoped_dropdown_menu_item"
+  | "keyed_context_menu_item" -> "scoped_context_menu_item"
+  | "if_context_menu_item" -> "scoped_context_menu_item"
+  | "reactive_context_menu_item" -> "scoped_context_menu_item"
+  | "keyed_toolbar" -> "scoped_toolbar"
+  | "if_toolbar" -> "scoped_toolbar"
+  | "reactive_toolbar" -> "scoped_toolbar"
+  | "keyed_list_section_item" -> "scoped_list_section_item"
+  | "if_list_section_item" -> "scoped_list_section_item"
+  | "reactive_list_section_item" -> "scoped_list_section_item"
+  | "keyed_tree" -> "scoped_tree"
+  | "if_tree" -> "scoped_tree"
+  | "reactive_tree" -> "scoped_tree"
+  | "reactive_dropdown_menu" -> "scoped_dropdown_menu"
+  | "scoped_step" -> "scoped_step"
+  | "scoped_timeline_item" -> "scoped_timeline_item"
+  | "scoped_bottom_tab" -> "scoped_bottom_tab"
+  | "scoped_table_row" -> "scoped_table_row"
+  | "scoped_table_cell" -> "scoped_table_cell"
+  | "scoped_radio" -> "scoped_radio"
+  | "scoped_input_group_actions" -> "scoped_input_group_actions"
+  | "scoped_swipe_action" -> "scoped_swipe_action"
+  | "scoped_dropdown_menu_item" -> "scoped_dropdown_menu_item"
+  | "scoped_context_menu_item" -> "scoped_context_menu_item"
+  | "scoped_toolbar" -> "scoped_toolbar"
+  | "scoped_list_section_item" -> "scoped_list_section_item"
+  | "scoped_tree" -> "scoped_tree"
+  | "scoped_dropdown_menu" -> "scoped_dropdown_menu"
+  | _ -> "scoped"
+
+let dynamic_adapter = function
+  | "keyed_step" | "if_step" | "reactive_step" | "keyed_timeline_item" | "if_timeline_item" | "reactive_timeline_item" | "keyed_bottom_tab" | "if_bottom_tab" | "reactive_bottom_tab" | "keyed_table_row" | "if_table_row" | "reactive_table_row" | "keyed_table_cell" | "if_table_cell" | "reactive_table_cell" | "keyed_radio" | "if_radio" | "reactive_radio" | "keyed_swipe_action" | "if_swipe_action" | "reactive_swipe_action" | "keyed_input_group_actions" | "if_input_group_actions" | "reactive_input_group_actions" | "keyed_dropdown_menu_item" | "if_dropdown_menu_item" | "reactive_dropdown_menu_item" | "keyed_context_menu_item" | "if_context_menu_item" | "reactive_context_menu_item" | "keyed_toolbar" | "if_toolbar" | "reactive_toolbar" | "keyed_list_section_item" | "if_list_section_item" | "reactive_list_section_item" | "keyed_tree" | "if_tree" | "reactive_tree" | "reactive_dropdown_menu" -> true
+  | _ -> false
+
 let exports = function
-  | "mount" | "scoped" | "reactive" | "map" | "sample" | "get" | "get_state" | "attach" | "error_boundary" | "enable" | "mount_children" | "dynamic" | "default_subtree_equal" | "dyn" | "if_" | "keyed" | "virtual_rows" | "keyed_step" | "keyed_timeline_item" | "keyed_bottom_tab" | "keyed_table_row" | "keyed_table_cell" | "keyed_radio" | "keyed_swipe_action" | "press" | "on_input" | "on_event" | "is_press" | "is_long_press" | "is_double_press" | "is_change" | "is_input" | "is_navigate" | "is_submit" | "is_toggle" | "is_dismiss" | "is_appear" | "is_resize" | "register_press" | "register_long_press" | "register_double_press" | "register_change" | "register_input" | "register_submit" | "register_navigate" | "register_toggle" | "register_dismiss" | "appear_handler" | "register_resize" | "row" | "column" | "grid" | "stack" | "edge_inset" | "overlay" | "align" | "view_that_fits" | "panel" | "card" | "alert" | "bubble" | "box" | "scroll" | "list" | "virtual_list" | "tabs" | "bottom_tabs" | "bottom_tab" | "button_group" | "toggle_group" | "breadcrumb" | "pagination" | "table" | "table_row" | "table_cell" | "tree" | "resizable" | "split" | "drawer" | "status_bar" | "spacer" | "spinner" | "icon" | "text" | "heading" | "paragraph" | "label" | "kbd" | "button" | "icon_button" | "toggle_button" | "checkbox" | "switch_" | "toggle" | "radio_group" | "radio" | "slider" | "number_stepper" | "progress" | "divider" | "separator" | "text_field" | "secure_field" | "input" | "search_field" | "textarea" | "input_group" | "input_group_actions" | "select" | "combobox" | "dropdown_menu" | "context_menu" | "menu_trigger" | "menu" | "submenu" | "dialog" | "sheet" | "tooltip" | "toast" | "file_picker" | "popover" | "toolbar" | "accordion" | "menu_item" | "list_item" | "list_section" | "swipe_actions" | "swipe_action" | "avatar" | "image" | "media_surface" | "link" | "file_image" | "file_preview" | "stepper" | "step" | "timeline" | "timeline_item" | "themed" -> true
+  | "mount" | "scoped" | "reactive" | "map" | "sample" | "get" | "get_state" | "attach" | "error_boundary" | "enable" | "mount_children" | "dynamic" | "default_subtree_equal" | "dyn" | "if_" | "keyed" | "virtual_rows" | "keyed_step" | "keyed_timeline_item" | "keyed_bottom_tab" | "keyed_table_row" | "keyed_table_cell" | "keyed_radio" | "keyed_swipe_action" | "press" | "on_input" | "on_event" | "is_press" | "is_long_press" | "is_double_press" | "is_change" | "is_input" | "is_navigate" | "is_submit" | "is_toggle" | "is_dismiss" | "is_appear" | "is_resize" | "register_press" | "register_long_press" | "register_double_press" | "register_change" | "register_input" | "register_submit" | "register_navigate" | "register_toggle" | "register_dismiss" | "appear_handler" | "register_resize" | "row" | "column" | "grid" | "stack" | "edge_inset" | "overlay" | "align" | "view_that_fits" | "panel" | "card" | "alert" | "bubble" | "box" | "scroll" | "list" | "virtual_list" | "tabs" | "bottom_tabs" | "bottom_tab" | "button_group" | "toggle_group" | "breadcrumb" | "pagination" | "table" | "table_row" | "table_cell" | "tree" | "resizable" | "split" | "drawer" | "status_bar" | "spacer" | "spinner" | "icon" | "text" | "heading" | "paragraph" | "label" | "kbd" | "button" | "icon_button" | "toggle_button" | "checkbox" | "switch_" | "toggle" | "radio_group" | "radio" | "slider" | "number_stepper" | "progress" | "divider" | "separator" | "text_field" | "secure_field" | "input" | "search_field" | "textarea" | "input_group" | "input_group_actions" | "select" | "combobox" | "dropdown_menu" | "context_menu" | "menu_trigger" | "menu" | "submenu" | "dialog" | "sheet" | "tooltip" | "toast" | "file_picker" | "popover" | "toolbar" | "accordion" | "menu_item" | "list_item" | "list_section" | "swipe_actions" | "swipe_action" | "avatar" | "image" | "media_surface" | "link" | "file_image" | "file_preview" | "stepper" | "step" | "timeline" | "timeline_item" | "themed" | "toolbar_button" | "toolbar_icon_button" | "toolbar_toggle_button" | "toolbar_button_group" | "toolbar_toggle_group" | "toolbar_checkbox" | "toolbar_switch" | "toolbar_toggle" | "toolbar_radio_group" | "toolbar_select" | "toolbar_combobox" | "toolbar_text_field" | "toolbar_secure_field" | "toolbar_input" | "toolbar_search_field" | "toolbar_menu_item" | "toolbar_menu_trigger" | "toolbar_spacer" | "toolbar_divider" | "toolbar_text" | "toolbar_menu" | "toolbar_separator" | "dropdown_menu_item" | "dropdown_menu_trigger" | "dropdown_menu_submenu" | "dropdown_menu_separator" | "dropdown_menu_divider" | "list_section_item" | "tree_row" | "tree_column" | "tree_panel" | "tree_card" | "tree_box" | "tree_list_item" | "tree_virtual_list" | "context_menu_item" | "context_menu_separator" | "dropdown_menu_view" | "if_step" | "reactive_step" | "if_timeline_item" | "reactive_timeline_item" | "if_bottom_tab" | "reactive_bottom_tab" | "if_table_row" | "reactive_table_row" | "if_table_cell" | "reactive_table_cell" | "if_radio" | "reactive_radio" | "if_swipe_action" | "reactive_swipe_action" | "keyed_input_group_actions" | "if_input_group_actions" | "reactive_input_group_actions" | "keyed_dropdown_menu_item" | "if_dropdown_menu_item" | "reactive_dropdown_menu_item" | "keyed_context_menu_item" | "if_context_menu_item" | "reactive_context_menu_item" | "keyed_toolbar" | "if_toolbar" | "reactive_toolbar" | "keyed_list_section_item" | "if_list_section_item" | "reactive_list_section_item" | "keyed_tree" | "if_tree" | "reactive_tree" | "reactive_dropdown_menu" | "scoped_step" | "scoped_timeline_item" | "scoped_bottom_tab" | "scoped_table_row" | "scoped_table_cell" | "scoped_radio" | "scoped_input_group_actions" | "scoped_swipe_action" | "scoped_dropdown_menu_item" | "scoped_context_menu_item" | "scoped_toolbar" | "scoped_list_section_item" | "scoped_tree" | "scoped_dropdown_menu" -> true
   | _ -> false

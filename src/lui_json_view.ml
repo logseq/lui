@@ -508,7 +508,7 @@ let rec element ~emit (node : value) : E.t =
       ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?transition:(v_str props "transition") (list_table_row_el ~emit child_nodes)
     | "tree" ->
       E.tree
-      ?key:s.s_key ?gap:s.s_gap ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ~label:(required "tree.label" (v_str props "label")) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?gap:s.s_gap ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ~label:(required "tree.label" (v_str props "label")) ?transition:(v_str props "transition") (list_tree_el ~emit child_nodes)
     | "resizable" ->
       E.resizable
       ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?label:(v_str props "label") ?resizable_width:(v_int props "resizable-width") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
@@ -612,20 +612,19 @@ let rec element ~emit (node : value) : E.t =
       E.combobox
       ?key:s.s_key ?gap:s.s_gap ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?placeholder:(v_str props "placeholder") ?read_only:(v_bool props "read-only") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?on_input:(ev_input "input" emit props) ?on_submit:(ev "submit" emit props) ?on_dismiss:(ev "dismiss" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
     | "dropdown-menu" ->
-      E.dropdown_menu
-      ?key:s.s_key ?gap:s.s_gap ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?anchor:(anchor_opt (v_str props "anchor")) ?anchor_alignment:(anchor_align_opt (v_str props "anchor-alignment")) ?anchor_offset:(v_float props "anchor-offset") ?on_dismiss:(ev "dismiss" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+      E.dropdown_menu_view (build_dropdown_menu ~emit props child_nodes)
     | "context-menu" ->
       E.context_menu
-      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?on_appear:(ev "appear" emit props) ?on_dismiss:(ev "dismiss" emit props) (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?on_appear:(ev "appear" emit props) ?on_dismiss:(ev "dismiss" emit props) (list_context_menu_item_el ~emit child_nodes)
     | "menu-trigger" ->
       E.menu_trigger
-      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") (single_dropdown_menu ~emit child_nodes)
     | "menu" ->
       E.menu
-      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
     | "submenu" ->
       E.submenu
-      ?key:s.s_key ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
     | "dialog" ->
       E.dialog
       ?key:s.s_key ?gap:s.s_gap ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?description:(v_str props "description") ?on_dismiss:(ev "dismiss" emit props) (List.map (element ~emit) child_nodes)
@@ -646,7 +645,7 @@ let rec element ~emit (node : value) : E.t =
       ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?opacity:(v_float props "opacity") ~target:(popover_target_prop props) ?available_height:(v_float props "available-height") ?on_dismiss:(ev "dismiss" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
     | "toolbar" ->
       E.toolbar
-      ?key:s.s_key ?gap:s.s_gap ?padding:s.s_pad ?background:s.s_bg ?border_width:s.s_border_width ?corner_radius:s.s_radius ?height:s.s_height ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?orientation:(orientation_opt (v_str props "orientation")) ~label:(required "toolbar.label" (v_str props "label")) ?toolbar_gap:(v_int props "toolbar-gap") ?toolbar_class:(v_str props "toolbar-class") ?placement:(toolbar_placement_opt (v_str props "placement")) (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?gap:s.s_gap ?padding:s.s_pad ?background:s.s_bg ?border_width:s.s_border_width ?corner_radius:s.s_radius ?height:s.s_height ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?orientation:(orientation_opt (v_str props "orientation")) ~label:(required "toolbar.label" (v_str props "label")) ?toolbar_gap:(v_int props "toolbar-gap") ?toolbar_class:(v_str props "toolbar-class") ?placement:(toolbar_placement_opt (v_str props "placement")) (list_toolbar_el ~emit child_nodes)
     | "accordion" ->
       E.accordion
       ?key:s.s_key ?height:s.s_height ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ~title:(required "accordion.title" (v_str props "text")) ?selected:(v_bool props "selected") ?accordion_height:(v_int props "accordion-height") ?on_toggle:(ev_toggle "toggle" emit props) (List.map (element ~emit) child_nodes)
@@ -658,7 +657,7 @@ let rec element ~emit (node : value) : E.t =
       ?key:s.s_key ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?role:(role_opt (v_str props "role")) ?tree_level:(v_int props "tree-level") ?expanded:(v_bool props "expanded") ?selected:(v_bool props "selected") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?on_long_press:(ev "long-press" emit props) ?on_double_press:(ev "double-press" emit props) ?on_submit:(ev "submit" emit props) ?on_toggle:(ev_toggle "toggle" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
     | "list-section" ->
       E.list_section
-      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") (list_list_section_item_el ~emit child_nodes)
     | "swipe-actions" ->
       E.swipe_actions
       ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") (list_swipe_action_el ~emit child_nodes)
@@ -878,6 +877,279 @@ and build_timeline_item ~emit props _child_nodes : E.timeline_item_el =
   let s = sty_of props in
   E.timeline_item
       ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?on_appear:(ev "appear" emit props) ~title:(required "timeline_item.title" (v_str props "title")) ?description:(v_str props "description") ?meta:(v_str props "meta") ?indicator:(v_str props "indicator") ?icon:(icon_prop props "icon") ?variant:(variant_opt (v_str props "variant")) ?connector:(v_bool props "connector") ?selected:(v_bool props "selected") ?on_press:(ev "press" emit props) []
+and build_dropdown_menu ~emit props child_nodes : E.dropdown_menu_el =
+  let s = sty_of props in
+E.dropdown_menu
+      ?key:s.s_key ?gap:s.s_gap ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?anchor:(anchor_opt (v_str props "anchor")) ?anchor_alignment:(anchor_align_opt (v_str props "anchor-alignment")) ?anchor_offset:(v_float props "anchor-offset") ?on_dismiss:(ev "dismiss" emit props) ?transition:(v_str props "transition") (list_dropdown_menu_item_el ~emit child_nodes)
+
+and build_toolbar_button ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+let make = match v_str props "text" with
+        | Some text ->
+            E.toolbar_button ~text ?text_signal:None
+              ?icon:(icon_prop props "icon") ?label:(v_str props "label")
+              ?size:(button_size_opt (v_str props "size"))
+        | None ->
+            E.toolbar_icon_button ~icon:(required "icon_button.icon" (icon_prop props "icon"))
+              ~label:(required "icon_button.label" (v_str props "label"))
+              ?size:(control_size_opt (v_str props "size")) in
+      make
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?variant:(variant_opt (v_str props "variant")) ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?text_alignment:(text_align_opt (v_str props "text-alignment")) ?selected:(v_bool props "selected") ?autofocus:(v_bool props "autofocus") ?disabled:(v_bool props "disabled") ?on_navigate:(ev_navigate "navigate" emit props) ?on_press:(ev "press" emit props) ?on_long_press:(ev "long-press" emit props) ?tooltip:(v_str props "tooltip") ?shortcut_hint:(v_str props "shortcut-hint") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_toggle_button ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_toggle_button
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?variant:(variant_opt (v_str props "variant")) ?size:(control_size_opt (v_str props "size")) ?icon:(icon_prop props "icon") ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?label:(v_str props "label") ?text_alignment:(text_align_opt (v_str props "text-alignment")) ?selected:(v_bool props "selected") ?checked:(v_bool props "checked") ?autofocus:(v_bool props "autofocus") ?disabled:(v_bool props "disabled") ?on_toggle:(ev_toggle "toggle" emit props) ?on_long_press:(ev "long-press" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_button_group ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_button_group
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?label:(v_str props "label") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_toggle_group ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_toggle_group
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?label:(v_str props "label") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_checkbox ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_checkbox
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?checked:(v_bool props "checked") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_toggle:(ev_toggle "toggle" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_switch ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_switch
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?checked:(v_bool props "checked") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_toggle:(ev_toggle "toggle" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_toggle ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_toggle
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?checked:(v_bool props "checked") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_toggle:(ev_toggle "toggle" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_radio_group ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_radio_group
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ~label:(required "radio_group.label" (v_str props "label")) ?transition:(v_str props "transition") (list_radio_el ~emit child_nodes)
+
+and build_toolbar_select ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_select
+      ?key:s.s_key ?gap:s.s_gap ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?label:(v_str props "label") ?text:(v_str props "text") ?placeholder:(v_str props "placeholder") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?on_dismiss:(ev "dismiss" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_combobox ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_combobox
+      ?key:s.s_key ?gap:s.s_gap ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?placeholder:(v_str props "placeholder") ?read_only:(v_bool props "read-only") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?on_input:(ev_input "input" emit props) ?on_submit:(ev "submit" emit props) ?on_dismiss:(ev "dismiss" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_text_field ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_text_field
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?placeholder:(v_str props "placeholder") ?label:(v_str props "label") ?autofocus:(v_bool props "autofocus") ?submit_on_blur:(v_bool props "submit-on-blur") ?read_only:(v_bool props "read-only") ?disabled:(v_bool props "disabled") ?on_input:(ev_input "input" emit props) ?on_submit:(ev "submit" emit props) ?on_navigate:(ev_navigate "navigate" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_secure_field ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_secure_field
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?placeholder:(v_str props "placeholder") ?label:(v_str props "label") ?autofocus:(v_bool props "autofocus") ?submit_on_blur:(v_bool props "submit-on-blur") ?read_only:(v_bool props "read-only") ?disabled:(v_bool props "disabled") ?on_input:(ev_input "input" emit props) ?on_submit:(ev "submit" emit props) ?on_navigate:(ev_navigate "navigate" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_input ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_input
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?placeholder:(v_str props "placeholder") ?label:(v_str props "label") ?autofocus:(v_bool props "autofocus") ?submit_on_blur:(v_bool props "submit-on-blur") ?read_only:(v_bool props "read-only") ?disabled:(v_bool props "disabled") ?on_input:(ev_input "input" emit props) ?on_submit:(ev "submit" emit props) ?on_navigate:(ev_navigate "navigate" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_search_field ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_search_field
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?placeholder:(v_str props "placeholder") ?label:(v_str props "label") ?autofocus:(v_bool props "autofocus") ?submit_on_blur:(v_bool props "submit-on-blur") ?read_only:(v_bool props "read-only") ?disabled:(v_bool props "disabled") ?on_input:(ev_input "input" emit props) ?on_submit:(ev "submit" emit props) ?on_navigate:(ev_navigate "navigate" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_menu_item ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_menu_item
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?selection_placement:(icon_placement_opt (v_str props "selection-placement")) ?variant:(variant_opt (v_str props "variant")) ?size:(control_size_opt (v_str props "size")) ?selected:(v_bool props "selected") ?checked:(v_bool props "checked") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?tooltip:(v_str props "tooltip") ?shortcut_hint:(v_str props "shortcut-hint") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_menu_trigger ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_menu_trigger
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") (single_dropdown_menu ~emit child_nodes)
+
+and build_toolbar_spacer ~emit props _child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_spacer
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?transition:(v_str props "transition") []
+
+and build_toolbar_divider ~emit props _child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_divider
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?orientation:(orientation_opt (v_str props "orientation")) ?transition:(v_str props "transition") []
+
+and build_toolbar_text ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_text
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?value:(v_str props "value") ?text_alignment:(text_align_opt (v_str props "text-alignment")) ?font_size:(v_str props "font-size") ?font_weight:(v_int props "font-weight") ?line_height:(v_str props "line-height") ?letter_spacing:(v_float props "letter-spacing") ?font_family:(v_str props "font-family") ?font_style:(font_style_opt (v_str props "font-style")) ?text_decoration:(v_str props "text-decoration") ?white_space:(white_space_opt (v_str props "white-space")) ?line_clamp:(v_int props "line-clamp") ?text_overflow:(text_overflow_opt (v_str props "text-overflow")) ?overflow:(overflow_opt (v_str props "overflow")) ?on_press:(ev "press" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_toolbar_menu ~emit props child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_menu
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
+
+and build_toolbar_separator ~emit props _child_nodes : E.toolbar_el =
+  let s = sty_of props in
+E.toolbar_separator
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?orientation:(orientation_opt (v_str props "orientation")) ?transition:(v_str props "transition") []
+
+and build_dropdown_menu_item ~emit props child_nodes : E.dropdown_menu_item_el =
+  let s = sty_of props in
+E.dropdown_menu_item
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?selection_placement:(icon_placement_opt (v_str props "selection-placement")) ?variant:(variant_opt (v_str props "variant")) ?size:(control_size_opt (v_str props "size")) ?selected:(v_bool props "selected") ?checked:(v_bool props "checked") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?tooltip:(v_str props "tooltip") ?shortcut_hint:(v_str props "shortcut-hint") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_dropdown_menu_trigger ~emit props child_nodes : E.dropdown_menu_item_el =
+  let s = sty_of props in
+E.dropdown_menu_trigger
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") (single_dropdown_menu ~emit child_nodes)
+
+and build_dropdown_menu_submenu ~emit props child_nodes : E.dropdown_menu_item_el =
+  let s = sty_of props in
+E.dropdown_menu_submenu
+      ?key:s.s_key ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
+
+and build_dropdown_menu_separator ~emit props _child_nodes : E.dropdown_menu_item_el =
+  let s = sty_of props in
+E.dropdown_menu_separator
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?orientation:(orientation_opt (v_str props "orientation")) ?transition:(v_str props "transition") []
+
+and build_dropdown_menu_divider ~emit props _child_nodes : E.dropdown_menu_item_el =
+  let s = sty_of props in
+E.dropdown_menu_divider
+      ?key:s.s_key ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?orientation:(orientation_opt (v_str props "orientation")) ?transition:(v_str props "transition") []
+
+and build_list_section_item ~emit props child_nodes : E.list_section_item_el =
+  let s = sty_of props in
+E.list_section_item
+      ?key:s.s_key ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?role:(role_opt (v_str props "role")) ?tree_level:(v_int props "tree-level") ?expanded:(v_bool props "expanded") ?selected:(v_bool props "selected") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?on_long_press:(ev "long-press" emit props) ?on_double_press:(ev "double-press" emit props) ?on_submit:(ev "submit" emit props) ?on_toggle:(ev_toggle "toggle" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_tree_row ~emit props child_nodes : E.tree_el =
+  let s = sty_of props in
+E.tree_row
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?orientation:(orientation_opt (v_str props "orientation")) ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?opacity:(v_float props "opacity") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_tree_column ~emit props child_nodes : E.tree_el =
+  let s = sty_of props in
+E.tree_column
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?opacity:(v_float props "opacity") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_tree_panel ~emit props child_nodes : E.tree_el =
+  let s = sty_of props in
+E.tree_panel
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?opacity:(v_float props "opacity") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_tree_card ~emit props child_nodes : E.tree_el =
+  let s = sty_of props in
+E.tree_card
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?opacity:(v_float props "opacity") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_tree_box ~emit props child_nodes : E.tree_el =
+  let s = sty_of props in
+E.tree_box
+      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?opacity:(v_float props "opacity") ?inert:(v_bool props "inert") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_tree_list_item ~emit props child_nodes : E.tree_el =
+  let s = sty_of props in
+E.tree_list_item
+      ?key:s.s_key ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?icon_placement:(icon_placement_opt (v_str props "icon-placement")) ?role:(role_opt (v_str props "role")) ?tree_level:(v_int props "tree-level") ?expanded:(v_bool props "expanded") ?selected:(v_bool props "selected") ?disabled:(v_bool props "disabled") ?on_press:(ev "press" emit props) ?on_long_press:(ev "long-press" emit props) ?on_double_press:(ev "double-press" emit props) ?on_submit:(ev "submit" emit props) ?on_toggle:(ev_toggle "toggle" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and build_tree_virtual_list ~emit props child_nodes : E.tree_el =
+  let s = sty_of props in
+E.tree_virtual_list
+      ?key:s.s_key ?overscan:(v_int props "overscan") ?item_extent:(v_float props "item-extent") ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?scroll_target:(v_str props "scroll-target") ?scroll_token:(v_int props "scroll-token") ?scroll_animated:(v_bool props "scroll-animated") ?track_visible_range:(v_bool props "track-visible-range") ?opacity:(v_float props "opacity") ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
+
+and list_toolbar_el ~emit nodes : E.toolbar_el list =
+  List.filter_map (function
+    | Obj fields ->
+      let props = props_of fields in
+      let child_nodes = match get fields "children" with Some (Arr nodes) -> nodes | _ -> [] in
+      (match kind_of_node fields with
+      | "button" -> Some (build_toolbar_button ~emit props child_nodes)
+      | "toggle-button" -> Some (build_toolbar_toggle_button ~emit props child_nodes)
+      | "button-group" -> Some (build_toolbar_button_group ~emit props child_nodes)
+      | "toggle-group" -> Some (build_toolbar_toggle_group ~emit props child_nodes)
+      | "checkbox" -> Some (build_toolbar_checkbox ~emit props child_nodes)
+      | "switch" -> Some (build_toolbar_switch ~emit props child_nodes)
+      | "toggle" -> Some (build_toolbar_toggle ~emit props child_nodes)
+      | "radio-group" -> Some (build_toolbar_radio_group ~emit props child_nodes)
+      | "select" -> Some (build_toolbar_select ~emit props child_nodes)
+      | "combobox" -> Some (build_toolbar_combobox ~emit props child_nodes)
+      | "text-field" -> Some (build_toolbar_text_field ~emit props child_nodes)
+      | "secure-field" -> Some (build_toolbar_secure_field ~emit props child_nodes)
+      | "input" -> Some (build_toolbar_input ~emit props child_nodes)
+      | "search-field" -> Some (build_toolbar_search_field ~emit props child_nodes)
+      | "menu-item" -> Some (build_toolbar_menu_item ~emit props child_nodes)
+      | "menu-trigger" -> Some (build_toolbar_menu_trigger ~emit props child_nodes)
+      | "spacer" -> Some (build_toolbar_spacer ~emit props child_nodes)
+      | "divider" -> Some (build_toolbar_divider ~emit props child_nodes)
+      | "text" -> Some (build_toolbar_text ~emit props child_nodes)
+      | "menu" -> Some (build_toolbar_menu ~emit props child_nodes)
+      | "separator" -> Some (build_toolbar_separator ~emit props child_nodes)
+      | _ -> None)
+    | _ -> None) nodes
+
+and list_dropdown_menu_item_el ~emit nodes : E.dropdown_menu_item_el list =
+  List.filter_map (function
+    | Obj fields ->
+      let props = props_of fields in
+      let child_nodes = match get fields "children" with Some (Arr nodes) -> nodes | _ -> [] in
+      (match kind_of_node fields with
+      | "menu-item" -> Some (build_dropdown_menu_item ~emit props child_nodes)
+      | "menu-trigger" -> Some (build_dropdown_menu_trigger ~emit props child_nodes)
+      | "submenu" -> Some (build_dropdown_menu_submenu ~emit props child_nodes)
+      | "separator" -> Some (build_dropdown_menu_separator ~emit props child_nodes)
+      | "divider" -> Some (build_dropdown_menu_divider ~emit props child_nodes)
+      | _ -> None)
+    | _ -> None) nodes
+
+and list_list_section_item_el ~emit nodes : E.list_section_item_el list =
+  List.filter_map (function
+    | Obj fields ->
+      let props = props_of fields in
+      let child_nodes = match get fields "children" with Some (Arr nodes) -> nodes | _ -> [] in
+      (match kind_of_node fields with
+      | "list-item" -> Some (build_list_section_item ~emit props child_nodes)
+      | _ -> None)
+    | _ -> None) nodes
+
+and list_tree_el ~emit nodes : E.tree_el list =
+  List.filter_map (function
+    | Obj fields ->
+      let props = props_of fields in
+      let child_nodes = match get fields "children" with Some (Arr nodes) -> nodes | _ -> [] in
+      (match kind_of_node fields with
+      | "row" -> Some (build_tree_row ~emit props child_nodes)
+      | "column" -> Some (build_tree_column ~emit props child_nodes)
+      | "panel" -> Some (build_tree_panel ~emit props child_nodes)
+      | "card" -> Some (build_tree_card ~emit props child_nodes)
+      | "box" -> Some (build_tree_box ~emit props child_nodes)
+      | "list-item" -> Some (build_tree_list_item ~emit props child_nodes)
+      | "virtual-list" -> Some (build_tree_virtual_list ~emit props child_nodes)
+      | _ -> None)
+    | _ -> None) nodes
+
+and list_context_menu_item_el ~emit nodes : E.context_menu_item_el list =
+  List.filter_map (function
+    | Obj fields when kind_of_node fields = "menu-item" ->
+      let props = props_of fields in
+      Some (E.context_menu_item ?text:(v_str props "text") ?icon:(icon_prop props "icon")
+        ?foreground:(v_str props "foreground") ?variant:(variant_opt (v_str props "variant"))
+        ?selected:(v_bool props "selected") ?checked:(v_bool props "checked")
+        ?disabled:(v_bool props "disabled") ?accessibility_identifier:(v_str props "accessibility-identifier")
+        ~on_press:(required "context-menu-item.on_press" (ev "press" emit props)) ())
+    | Obj fields when List.mem (kind_of_node fields) ["divider"; "separator"] ->
+      Some (E.context_menu_separator ())
+    | _ -> None) nodes
+
+and single_dropdown_menu ~emit = function
+  | [Obj fields] when kind_of_node fields = "dropdown-menu" ->
+    build_dropdown_menu ~emit (props_of fields)
+      (match get fields "children" with Some (Arr nodes) -> nodes | _ -> [])
+  | _ -> invalid_arg "menu-trigger requires one dropdown-menu child"
+
 (* ---------- public API ---------- *)
 
 let render ~(on_event : event_sink) (node : value) : E.t =
