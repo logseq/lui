@@ -41,6 +41,56 @@ class LuiListLayoutTest {
         return backend
     }
 
+    @Test fun `card and panel flow vertically and honor zero overrides`() {
+        val cases = listOf("card" to 16, "panel" to 12, "card" to 0, "panel" to 0)
+        val backend = LuiBackend(onEvent = {})
+        val ops = mutableListOf("""{"op":"create-node","id":1,"kind":"column"}""")
+        cases.forEachIndexed { index, (kind, padding) ->
+            val id = (index + 1) * 10
+            ops += """{"op":"create-node","id":$id,"kind":"$kind"}"""
+            ops += """{"op":"insert-child","parent":1,"child":$id,"index":$index}"""
+            ops += """{"op":"set-prop","id":$id,"property":"width","value":200}"""
+            if (padding == 0) {
+                ops += """{"op":"set-prop","id":$id,"property":"padding","value":0}"""
+                ops += """{"op":"set-prop","id":$id,"property":"gap","value":0}"""
+            }
+            listOf("First", "Second").forEachIndexed { childIndex, text ->
+                val child = id + childIndex + 1
+                ops += """{"op":"create-node","id":$child,"kind":"text"}"""
+                ops += """{"op":"set-prop","id":$child,"property":"text","value":"$text-$index"}"""
+                ops += """{"op":"set-prop","id":$child,"property":"height","value":24}"""
+                if (childIndex == 1) ops += """{"op":"set-prop","id":$child,"property":"width","value":40}"""
+                ops += """{"op":"insert-child","parent":$id,"child":$child,"index":$childIndex}"""
+            }
+        }
+        assertTrue(backend.applyBatch("""{"generation":1,"ops":[${ops.joinToString(",")}]}"""))
+        var checked = false
+        val view = ComposeView(paparazzi.context).apply { setContent {
+            val native = LocalView.current
+            val density = androidx.compose.ui.platform.LocalDensity.current.density
+            LuiTheme { Box { backend.Content(1) } }
+            LaunchedEffect(Unit) {
+                repeat(3) { withFrameNanos {} }
+                val owner = native.javaClass.methods.first { it.name == "getSemanticsOwner" }.invoke(native) as SemanticsOwner
+                val all = nodes(owner.unmergedRootSemanticsNode)
+                fun bounds(text: String) = all.first {
+                    it.config.getOrNull(SemanticsProperties.Text)?.any { value -> value.text == text } == true
+                }.boundsInRoot
+                cases.forEachIndexed { index, (kind, padding) ->
+                    val first = bounds("First-$index")
+                    val second = bounds("Second-$index")
+                    val gap = if (padding == 0) 0 else 12
+                    assertEquals("$kind padding", padding * density, first.left, 1f)
+                    assertEquals("$kind flow gap", (24 + gap) * density, second.top - first.top, 1f)
+                    assertEquals("$kind stretches unspecified widths", (200 - 2 * padding) * density, first.width, 1f)
+                    assertEquals("$kind preserves explicit child widths", 40 * density, second.width, 1f)
+                }
+                checked = true
+            }
+        } }
+        paparazzi.luiFrames(view, name = "surface-flow", end = 500, fps = 30)
+        assertTrue("surface geometry checked", checked)
+    }
     @Test fun `ordinary list inside native scroll has intrinsic height and retains row interaction`() {
         val events = mutableListOf<LuiEvent>()
         val backend = backend(4, false, events)

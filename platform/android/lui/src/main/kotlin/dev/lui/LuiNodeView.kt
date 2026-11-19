@@ -263,6 +263,8 @@ private val LocalLuiChildSlot = compositionLocalOf<LuiChildSlot?> { null }
 private fun gapOf(node: LuiNodeLike): Int =
     node.prop("gap")?.intValue ?: if (LuiKindRules.isHorizontalGroupKind(node.kind)) {
         LuiKindRules.horizontalGroupDefaultGap(node.kind)
+    } else if (node.kind == LuiNodeKind.card || node.kind == LuiNodeKind.panel) {
+        12
     } else {
         0
     }
@@ -296,10 +298,13 @@ private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long, stretch: B
 
 /** Applies `grow` to a child inside a Column. */
 @Composable
-private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boundedHeight: Boolean) {
-    val grow = backend.node(childId)?.prop("grow")?.numberValue ?: 0.0
-    if (grow > 0 && boundedHeight) {
-        Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)), propagateMinConstraints = true) {
+private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boundedHeight: Boolean, stretch: Boolean = false) {
+    val child = backend.node(childId)
+    val grow = child?.prop("grow")?.numberValue ?: 0.0
+    val fillWidth = stretch && child?.prop("width") == null && child?.prop("max-width") == null
+    if ((grow > 0 && boundedHeight) || stretch) {
+        val sizing = if (grow > 0 && boundedHeight) Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)) else Modifier
+        Box(if (fillWidth) sizing.fillMaxWidth() else sizing, propagateMinConstraints = true) {
             LuiNodeView(backend, childId)
         }
     } else {
@@ -376,7 +381,7 @@ private fun LuiNodeContent(
             ),
             horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
         ) { boundedHeight ->
-            children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight) }
+            children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight, node.propString("cross") == "stretch") }
         }
 
         LuiNodeKind.list -> {
@@ -496,7 +501,7 @@ private fun LuiNodeContent(
             modifier = modifier,
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
-            style = LuiTypography.headingStyle(node.propInt("heading-level", 1)),
+            style = LuiTypography.headingStyle(node.propInt("heading-level", 1), node.propString("style-class")),
             maxLines = if (LuiTypography.singleLine(node.propString("style-class"))) 1 else node.propInt("line-clamp", Int.MAX_VALUE),
             overflow = if (LuiTypography.singleLine(node.propString("style-class"))) TextOverflow.Ellipsis else TextOverflow.Clip,
         )
@@ -893,16 +898,27 @@ private fun LuiStackLike(
     val visible = children.filter { it != menuId && it != tooltipId }
 
     val stackContent: @Composable () -> Unit = {
-        Box(modifier) {
-            visible.forEachNode { childId ->
-                val child = backend.node(childId)
-                val fill = (child?.prop("grow")?.numberValue ?: 0.0) > 0
-                Box(
-                    if (fill) Modifier.fillMaxSize() else Modifier,
-                    contentAlignment = child?.propString("alignment")?.let(::overlayAlignment)
-                        ?: Alignment.TopStart,
-                ) {
-                    LuiNodeView(backend, childId)
+        if (node.kind == LuiNodeKind.card || node.kind == LuiNodeKind.panel) {
+            LuiColumn(
+                modifier = modifier,
+                verticalArrangement = if (node.propString("main") == "space_between") Arrangement.SpaceBetween
+                    else Arrangement.spacedBy(gapOf(node).dp, alignment = mainVerticalAlignment(node.propString("main"))),
+                horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
+            ) { boundedHeight ->
+                visible.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight, node.propString("cross") in setOf(null, "stretch")) }
+            }
+        } else {
+            Box(modifier) {
+                visible.forEachNode { childId ->
+                    val child = backend.node(childId)
+                    val fill = (child?.prop("grow")?.numberValue ?: 0.0) > 0
+                    Box(
+                        if (fill) Modifier.fillMaxSize() else Modifier,
+                        contentAlignment = child?.propString("alignment")?.let(::overlayAlignment)
+                            ?: Alignment.TopStart,
+                    ) {
+                        LuiNodeView(backend, childId)
+                    }
                 }
             }
         }

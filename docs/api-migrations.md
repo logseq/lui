@@ -1,5 +1,173 @@
 # LUI API migration guide
 
+### Phase 4 review: explicit sections in form sheets
+
+`Ui.form_sheet` now supplies an inset-grouped list as its content container,
+so `Ui.form_section` nodes have an admitted list parent. Apple navigation forms
+consume these explicit sections, render their header/footer slot content, and
+keep one native row per supplied control. Existing heading-based raw
+`Lui_element_combine.form_sheet` content remains supported unchanged.
+
+Outside a form sheet, place `Ui.form_section` inside an `Elements.list`, not
+directly inside a column. Gallery's Card example uses this admitted list parent.
+
+An authored list with appearance, scroll-completion, or visible-range callbacks
+keeps its own renderer rather than being flattened into the native form. Apple
+uses `appear-enabled`, `pointer-enabled` (also enabled by the scroll callbacks),
+and `track-visible-range` to preserve that lifecycle and event delivery.
+
+### Phase 4 review: role-independent Apple text truncation
+
+Apple now applies the single-line limit to `heading`, `paragraph` and `label`
+when `~truncate:true` is supplied without `~role`. Their existing default
+typography and heading accessibility behavior are preserved.
+
+### Phase 4 review: row content in form sections and data lists
+
+`Ui.form_section` and `Ui.data_list` isolate supplied content inside a flow
+container within each native row. Passing an existing `list_item` or
+`settings_row` no longer creates a direct nested list-item pair, which Apple
+interprets as a collapsed disclosure. Existing row callbacks remain on the
+supplied row; no toggle handler or migration is required.
+
+## ADR 0007 Phase 4: tokens, semantic text and additive composites
+
+`Lui.Ui` keeps **all** existing low-level context/node exports, with the same
+types and meanings. It adds semantic composites; it does not replace `Ui.text`,
+`Ui.row`, `Ui.column`, `Ui.toolbar`, `Ui.card` or `Ui.panel`.
+`Lui.Raw = Lui_ui` is the long-term home for low-level helpers. New application
+views should use `Lui.Elements` primitives and `Lui.Ui` composites.
+No new composite name collides with an existing low-level export: the semantic
+toolbar is `nav_bar`/`action_toolbar`, and stacks are `hstack`/`vstack`.
+Existing `Lui_element_combine` entry points remain unchanged.
+
+### Typed tokens
+
+`Lui.Tokens` (also `Lui.Ui.Tokens` and `Lui.Elements.Tokens`) exports:
+- `color`: background, surface, surface_raised, card, foreground,
+  muted_foreground, primary, secondary, accent, muted, destructive, warning,
+  success, info, border, input, ring, glass, bar, transparent, hex of int,
+  token of string;
+- `space`: none, xs, sm, md, lg, xl, page, px of int;
+- `radius`: none, sm, md, lg, xl, full, px of int;
+- `text_role`: display, title, headline, subheadline, body, caption, footnote, code.
+
+These are closed polymorphic variants. Semantic colors and roles encode to the
+Phase 2 canonical vocabulary (`surface_raised` becomes `"surface-raised"`).
+`color_value` retains custom nonblank `token` strings; blank tokens become
+transparent. Hex values are clamped to unsigned 32-bit and emitted as RGB/RGBA
+hex strings. `space_value` resolves none/xs/sm/md/lg/xl/page to
+0/4/8/12/16/24/16 logical units; `radius_value` resolves
+none/sm/md/lg/xl/full to 0/4/6/8/12/9999. Explicit `px` escapes clamp at zero.
+These numeric authoring recipes do not change the backend-native Phase 2 theme
+lookup tables (whose platform metrics can differ).
+
+Existing numeric/string primitives are source-compatible. Convert at their
+boundary rather than reintroducing literals:
+```ocaml
+let open Lui.Elements in
+column ~padding:(Lui.Tokens.space_value `page)
+  ~background:(Lui.Tokens.color_value `surface)
+  ~corner_radius:(Lui.Tokens.radius_value `lg) [text ~role:`body ~value:"Hello" []]
+```
+
+### Container defaults
+
+Card and panel now have **host/wire-kind defaults**, including nodes built
+through raw helpers or JSON: vertical, stretching flow, gap md (12), card
+padding lg (16), panel padding md (12). Explicit gap/padding/axis props still
+override defaults, including zero. Apple/Android card padding changes from
+24 to 16; Web card padding changes from 24 to 16. Panel gains padding.
+Use stack/overlay for intentional overlap, not card/panel.
+
+`Ui.hstack ?key ?accessibility_identifier ?gap:space ?padding:space
+?cross ?main children` emits a Row with center cross-axis, sm gap and min-width
+zero. `Ui.vstack` has the same arguments, emits a Column with stretch
+cross-axis, md gap and min-height zero. These are constructor recipes, not new
+wire kinds. Their Web direct children also get min-width/min-height zero.
+
+Read-only mobile audit: searched every
+`/home/ubuntu/repos/mobile/shared/src/logseq/view*.ml` for card/panel constructor,
+raw helper, qualified and aliased uses. **No card or panel nodes are constructed,
+so no mobile call site's appearance changes due to these defaults.**
+The card-named surfaces are actually columns and retain their explicit styling:
+- `view_flashcards.ml:57`: flashcard question column;
+- `view_settings.ml:575,606`: general settings columns;
+- `view_query.ml:971`: gallery card column, explicit gap 10/padding 16,
+  secondary background, border 1/radius 12.
+`view.ml:17` only registers the "card" theme token; it is not a container.
+No mobile files were edited. This is a source audit, not a mobile visual check.
+
+Repository Gallery's Card example now demonstrates direct vertical children;
+its implicit card padding changes to 16. Explicitly padded examples keep their
+padding. Multi-child surfaces now flow instead of overlapping across all hosts.
+The Phone Card baselines include these defaults, the headline role, and the
+semantic-form example; their existing pixel budgets are unchanged.
+
+### Typography and truncation
+
+`text`, `heading`, `paragraph`, `label` (and the toolbar text lift) add
+`?role:Lui.Tokens.text_role` and `?truncate:bool`.
+Role adds a canonical typography class while preserving caller classes.
+Explicit font properties remain overrides. Roles do not replace italic/oblique
+`font_style`. Truncation, when true, emits nowrap, ellipsis, hidden overflow,
+line-clamp 1 and min-width 0; it wins over conflicting explicit overflow/clamp
+properties. False/omitted leaves existing behavior unchanged. No new wire
+properties are introduced.
+These are OCaml authoring conveniences; JSON/EDN continues to use the canonical
+style-class and overflow properties rather than new role/truncate wire fields.
+```ocaml
+text ~role:`caption ~truncate:true ~value:(reactive title_signal) []
+```
+
+### Composite entry points
+
+All existing `Lui_element_combine` composites are also available from `Lui.Ui`:
+composer and attachment/send helpers, sidebar and sidebar_section, toolbar_item
+and action_toolbar, settings_section, empty_state, loading, confirm_dialog,
+feedback_banner, buttons, navigation/menu helpers. Their existing typed callbacks,
+borrowed signal ownership and native presentation recipes are retained.
+`confirmation` aliases `confirm_dialog`.
+
+New entry points (content is `Lui.Elements.t`; optional keys omitted below):
+```ocaml
+Ui.page ~title ?navigation ?actions content
+Ui.section ?title ?footer content
+Ui.form_section ?title ?footer content
+Ui.form_field ~label ?help ?error control
+Ui.data_list ~label ?empty content
+Ui.nav_bar ~title ?leading ?trailing ()
+Ui.form_sheet ~title ?on_dismiss ?cancel ?confirm ?confirm_disabled content
+```
+Page uses a padded vertical stack with a title or supplied navigation and optional
+footer actions. Section uses semantic heading/body/footer typography. Form_section emits native
+list-section header/footer slots and typed rows.
+Form_field places its label above the control; error takes precedence over help.
+Its optional `help_signal` and `error_signal` carry `string option` values,
+override the corresponding static value, and are borrowed. Reactive validation
+updates only the message, retaining the mounted control and its editing state:
+```ocaml
+Ui.form_field ~label:"Name" ~error:(reactive Model.name_error model_s)
+  (text_field ~placeholder:"Name" [])
+```
+The Ui form-sheet wrapper also accepts `confirm_disabled_signal` for
+`~confirm_disabled:(reactive predicate model_s)`; the existing direct
+`?confirm_disabled:bool Signal.signal` parameter remains supported.
+Data_list emits a native inset-grouped list with a header slot and list-item rows;
+an optional empty view is used only when content is empty. Nav_bar emits an
+existing Toolbar with navigation placement; leading/trailing children must have
+the existing `toolbar_el` capability. Form_sheet wraps the existing sheet recipe,
+including navigation-form presentation and cancellation/confirmation toolbar
+metadata. The legacy `Lui_element_combine.form_sheet ~content ()` signature is
+unchanged; only the newly added Ui entry point takes a final content list.
+
+These recipes use existing kinds and admitted presentation metadata, so Apple
+selects native navigation/sheet/list chrome, Android keeps native Material
+controls and Web keeps existing toolbar/list/dialog semantics. Public composite
+signatures expose no raw classes or platform-specific dimensions. Internal
+recipe classes are implementation details. No changes to wire schema/version
+or event payloads are required.
+
 ## Unreleased: Child capabilities and anchorless segments (ADR 0007 Phase 3c)
 
 `keyed_input_group_actions` is removed: an input group admits at most one

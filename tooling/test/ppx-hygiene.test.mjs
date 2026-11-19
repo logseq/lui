@@ -55,6 +55,8 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["input [context_menu [context_menu_item ~on_press:(fun () -> ()) ()]]"],
       ["context_menu [reactive_context_menu_item (fun _ -> context_menu_item ~on_press:(fun () -> ()) ()) source]"],
       ['list [list_section ~header:(text ~value:"Title" []) [list_section_item []]]'],
+      ['Lui.Ui.form_field ~label:"Name" ~error:(reactive (fun invalid -> if invalid then Some "Required" else None) source) (text_field [])'],
+      ['Lui.Ui.form_sheet ~title:"Edit" ~confirm_disabled:(reactive source) [Lui.Ui.form_section ~title:"Identity" [text_field []]]'],
       ["let button _ = context_menu_item ~on_press:(fun () -> ()) () in context_menu [button []]"],
       ["(fun button -> context_menu [button []]) (fun _ -> context_menu_item ~on_press:(fun () -> ()) ())"],
       ["let module Other = struct let button _ = context_menu_item ~on_press:(fun () -> ()) () end in context_menu [Other.button []]"],

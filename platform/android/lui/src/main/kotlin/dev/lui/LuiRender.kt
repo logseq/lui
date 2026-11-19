@@ -107,7 +107,8 @@ internal fun textAlignment(name: String?): TextAlign = when (name) {
 
 /** Default inner padding by kind, mirroring the Flutter backend. */
 private fun defaultPadding(kind: LuiNodeKind): Int = when (kind) {
-    LuiNodeKind.card -> 24
+    LuiNodeKind.card -> 16
+    LuiNodeKind.panel -> 12
     LuiNodeKind.alert -> 16
     LuiNodeKind.bubble -> 12
     LuiNodeKind.tabs -> 4

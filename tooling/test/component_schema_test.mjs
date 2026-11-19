@@ -86,6 +86,9 @@ test('element constructors expose only admitted properties and events', () => {
         ['x', 'y', 'anchor', 'anchor-target', 'anchor-rect', 'anchor-alignment', 'anchor-offset', 'anchor-alignment-offset'];
       if (constructor === 'split' && base === 'sizing') properties = ['value', 'first-pane-width'];
       if (constructor === 'split' && base === 'motion') properties = ['resize-duration', 'resize-easing', 'resize-origin'];
+      if (['text', 'heading', 'paragraph', 'label'].includes(original) && base === 'role') properties = ['style-class'];
+      if (['text', 'heading', 'paragraph', 'label'].includes(original) && base === 'truncate')
+        properties = ['white-space', 'text-overflow', 'overflow', 'line-clamp', 'min-width'];
       if (base === 'checked' && ['toggle_button', 'menu_item'].includes(original)) properties = ['selected'];
       if (base === 'selected' && constructor === 'radio') properties = ['checked'];
       if (base === 'title' && ['sheet', 'accordion'].includes(constructor)) properties = ['text'];

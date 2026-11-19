@@ -4,7 +4,9 @@
 
 module Navigation = Lui_navigation
 module Elements = Lui_elements
-module Ui = Lui_ui
+module Raw = Lui_ui
+module Ui = Lui_ui_composites
+module Tokens = Lui_tokens
 module App = Lui_app
 module Protocol = Lui_protocol
 module Dynamic = Lui_dynamic

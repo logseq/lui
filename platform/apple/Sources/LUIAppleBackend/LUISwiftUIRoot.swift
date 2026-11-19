@@ -856,6 +856,10 @@ private struct LUINodeView: View {
         case .text:
             return AnyView(LUITextView(model: model, backend: backend))
         case .heading:
+            if hasTextRole {
+                return AnyView(LUITextView(model: model, backend: backend)
+                    .accessibilityAddTraits(.isHeader))
+            }
             return AnyView(
                 LUIQueryableText(model: model, backend: backend) {
                     Text(verbatim: model.text)
@@ -864,25 +868,33 @@ private struct LUINodeView: View {
                         .font(typography.font(base: LUIHeadingTypography.isBold(level: headingLevel)
                             ? headingFont.weight(.bold) : headingFont))
                         .luiTypographyMetrics(typography, baseSize: headingSize)
+                        .lineLimit(LUITextLinePolicy.lineLimit(
+                            styleClass: model.derived.styleClass))
                 }
                     .accessibilityAddTraits(.isHeader)
                     .modifier(LUIScrollHeadingModifier(title: model.text,
                         enabled: model.derived.styleClassTokens.contains("scroll-section-title")))
             )
         case .paragraph:
+            if hasTextRole { return AnyView(LUITextView(model: model, backend: backend)) }
             return AnyView(LUIQueryableText(model: model, backend: backend) {
                 Text(verbatim: model.text)
                     .luiTypography(typography)
                     .multilineTextAlignment(textAlignment)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
+                    .lineLimit(LUITextLinePolicy.lineLimit(
+                        styleClass: model.derived.styleClass))
             })
         case .label:
+            if hasTextRole { return AnyView(LUITextView(model: model, backend: backend)) }
             return AnyView(LUIQueryableText(model: model, backend: backend) {
                 Text(verbatim: model.text)
                     .luiTypography(typography)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
+                    .lineLimit(LUITextLinePolicy.lineLimit(
+                        styleClass: model.derived.styleClass))
             })
         case .button:
             if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }
@@ -1117,6 +1129,10 @@ private struct LUINodeView: View {
 
     private var visibleChildren: [Int] {
         model.visibleChildren
+    }
+
+    private var hasTextRole: Bool {
+        LUIDesignTokens.textRoles.keys.contains { model.derived.styleClassTokens.contains($0) }
     }
 
     private var headingFont: Font {
@@ -2122,21 +2138,26 @@ private struct LUIStackView: View {
         }
     }
 
+    @ViewBuilder
     private func stackChildren(excluding excludedIDs: [Int]) -> some View {
-        let childIDs = model.flowChildren.filter { !excludedIDs.contains($0) }
-        let hasPositionedChildren = childIDs.contains {
-            model.childData.layout[$0]?.derived.absoluteInsets != nil
-        }
-        // AnyLayout preserves control identity as positioned children appear.
-        let layout = hasPositionedChildren
-            ? AnyLayout(LUIPositionedStackLayout(direction: layoutDirection))
-            : AnyLayout(ZStackLayout())
-        return layout {
-            ForEach(childIDs, id: \.self) { childID in
-                let insets = model.childData.layout[childID]?.derived.absoluteInsets
-                LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
-                    .environment(\.luiPositionedChildID, insets == nil ? nil : childID)
-                    .layoutValue(key: LUIAbsoluteInsetsKey.self, value: insets)
+        if model.kind == .card || model.kind == .panel {
+            LUIColumnView(model: model, backend: backend, excludedIDs: excludedIDs)
+        } else {
+            let childIDs = model.flowChildren.filter { !excludedIDs.contains($0) }
+            let hasPositionedChildren = childIDs.contains {
+                model.childData.layout[$0]?.derived.absoluteInsets != nil
+            }
+            // AnyLayout preserves control identity as positioned children appear.
+            let layout = hasPositionedChildren
+                ? AnyLayout(LUIPositionedStackLayout(direction: layoutDirection))
+                : AnyLayout(ZStackLayout())
+            layout {
+                ForEach(childIDs, id: \.self) { childID in
+                    let insets = model.childData.layout[childID]?.derived.absoluteInsets
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        .environment(\.luiPositionedChildID, insets == nil ? nil : childID)
+                        .layoutValue(key: LUIAbsoluteInsetsKey.self, value: insets)
+                }
             }
         }
     }
@@ -3146,23 +3167,23 @@ private struct LUINavigationFormRows: View {
                         Section {
                             rows(section.childIDs)
                         } header: {
-                            Text(verbatim: header.text)
+                            sectionSlot(header)
                         } footer: {
-                            Text(verbatim: footer.text)
+                            sectionSlot(footer)
                         }
                     } else if let headerID = section.headerID,
                               let header = backend.model(id: headerID) {
                         Section {
                             rows(section.childIDs)
                         } header: {
-                            Text(verbatim: header.text)
+                            sectionSlot(header)
                         }
                     } else if let footerID = section.footerID,
                               let footer = backend.model(id: footerID) {
                         Section {
                             rows(section.childIDs)
                         } footer: {
-                            Text(verbatim: footer.text)
+                            sectionSlot(footer)
                         }
                     } else {
                         Section {
@@ -3195,9 +3216,28 @@ private struct LUINavigationFormRows: View {
         }
     }
 
+    @ViewBuilder
+    private func sectionSlot(_ model: LUINodeModel) -> some View {
+        if model.kind == .listSectionHeader || model.kind == .listSectionFooter {
+            LUIAnyNodeView(nodeID: model.id, backend: backend).equatable()
+        } else {
+            Text(verbatim: model.text)
+        }
+    }
+
     private func sections(for content: LUINodeModel) -> [LUIListSection] {
-        LUIListSectionPolicy.sections(
-            childIDs: content.children,
+        let sectionContent: LUINodeModel
+        if content.children.count == 1,
+           let childID = content.children.first,
+           let child = backend.model(id: childID), child.kind == .list,
+           !child.supportsAppear, !child.supportsPointer, !child.tracksVisibleRange {
+            sectionContent = child
+        } else {
+            sectionContent = content
+        }
+        return LUIListSectionPolicy.explicitSections(
+            childIDs: sectionContent.children,
+            model: { backend.model(id: $0) },
             isHeading: { childID in
                 backend.model(id: childID)?.kind == .heading
             },
@@ -3205,8 +3245,9 @@ private struct LUINavigationFormRows: View {
         ).map { section in
             let headerText = section.headerID.flatMap { backend.model(id: $0)?.text }
             return LUIListSection(
-                nodeID: nil,
-                headerID: LUINavigationFormSectionPolicy.visibleHeaderID(
+                nodeID: section.nodeID,
+                headerID: section.nodeID != nil ? section.headerID
+                    : LUINavigationFormSectionPolicy.visibleHeaderID(
                     section.headerID,
                     text: headerText
                 ),
@@ -6550,9 +6591,12 @@ enum LUIColumnLayoutPolicy {
 private struct LUIColumnView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    var excludedIDs: [Int] = []
 
     private var flowChildren: [Int] {
-        model.flowChildren.filter { model.childData.layout[$0]?.derived.absoluteInsets == nil }
+        model.flowChildren.filter {
+            !excludedIDs.contains($0) && model.childData.layout[$0]?.derived.absoluteInsets == nil
+        }
     }
 
     var body: some View {
@@ -6615,7 +6659,7 @@ private struct LUIColumnView: View {
         }
     }
 
-    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? 0) }
+    private var gap: CGFloat { CGFloat(model.property(.gap)?.intValue ?? (model.kind == .card || model.kind == .panel ? 12 : 0)) }
     private var cross: String {
         model.property(.cross)?.stringValue ?? "stretch"
     }
@@ -8552,7 +8596,8 @@ private struct LUISurfaceModifier: ViewModifier {
         let isTabs = model.kind == .tabs &&
             !LUISegmentedTabsView.supports(model: model)
         let defaultPadding = switch model.kind {
-        case .card: 24
+        case .card: 16
+        case .panel: 12
         case .alert: 16
         case .bubble: 12
         default: isTabs ? 2 : 0

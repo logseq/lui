@@ -3,6 +3,10 @@
 
 open Lui_protocol
 
+module Tokens = Lui_tokens
+
+type text_role = [ `display | `title | `headline | `subheadline | `body | `caption | `footnote | `code ]
+
 type t = Lui_ui.ui_context -> int option -> int
 
 type pointer_detail = Lui_protocol.pointer_detail
@@ -1496,6 +1500,23 @@ let icon ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?marg
   
   node
 
+let apply_text_recipe context node role truncate style_class =
+  if role <> None || truncate then begin
+    let classes =
+      (match role with None -> [] | Some role -> [Lui_tokens.text_role_value role])
+      @ (if truncate then ["single-line"] else [])
+      @ (match style_class with None -> [] | Some classes -> [classes])
+    in
+    Lui_ui.style_class context node (String.concat " " classes)
+  end;
+  if truncate then begin
+    Lui_ui.white_space context node "nowrap";
+    Lui_ui.text_overflow context node "ellipsis";
+    Lui_ui.overflow context node "hidden";
+    Lui_ui.line_clamp context node 1;
+    Lui_ui.min_width context node 0
+  end
+
 let apply_text_style context node ~font_size ~font_weight ~font_style
     ~line_height ~letter_spacing ~font_family ~text_decoration ~white_space
     ~text_overflow ~overflow =
@@ -1510,7 +1531,7 @@ let apply_text_style context node ~font_size ~font_weight ~font_style
   Option.iter (fun value -> Lui_ui.text_overflow context node (text_overflow_value value)) text_overflow;
   Option.iter (fun value -> Lui_ui.overflow context node (overflow_value value)) overflow
 
-let text ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?text_alignment ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?on_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?transition (children : t list) : t =
+let text ?role ?(truncate = false) ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?text_alignment ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?on_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.create context Text in
   apply_universal ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
@@ -1518,6 +1539,7 @@ let text ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?marg
     ~line_height ~letter_spacing ~font_family ~text_decoration ~white_space
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
+  apply_text_recipe context node role truncate style_class;
   Option.iter
     (fun tag -> Lui_ui.string_property context node As (phrasing_tag_value tag))
     as_;
@@ -1534,7 +1556,7 @@ let text ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?marg
   mount_children context node children;
   node
 
-let heading ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?level ?value ?value_signal ?text_alignment ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?transition (children : t list) : t =
+let heading ?role ?(truncate = false) ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?level ?value ?value_signal ?text_alignment ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.create context Heading in
   apply_universal ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
@@ -1542,6 +1564,7 @@ let heading ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?m
     ~line_height ~letter_spacing ~font_family ~text_decoration ~white_space
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
+  apply_text_recipe context node role truncate style_class;
   Option.iter
     (fun tag -> Lui_ui.string_property context node As (heading_tag_value tag))
     as_;
@@ -1553,7 +1576,7 @@ let heading ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?m
   mount_children context node children;
   node
 
-let paragraph ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?text_alignment ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?transition (children : t list) : t =
+let paragraph ?role ?(truncate = false) ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?text_alignment ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.create context Paragraph in
   apply_universal ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
@@ -1561,6 +1584,7 @@ let paragraph ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin 
     ~line_height ~letter_spacing ~font_family ~text_decoration ~white_space
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
+  apply_text_recipe context node role truncate style_class;
   Option.iter
     (fun tag -> Lui_ui.string_property context node As (paragraph_tag_value tag))
     as_;
@@ -1571,7 +1595,7 @@ let paragraph ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin 
   mount_children context node children;
   node
 
-let label ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?transition (children : t list) : t =
+let label ?role ?(truncate = false) ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?as_ ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?font_size ?font_weight ?line_height ?letter_spacing ?font_family ?font_style ?text_decoration ?white_space ?line_clamp ?text_overflow ?overflow ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.create context Label in
   apply_universal ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
@@ -1579,6 +1603,7 @@ let label ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?mar
     ~line_height ~letter_spacing ~font_family ~text_decoration ~white_space
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
+  apply_text_recipe context node role truncate style_class;
   Option.iter
     (fun tag -> Lui_ui.string_property context node As (label_tag_value tag))
     as_;
