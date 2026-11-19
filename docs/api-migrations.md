@@ -21,6 +21,8 @@ platform surfaces and accents rather than introducing a new palette.
 Foreground slots resolve container tokens through their corresponding ink
 token: for example `~foreground:"secondary"` uses `secondary-foreground`, not
 the pale secondary background. Explicit `*-foreground` theme overrides win.
+Apple keeps its adaptive secondary style only when the corresponding
+`secondary-foreground` or `muted-foreground` theme override is absent.
 Background and border slots retain existing values; literal colors are not
 remapped. Applications intentionally using a container fill as text ink can
 continue to supply its literal color instead.

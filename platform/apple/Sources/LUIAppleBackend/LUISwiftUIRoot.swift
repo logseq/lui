@@ -8645,10 +8645,8 @@ private struct LUISurfaceModifier: ViewModifier {
             )
             .modifier(
                 LUIOptionalForegroundModifier(
-                    usesSecondaryStyle:
-                        LUIThemeColorPolicy.isSecondaryForeground(model.property(.foreground)?.stringValue) ||
-                        (LUIThemeColorPolicy.isMutedForeground(model.property(.foreground)?.stringValue) &&
-                         semanticColors["muted-foreground"] == nil),
+                    usesSecondaryStyle: LUIThemeColorPolicy.usesSecondaryStyle(
+                        model.property(.foreground)?.stringValue, semanticColors: semanticColors),
                     foreground: foregroundColor(model.property(.foreground)?.stringValue) ??
                         (LUIThemeColorPolicy.usesDefaultForeground(kind: model.kind)
                             ? defaultForeground

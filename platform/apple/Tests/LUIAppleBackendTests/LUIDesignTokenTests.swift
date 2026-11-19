@@ -29,4 +29,20 @@ struct LUIDesignTokenTests {
         #expect(LUITextLinePolicy.lineLimit(styleClass: "caption single-line") == 1)
         #expect(LUITextLinePolicy.lineLimit(styleClass: "not-single-line") == nil)
     }
+
+    @Test("Themed secondary foreground overrides hierarchical styling")
+    func themedSecondaryForeground() {
+        #expect(LUIThemeColorPolicy.usesSecondaryStyle("secondary", semanticColors: [:]))
+        #expect(!LUIThemeColorPolicy.usesSecondaryStyle("secondary",
+            semanticColors: ["secondary-foreground": .red]))
+        #expect(LUIThemeColorResolver.color("secondary",
+            semanticColors: ["secondary-foreground": .red], foreground: true) == .red)
+        #expect(LUIThemeColorPolicy.usesSecondaryStyle("secondary",
+            semanticColors: ["muted-foreground": .red]))
+        #expect(LUIThemeColorPolicy.usesSecondaryStyle("muted-foreground", semanticColors: [:]))
+        #expect(!LUIThemeColorPolicy.usesSecondaryStyle("muted-foreground",
+            semanticColors: ["muted-foreground": .red]))
+        #expect(!LUIThemeColorPolicy.usesSecondaryStyle(nil, semanticColors: [:]))
+        #expect(!LUIThemeColorPolicy.usesSecondaryStyle("foreground", semanticColors: [:]))
+    }
 }

@@ -336,6 +336,14 @@ enum LUIThemeColorPolicy {
         name?.lowercased() == "secondary"
     }
 
+    static func usesSecondaryStyle(_ name: String?, semanticColors: [String: Color]) -> Bool {
+        switch name?.lowercased() {
+        case "secondary": semanticColors["secondary-foreground"] == nil
+        case "muted-foreground": semanticColors["muted-foreground"] == nil
+        default: false
+        }
+    }
+
     static func usesDefaultForeground(kind: LUINodeKind) -> Bool {
         switch kind {
         case .panel, .card, .resizable, .alert, .bubble:
