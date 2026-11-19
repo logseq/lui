@@ -184,6 +184,9 @@ let compilation_preserves_typed_view_contracts () =
     "empty menu slot", false, "[:menu-trigger {:text \"More\"}]";
     "multiple menu slots", false, "[:menu-trigger {:text \"More\"} [:dropdown-menu] [:dropdown-menu]]";
     "dropdown view lift", true, "[:column [:dropdown-menu [:menu-item {:text \"Open\"}]]]";
+    "dropdown choice view lift", true, "[:if true [:dropdown-menu] [:column]]";
+    "reversed dropdown choice view lift", true, "[:column [:if false [:column] [:dropdown-menu]]]";
+    "dropdown choice in restricted slot", false, "[:menu-trigger {:text \"More\"} [:if true [:dropdown-menu] [:column]]]";
     "internal wire node", false, "[:list-section-header [:text {:text \"title\"}]]";
     "required typed argument", false, "[:edge-inset]";
     "one split pane", false, "[:split {:value 0.5} [:column]]";
