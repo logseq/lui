@@ -7,7 +7,7 @@ val chip :
   ?disabled:bool ->
   ?status:string ->
   Model.attachment ->
-  on_remove:(Lui_protocol.event -> unit) option ->
+  on_remove:(unit -> unit) option ->
   unit -> t
 (** Composer-strip card: a 120pt image/document preview. With
     [on_remove] an accessible removal control is shown (draft context);

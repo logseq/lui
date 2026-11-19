@@ -371,9 +371,9 @@ let scroll_state context viewport =
   (pinned, request, at_top, scroll_to)
 
 let on_visible_range_of pinned at_top on_reach_top
-    (ev : Lui_protocol.event) =
+    (ev : visible_range) =
   match ev with
-  | Lui_protocol.ScrollEdges (_, top, bottom) ->
+  | Edges { at_start = top; at_end = bottom } ->
       Signal.set pinned bottom;
       if top && not (Signal.get_state at_top) then begin
         Signal.set at_top true;

@@ -151,7 +151,7 @@ module Toggle = struct
       [
         toggle ~text:"enabled"
           ~checked:(reactive (fun m -> m.on) model_s)
-          ~on_toggle:(press send Flip)
+          ~on_toggle:(fun _ -> press send Flip ())
           ~label:"Feature"
           [];
         text

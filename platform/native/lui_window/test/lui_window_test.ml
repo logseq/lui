@@ -1394,10 +1394,8 @@ let detail_click_app () =
   let open Lui_elements in
   let view _ _ _ = column
     [ column ~style_class:"behind" ~on_press_detail:(fun _ -> incr behind) [];
-      column ~style_class:"owner" ~on_press_detail:(fun ev ->
-        match ev with
-        | PressDetail (_, detail) -> received := detail :: !received
-        | _ -> ())
+      column ~style_class:"owner" ~on_press_detail:(fun detail ->
+        received := detail :: !received)
         [ text ~style_class:"page-title" ~value:"page" [];
           button ~style_class:"sidebar-page-actions" ~text:"dots" [] ] ]
   in

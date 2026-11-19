@@ -1,5 +1,239 @@
 {
   "schemaVersion": 1,
+  "eventCallbacks": {
+    "on_press": {
+      "payload": "unit",
+      "events": [
+        "Press",
+        "PressModifiers"
+      ]
+    },
+    "on_long_press": {
+      "payload": "unit",
+      "events": [
+        "LongPress"
+      ]
+    },
+    "on_double_press": {
+      "payload": "unit",
+      "events": [
+        "DoublePress"
+      ]
+    },
+    "on_change": {
+      "payload": "unit",
+      "events": [
+        "Change"
+      ]
+    },
+    "on_input": {
+      "payload": "string",
+      "events": [
+        "TextChanged"
+      ]
+    },
+    "on_submit": {
+      "payload": "unit",
+      "events": [
+        "Submit"
+      ]
+    },
+    "on_toggle": {
+      "payload": "bool",
+      "events": [
+        "ToggleChanged"
+      ]
+    },
+    "on_toggle_detail": {
+      "payload": "toggle_detail",
+      "events": [
+        "ToggleChangedDetail"
+      ]
+    },
+    "on_dismiss": {
+      "payload": "unit",
+      "events": [
+        "Dismiss"
+      ]
+    },
+    "on_picked": {
+      "payload": "string",
+      "events": [
+        "Picked"
+      ]
+    },
+    "on_load": {
+      "payload": "unit",
+      "events": [
+        "Load"
+      ]
+    },
+    "on_appear": {
+      "payload": "unit",
+      "events": [
+        "Appear"
+      ]
+    },
+    "on_resize": {
+      "payload": "float",
+      "events": [
+        "ValueChanged"
+      ]
+    },
+    "on_value_changed": {
+      "payload": "float",
+      "events": [
+        "ValueChanged"
+      ]
+    },
+    "on_navigate": {
+      "payload": "navigation",
+      "events": [
+        "NavigatePrevious",
+        "NavigateNext",
+        "NavigationKey"
+      ]
+    },
+    "on_navigation_key": {
+      "payload": "navigation_key",
+      "events": [
+        "NavigationKey"
+      ]
+    },
+    "on_scroll_completed": {
+      "payload": "scroll_completed",
+      "events": [
+        "ScrollCompleted"
+      ]
+    },
+    "on_visible_range": {
+      "payload": "visible_range",
+      "events": [
+        "VisibleRange",
+        "ScrollEdges"
+      ]
+    },
+    "on_press_detail": {
+      "payload": "pointer_detail",
+      "events": [
+        "PressDetail"
+      ]
+    },
+    "on_pointer_down": {
+      "payload": "pointer_detail",
+      "events": [
+        "PointerDown"
+      ]
+    },
+    "on_pointer_up": {
+      "payload": "pointer_detail",
+      "events": [
+        "PointerUp"
+      ]
+    },
+    "on_pointer_move": {
+      "payload": "pointer_detail",
+      "events": [
+        "PointerMove"
+      ]
+    },
+    "on_pointer_cancel": {
+      "payload": "pointer_detail",
+      "events": [
+        "PointerCancel"
+      ]
+    },
+    "on_context_menu": {
+      "payload": "pointer_detail",
+      "events": [
+        "ContextMenuPress"
+      ]
+    },
+    "on_pointer_enter": {
+      "payload": "unit",
+      "events": [
+        "PointerEnter"
+      ]
+    },
+    "on_pointer_leave": {
+      "payload": "unit",
+      "events": [
+        "PointerLeave"
+      ]
+    },
+    "on_focus_within": {
+      "payload": "bool",
+      "events": [
+        "FocusWithinChanged"
+      ]
+    }
+  },
+  "eventCallbackOverrides": {
+    "slider": {
+      "on_change": "on_resize"
+    }
+  },
+  "eventPayloadRecords": {
+    "toggle_detail": {
+      "event": "ToggleChangedDetail",
+      "fields": [
+        "checked",
+        "modifiers"
+      ]
+    },
+    "navigation_key": {
+      "event": "NavigationKey",
+      "fields": [
+        "key",
+        "shift"
+      ]
+    },
+    "scroll_completed": {
+      "event": "ScrollCompleted",
+      "fields": [
+        "token",
+        "outcome"
+      ]
+    },
+    "range": {
+      "event": "VisibleRange",
+      "fields": [
+        "first",
+        "last"
+      ]
+    },
+    "scroll_edges": {
+      "event": "ScrollEdges",
+      "fields": [
+        "at_start",
+        "at_end"
+      ]
+    }
+  },
+  "eventPayloadVariants": {
+    "navigation": {
+      "NavigatePrevious": {
+        "constructor": "Previous"
+      },
+      "NavigateNext": {
+        "constructor": "Next"
+      },
+      "NavigationKey": {
+        "constructor": "Key",
+        "record": "navigation_key"
+      }
+    },
+    "visible_range": {
+      "VisibleRange": {
+        "constructor": "Range",
+        "record": "range"
+      },
+      "ScrollEdges": {
+        "constructor": "Edges",
+        "record": "scroll_edges"
+      }
+    }
+  },
   "mandatoryParameters": {
     "button": ["text"],
     "icon_button": ["icon", "label"],

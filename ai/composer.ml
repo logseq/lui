@@ -17,12 +17,12 @@ let completion_slot = Signal.state_slot "lui-ai-picker-completion"
 let picker_node picker request completion host_completion on_picked
     on_picker_dismiss : t =
   let on_picked ev = Option.iter (fun f -> f ev) on_picked in
-  let on_dismiss ev =
-    Option.iter (fun f -> f ev) on_picker_dismiss;
-    match ev, host_completion with
-    | Lui_protocol.Dismiss _, None ->
+  let on_dismiss () =
+    Option.iter (fun f -> f ()) on_picker_dismiss;
+    match host_completion with
+    | None ->
         Signal.set completion (Signal.get_state request)
-    | _ -> ()
+    | Some _ -> ()
   in
   let completion_s =
     match host_completion with
@@ -82,7 +82,7 @@ let feedback_of context disabled_reason status =
 
 (* Picker wiring: internal request token + host-driven completion. *)
 let picker_parts context picker on_attach on_picked on_picker_dismiss
-    picker_completion : t list * (Lui_protocol.event -> unit) option =
+    picker_completion : t list * (unit -> unit) option =
   match picker, on_attach with
   | None, None -> ([], None)
   | _ ->

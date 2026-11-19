@@ -66,10 +66,7 @@ let window_spec (m : S.model) : window_spec =
 let s m k = T.get_text m.S.text k
 let fmt m k args = T.format m.S.text k args
 
-let on_toggle send wrap (event : Lui_protocol.event) =
-  match event with
-  | Lui_protocol.ToggleChanged (_, b) -> ignore (send (wrap b))
-  | _ -> ()
+let on_toggle send wrap checked = ignore (send (wrap checked))
 
 let caption v = text ~value:v ~foreground:faint ~font_size:"12" []
 

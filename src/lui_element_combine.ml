@@ -21,14 +21,14 @@ type action =
       { label : string
       ; icon : icon
       ; text : string option
-      ; on_press : Lui_protocol.event -> unit
+      ; on_press : unit -> unit
       }
   | Menu of
       { label : string
       ; icon : icon
       ; text : string option
       ; menu : t list
-      ; on_dismiss : (Lui_protocol.event -> unit) option
+      ; on_dismiss : (unit -> unit) option
       }
 
 let action_text = function
@@ -638,7 +638,7 @@ type toolbar_item =
   ; toolbar_item_icon : icon option
   ; toolbar_item_disabled : bool Signal.signal option
   ; toolbar_item_selected : bool option
-  ; toolbar_item_on_press : Lui_protocol.event -> unit
+  ; toolbar_item_on_press : unit -> unit
   }
 
 let toolbar_item ~label ?icon ?disabled ?selected ~on_press () =

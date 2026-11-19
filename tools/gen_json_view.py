@@ -147,9 +147,15 @@ def extra_arg(name, typ, element=None):
         return f'?{name}:(icon_prop props "{j}")'
     if typ in ENUM_DECODER:
         return f'?{name}:({ENUM_DECODER[typ]} (v_str props "{j}"))'
-    if 'Lui_protocol.event' in typ:
+    if name.startswith('on_') and typ.endswith('-> unit)'):
         ev = EVENT_NAME.get(name)
-        return f'?{name}:(ev "{ev}" emit props)' if ev else None
+        decoder = {
+            'on_input': 'ev_input', 'on_toggle': 'ev_toggle',
+            'on_navigate': 'ev_navigate', 'on_resize': 'ev_value',
+        }.get(name, 'ev')
+        if name == 'on_change' and element == 'slider':
+            decoder = 'ev_value'
+        return f'?{name}:({decoder} "{ev}" emit props)' if ev else None
     if typ == 'input_group_actions_el':
         return f'?{name}:(actions_of ~emit child_nodes)'
     raise SystemExit(f'unhandled arg type: {name} : {typ}')
@@ -629,23 +635,25 @@ let sty_of p =
 
 (* every interaction routes through the node's "id" prop to the event
    sink; the runtime event's payload is decoded into fields *)
-let ev name (emit : event_sink) props =
+let ev_payload fields name (emit : event_sink) props =
   match v_str props "id" with
   | Some id ->
-    Some
-      (fun (e : P.event) ->
-         let fields =
-           match e with
-           | P.ToggleChanged (_, checked) -> [ ("checked", Bool checked) ]
-           | P.NavigatePrevious _ -> [ ("direction", Str "previous") ]
-           | P.NavigateNext _ -> [ ("direction", Str "next") ]
-           | P.NavigationKey (_, key, shift) -> [ ("key", Str key); ("shift", Bool shift) ]
-           | P.TextChanged (_, text) -> [ ("text", Str text) ]
-           | P.ValueChanged (_, v) -> [ ("value", Num v) ]
-           | _ -> []
-         in
-         emit ~id ~kind:name ~fields)
+    Some (fun payload -> emit ~id ~kind:name ~fields:(fields payload))
   | None -> None
+
+let ev name emit props = ev_payload (fun () -> []) name emit props
+let ev_input name emit props =
+  ev_payload (fun text -> [ ("text", Str text) ]) name emit props
+let ev_toggle name emit props =
+  ev_payload (fun checked -> [ ("checked", Bool checked) ]) name emit props
+let ev_value name emit props =
+  ev_payload (fun value -> [ ("value", Num value) ]) name emit props
+let ev_navigate name emit props =
+  ev_payload (function
+    | E.Previous -> [ ("direction", Str "previous") ]
+    | E.Next -> [ ("direction", Str "next") ]
+    | E.Key { key; shift } -> [ ("key", Str key); ("shift", Bool shift) ])
+    name emit props
 
 (* visible fallback for bad kinds — never blank *)
 let placeholder msg = E.text ~value:("(" ^ msg ^ ")") []

@@ -173,20 +173,14 @@ let update model action =
 (* ---- event decoders ---------------------------------------------- *)
 
 (* [ValueChanged] carries the float for sliders/steppers/split views. *)
-let on_value send wrap (event : Lui_protocol.event) =
-  match event with
-  | Lui_protocol.ValueChanged (_, v) -> ignore (send (wrap v))
-  | _ -> ()
+let on_value send wrap value = ignore (send (wrap value))
 
 (* [ToggleChanged] carries the new bool for checkbox/switch/toggle. *)
-let on_toggle send wrap (event : Lui_protocol.event) =
-  match event with
-  | Lui_protocol.ToggleChanged (_, b) -> ignore (send (wrap b))
-  | _ -> ()
+let on_toggle send wrap checked = ignore (send (wrap checked))
 
 (* Fire-and-forget handler for events whose payload the action does
    not need (press, submit, dismiss). *)
-let press send act (_ : Lui_protocol.event) = ignore (send act)
+let press send act () = ignore (send act)
 
 (* ---- small view helpers ------------------------------------------ *)
 
@@ -309,12 +303,12 @@ let section_controls model_s send =
       row ~gap:12 ~cross:`center
         [ toggle_button ~text:"bold"
             ~checked:(reactive (fun m -> m.bold) model_s)
-            ~on_toggle:(press send Bold) ~background:"#2c2e3e"
+            ~on_toggle:(fun _ -> press send Bold ()) ~background:"#2c2e3e"
             ~foreground:"#e4e6ee" ~corner_radius:6 ~padding_horizontal:12
             [];
           toggle_button ~text:"italic"
             ~checked:(reactive (fun m -> m.italic) model_s)
-            ~on_toggle:(press send Italic) ~background:"#2c2e3e"
+            ~on_toggle:(fun _ -> press send Italic ()) ~background:"#2c2e3e"
             ~foreground:"#e4e6ee" ~corner_radius:6 ~padding_horizontal:12
             [];
           checkbox ~text:"notify me"
@@ -371,7 +365,7 @@ let item_row send item_s =
     [ list_item ~text:(reactive (fun v -> v) item_s) ~foreground:"#e4e6ee"
         ~padding_horizontal:8 ~corner_radius:6
         ~on_double_press:(press send (Promote item))
-        ~on_context_menu:(press send (Open P_ctx)) [];
+        ~on_context_menu:(fun _ -> press send (Open P_ctx) ()) [];
       button ~text:"x" ~background:"#2c2e3e" ~foreground:"#989eb2"
         ~corner_radius:6 ~padding_horizontal:8
         ~on_press:(press send (Remove item)) [] ]
@@ -483,7 +477,7 @@ let section_overlays model_s send =
         ~border_color:field_border ~border_width:1
         [ list_item ~text:"right-click me — context menu"
             ~foreground:"#989eb2" ~padding_horizontal:10 ~corner_radius:6
-            ~on_context_menu:(press send (Open P_ctx)) [] ];
+            ~on_context_menu:(fun _ -> press send (Open P_ctx) ()) [] ];
       caption "drawer";
       drawer ~selected:(reactive (fun m -> m.drawer_open) model_s)
         ~label:"drawer" ~on_toggle:(on_toggle send (fun b -> Drawer_flip b))

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { typedViewFunctions, typedViewSchema, typedViewSignature } from './typed_view_schema.mjs';
+import { renderEventPayloads } from './event_payload_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const defaultManifest = resolve(repository, 'schema/components.json');
@@ -528,7 +529,10 @@ let exports = function
 }
 
 function artifacts(schema) {
+  const payloads = renderEventPayloads(schema);
   return new Map([
+    ['src/lui_event_payloads.ml', payloads.implementation],
+    ['src/lui_event_payloads.mli', payloads.signature],
     ['ppx/lui_nesting_schema.ml', renderNestingSchema(schema)],
     ['src/lui_protocol.mli', renderProtocolSignature(schema)],
     ['src/lui_wire_schema.ml', renderOCamlWire(schema)],

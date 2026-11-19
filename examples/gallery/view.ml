@@ -15,15 +15,9 @@ let button_row children =
 
 let noop _event = ()
 
-let on_toggle send make event =
-  match event with
-  | ToggleChanged (_node, value) -> ignore (send (make value))
-  | _ -> ()
+let on_toggle send make checked = ignore (send (make checked))
 
-let value_changed send make event =
-  match event with
-  | ValueChanged (_node, value) -> ignore (send (make value))
-  | _ -> ()
+let value_changed send make value = ignore (send (make value))
 
 (* Layout primitives *)
 
@@ -1623,12 +1617,10 @@ let combine_section ?(picker_available = false) model_source send : t =
           ~accessibility_identifier:"picker.composer"
           ~request:(`Int m.Model.composer_request)
           ~completion:(`Int m.Model.composer_completion)
-          ~on_picked:(function
-            | Picked (_, payload) ->
+          ~on_picked:(fun payload ->
               (match Lui_picked_files.decode payload with
                | Ok batch -> ignore (send (Model.ComposerPicked batch))
-               | Error _ -> ignore (send Model.ComposerCancelled))
-            | _ -> ())
+               | Error _ -> ignore (send Model.ComposerCancelled)))
           ~on_dismiss:(press send Model.ComposerCancelled) []) model_source)
     ; composer_collapsed ~label:"Capture" ~icon:`plus ~on_press:noop ()
     ; suggestion_list ~source:suggestions ~item_key:(fun s -> s)
@@ -1955,7 +1947,7 @@ let event_payloads_section model_source send : t =
         (checkbox ~text:"Toggle event" [])
     ; radio_group ~label:"Event radio"
         [ radio ~accessibility_identifier:"events-radio" ~text:"Radio event"
-            ~on_change:record [] ]
+            ~on_change:(fun () -> ignore (send (Model.RecordEvent "change"))) [] ]
     ; watch "events-slider" [ ChangeEnabled; PointerEnabled ]
         (slider ~value:0. ~label:"Event value" [])
     ; watch "events-list" [ PointerEnabled ]

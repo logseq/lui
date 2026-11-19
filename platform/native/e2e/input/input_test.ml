@@ -138,10 +138,10 @@ let view2 _ctx ms send : Lui_elements.t =
   column ~padding:8
     [ textarea ~width:200 ~height:40
         ~text_signal:(reactive (fun m -> m.area) ms)
-        ~on_context_menu:(press send Open)
+        ~on_context_menu:(fun _ -> press send Open ())
         ~on_input:(on_input send (fun s -> Area s)) []
     ; button ~text:"menu" ~on_press:(press send Open)
-        ~on_context_menu:(press send Open) []
+        ~on_context_menu:(fun _ -> press send Open ()) []
     ; context_menu
         [ keyed ~source:(map (fun m -> m.menu) ms) ~key:(fun s -> s)
             ~cmp:String.compare
@@ -234,9 +234,9 @@ let test_innermost_menu () =
     let open Lui_elements in
     column
       [ button ~text:"outer" ~on_press:(press send Open)
-          ~on_context_menu:(press send Open)
+          ~on_context_menu:(fun _ -> press send Open ())
           [ menu_item ~text:"sub" ~on_press:(press send (Pick "sub"))
-              ~on_context_menu:(press send (Pick "inner")) [] ] ]
+              ~on_context_menu:(fun _ -> press send (Pick "inner") ()) [] ] ]
   in
   let h, _app = boot_view ~initial:init2 ~update:upd2 ~view () in
   let store = E2e_harness.store h and rects = rects_of h in
