@@ -634,6 +634,24 @@ let test_headless_actions () =
 
 (* ---------- Win32 window stubs + UIA bridge (real calls) ---------- *)
 
+external test_ime_requests : nativeint -> int = "lww_test_ime_requests"
+
+let test_win32_ime_requests () =
+  let hwnd = Lui_win32.create_window ~w:100 ~h:80 ~title:"IME requests"
+      ~hidden:true in
+  Fun.protect ~finally:(fun () -> Lui_win32.destroy_window hwnd) (fun () ->
+    Callback.register "lui_win32_ime_surrounding" (fun () ->
+      Some { Lui_ime.text = "a😀z"; selection = { start = 1; stop = 5 }; caret = 5 });
+    Callback.register "lui_win32_ime_confirm" (fun start stop ->
+      start = 1 && stop = 5);
+    Callback.register "lui_win32_ime_geometry" (fun marked at ->
+      match marked, at with
+      | "", 0 -> Some (10, 12, 19)
+      | "😀x", 4 -> Some (10, 12, 20)
+      | _ -> None);
+    Alcotest.(check int) "reconvert, confirm, document feed, marked geometry" 63
+      (test_ime_requests hwnd))
+
 let test_win32_window () =
   let hwnd =
     Lui_win32.create_window ~w:320 ~h:240 ~title:"lui_window_windows_test"
@@ -762,7 +780,8 @@ let () =
           Alcotest.test_case "ime" `Quick test_ime_flow;
           Alcotest.test_case "event decode" `Quick test_input_of_event ] );
       ( "win32",
-        [ Alcotest.test_case "window+present+ime" `Quick test_win32_window ] );
+        [ Alcotest.test_case "window+present+ime" `Quick test_win32_window;
+          Alcotest.test_case "IME requests" `Quick test_win32_ime_requests ] );
       ( "headless",
         [ Alcotest.test_case "rast loop" `Quick test_rast_loop;
           Alcotest.test_case "repaint min" `Quick test_repaint_min;

@@ -1285,6 +1285,26 @@ let test_frame_pacing () =
 
 (* The monitor's refresh rate drives the period — 120 Hz and 144 Hz
    shorten it. *)
+let test_frame_display_link () =
+  let frame = Frame.create () in
+  let requests = ref 0 and tick = ref false in
+  let ready () = incr requests; !tick in
+  let poll now_ms = Frame.poll_display_link frame ~now_ms ~ready in
+  (match poll 200. with
+   | Frame.Wait_ms ms -> Alcotest.(check (float 0.01)) "watchdog" 50. ms
+   | _ -> Alcotest.fail "dirty window must wait for its first tick");
+  tick := true;
+  Alcotest.(check bool) "tick allows present before watchdog" true
+    (poll 201. = Frame.Present);
+  Frame.presented frame ~now_ms:201.;
+  tick := false;
+  Alcotest.(check bool) "idle window ignores ticks" true (poll 202. = Frame.Idle);
+  Alcotest.(check int) "idle window does not request a tick" 2 !requests;
+  Frame.request_frame frame;
+  ignore (poll 205.);
+  Alcotest.(check bool) "stalled display link falls back" true
+    (poll 256. = Frame.Present)
+
 let test_frame_refresh_rate () =
   let f = Frame.create () in
   Frame.set_refresh_hz f 120.;
@@ -4555,6 +4575,71 @@ let test_assembly_autofocus () =
   Alcotest.(check (option int)) "autofocus id" (Some 2)
     (Assembly.first_autofocus asm)
 
+let test_native_ime_positioned_field () =
+  let rects props =
+    let asm = assembly_of
+        ([ CreateNode (1, Root); CreateNode (2, TextField);
+           InsertChild (1, 2, 0);
+           SetProp (1, HeightValue, IntValue 200);
+           SetProp (2, HeightValue, IntValue 24);
+           SetProp (2, TextValue, StringValue "editor") ] @ props) in
+    Ui.set_focused (Assembly.ui asm) (Assembly.store asm) 2;
+    let r = { Lui_ime.start = 3; stop = 4 } in
+    match Assembly.ime_range_rect asm r with
+    | Some range -> Assembly.caret_rect asm, range
+    | None -> Alcotest.fail "focused field has no geometry"
+  in
+  let before_caret, before_range = rects [] in
+  let after_caret, after_range = rects
+      [ SetProp (2, Position, StringValue "relative");
+        SetProp (2, InsetLeft, FloatValue 25.) ] in
+  Alcotest.(check (float 0.01)) "caret follows paint x" 25.
+    (after_caret.Lui_scene.x -. before_caret.Lui_scene.x);
+  Alcotest.(check (float 0.01)) "range follows paint x" 25.
+    (after_range.Lui_scene.x -. before_range.Lui_scene.x)
+
+let test_native_ime_marked_position () =
+  let asm = assembly_of
+      [ CreateNode (1, Root); CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (1, HeightValue, IntValue 200);
+        SetProp (2, HeightValue, IntValue 24);
+        SetProp (2, TextValue, StringValue "") ] in
+  Ui.set_focused (Assembly.ui asm) (Assembly.store asm) 2;
+  let marked = "😀x" in
+  let position at =
+    match Assembly.ime_marked_caret_rect asm marked at with
+    | Some r -> r.Lui_scene.x
+    | None -> Alcotest.fail "valid marked offset has no position" in
+  Alcotest.(check (float 0.01)) "geometry follows the preedit, not empty committed text"
+    32. (position 4 -. position 0);
+  Alcotest.(check bool) "split UTF-8 rejected" true
+    (Option.is_none (Assembly.ime_marked_caret_rect asm marked 2))
+
+let test_native_ime_committed_range () =
+  let asm = assembly_of
+      [ CreateNode (1, Root); CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (1, HeightValue, IntValue 200);
+        SetProp (2, HeightValue, IntValue 24);
+        SetProp (2, TextValue, StringValue "a日本z") ] in
+  Ui.set_focused (Assembly.ui asm) (Assembly.store asm) 2;
+  let snapshot = match Assembly.ime_surrounding asm with
+    | Some snapshot -> snapshot
+    | None -> Alcotest.fail "focused text unavailable" in
+  Alcotest.(check string) "committed text" "a日本z" snapshot.Lui_ime.text;
+  Alcotest.(check int) "caret byte offset" 8 snapshot.caret;
+  let range = { Lui_ime.start = 1; stop = 7 } in
+  Alcotest.(check bool) "committed range has geometry" true
+    (Option.is_some (Assembly.ime_range_rect asm range));
+  let actions = Assembly.ime_replace asm { start = 2; stop = 7 } "に" in
+  Alcotest.(check bool) "split UTF-8 rejected" true (actions = []);
+  let actions = Assembly.ime_replace asm range "に" in
+  Alcotest.(check bool) "replacement dispatched" true
+    (List.mem (Dispatch (TextChanged (2, "aにz"))) actions);
+  Alcotest.(check string) "committed text after replacement" "aにz"
+    (Ui.shadow (Assembly.ui asm))
+
 (* ---------- Win32 key parity ---------- *)
 
 let test_win32_key_parity () =
@@ -4906,6 +4991,7 @@ let () =
       ( "frame scheduler",
         [ Alcotest.test_case "dirty cycle" `Quick test_frame_dirty_cycle;
           Alcotest.test_case "pacing" `Quick test_frame_pacing;
+          Alcotest.test_case "display link pacing" `Quick test_frame_display_link;
           Alcotest.test_case "refresh rate" `Quick
             test_frame_refresh_rate;
           Alcotest.test_case "visibility" `Quick test_frame_visibility ] );
@@ -5002,6 +5088,9 @@ let () =
           Alcotest.test_case "two windows" `Quick test_headless_multi ] );
       ( "assembly",
         [ Alcotest.test_case "resize scroll clamp" `Quick test_assembly_resize_scroll_clamp;
+          Alcotest.test_case "native IME committed range" `Quick test_native_ime_committed_range;
+          Alcotest.test_case "native IME positioned field" `Quick test_native_ime_positioned_field;
+          Alcotest.test_case "native IME marked position" `Quick test_native_ime_marked_position;
           Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;

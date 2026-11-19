@@ -145,7 +145,7 @@ type action =
   | Resize_host of int * int
   | Focus_changed of int
   | Ime_rect of rect
-      (** SDL_SetTextInputRect target, device px — only emitted while
+      (** Candidate anchor, device px — only emitted while
           a composition is active and the caret moved *)
   | Clipboard_write of string
       (** copy/cut: driver performs SDL_SetClipboardText *)
@@ -462,6 +462,7 @@ module Ui : sig
   (** Advance scrollbar visibility using the driver's monotonic clock. *)
 
   val scrollbar_visible : t -> int -> bool
+  val next_input_deadline : t -> float
   (** True while a container's overlay scrollbar is active. Hidden at rest. *)
 
   val set_scroll_cap_x : t -> int -> float -> unit
@@ -577,6 +578,10 @@ module Frame : sig
   val poll : t -> now_ms:float -> vsync:bool -> decision
   (** Frame callback: [Present] when dirty and (vsync or past the
       cadence deadline), [Wait_ms] while pacing, [Idle] when clean. *)
+
+  val poll_display_link : t -> now_ms:float -> ready:(unit -> bool) -> decision
+  (** Request a tick only for a dirty surface. Present after a tick, or
+      after three refresh periods if the display link stops delivering. *)
 
   val presented : t -> now_ms:float -> unit
   (** Record a present: clears {!dirty} and starts the next cadence
@@ -852,6 +857,20 @@ module Assembly : sig
   (** Focused field's caret rect, device px — the IME candidate-window
       anchor; feed it back as {!Input.Caret} once per frame while
       focused. *)
+
+  val ime_surrounding : t -> Lui_ime.surrounding option
+  (** Snapshot of the focused editable field, excluding secure fields. *)
+
+  val ime_range_rect : t -> Lui_ime.range -> rect option
+  (** Bounding rectangle in surface device pixels for a committed range. *)
+
+  val ime_marked_caret_rect : t -> string -> int -> rect option
+  (** Device-pixel caret at a UTF-8 byte offset in the native marked string,
+      which can arrive before the corresponding editing event. *)
+
+  val ime_replace : t -> Lui_ime.range -> string -> action list
+  (** Replace a committed range in the current field, if valid. Apply
+      the returned actions as for {!handle}. *)
 
   val backend : t -> Lui_protocol.platform_profile -> Lui_protocol.backend
   val first_autofocus : t -> int option

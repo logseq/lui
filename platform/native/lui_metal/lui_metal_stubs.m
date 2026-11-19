@@ -13,6 +13,8 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <SDL3/SDL_metal.h>
+#import <SDL3/SDL_events.h>
+#import <SDL3/SDL_video.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CADisplayLink.h>
 #include <stdatomic.h>
@@ -23,6 +25,8 @@
 #include <caml/custom.h>
 #include <caml/fail.h>
 #include <caml/memory.h>
+#include <caml/callback.h>
+#include <caml/threads.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,11 +70,39 @@ struct lui_mtl_draw {
    size of the window's layer), and the two small textures backdrop
    passes ping-pong between. For a window, sdl_view/layer are the
    SDL-created Metal view and its CAMetalLayer. */
-@interface LuiMtlCadence : NSObject
+static bool lui_waiting_for_sdl;
+static bool lui_in_live_resize;
+
+@interface LuiMtlCadence : NSObject {
+@public
+    SDL_WindowID window_id;
+    __weak NSView *view;
+    bool requested, ready;
+}
 - (void)tick:(CADisplayLink *)sender;
 @end
 @implementation LuiMtlCadence
-- (void)tick:(CADisplayLink *)sender { (void)sender; }
+- (void)tick:(CADisplayLink *)sender {
+    (void)sender;
+    if (requested) {
+        ready = true;
+        requested = false;
+        SDL_Event event = {0};
+        event.window.type = SDL_EVENT_WINDOW_EXPOSED;
+        event.window.windowID = window_id;
+        SDL_PushEvent(&event);
+    }
+    if (lui_waiting_for_sdl && !lui_in_live_resize && view.inLiveResize) {
+        /* The SDL wait binding releases the runtime lock. Never enter
+           OCaml on a nested callback from the render itself. */
+        lui_in_live_resize = true;
+        caml_acquire_runtime_system();
+        const value *live_frame = caml_named_value("lui_native_live_resize_frame");
+        if (live_frame) (void)caml_callback_exn(*live_frame, Val_long(window_id));
+        caml_release_runtime_system();
+        lui_in_live_resize = false;
+    }
+}
 @end
 
 @interface LuiMtlCtx : NSObject {
@@ -94,6 +126,8 @@ struct lui_mtl_draw {
     double presentation_intervals[240];
     unsigned long presentation_count;
     CADisplayLink *display_link;
+    LuiMtlCadence *cadence;
+    SDL_WindowID window_id;
     id rendering_activity;
     int bw, bh;   /* backdrop textures' current size */
 }
@@ -260,12 +294,14 @@ CAMLprim value lui_metal_create_layer(value vwin)
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     layer.framebufferOnly = NO;
     layer.maximumDrawableCount = 2;
+    layer.displaySyncEnabled = YES;
     CGSize sz = layer.drawableSize;
     int w = sz.width > 1 ? (int)sz.width : 1;
     int h = sz.height > 1 ? (int)sz.height : 1;
     LuiMtlCtx *m = new_ctx(dev, w, h, NO);
     m->layer = layer;
     m->sdl_view = sv;
+    m->window_id = SDL_GetWindowID(win);
     /* Reserve window-sized surfaces only for a submitted frame.
        Rendering already acquires its drawable off the input thread;
        startup prefetching needlessly allocated the complete pool even
@@ -890,7 +926,12 @@ CAMLprim value lui_metal_set_frame_rate(value vctx, value vfps)
             beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical
                               reason:@"Interactive native rendering"];
         NSView *view = (__bridge NSView *)m->sdl_view;
-        m->display_link = [view displayLinkWithTarget:[LuiMtlCadence new] selector:@selector(tick:)];
+        LuiMtlCadence *cadence = [LuiMtlCadence new];
+        cadence->window_id = m->window_id;
+        cadence->view = view;
+        m->cadence = cadence;
+        m->display_link = [view displayLinkWithTarget:cadence selector:@selector(tick:)];
+        if (!m->display_link) caml_failwith("could not create display link");
         float fps = (float)Int_val(vfps);
         m->display_link.preferredFrameRateRange = CAFrameRateRangeMake(1., fps, fps);
         [m->display_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
@@ -898,6 +939,25 @@ CAMLprim value lui_metal_set_frame_rate(value vctx, value vfps)
         caml_failwith("display frame-rate requests require macOS 14 or later");
     }
     CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_metal_request_frame_tick(value vctx)
+{
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    LuiMtlCadence *cadence = m ? m->cadence : nil;
+    if (!cadence) return Val_false;
+    if (cadence->ready) {
+        cadence->ready = false;
+        return Val_true;
+    }
+    cadence->requested = true;
+    return Val_false;
+}
+
+CAMLprim value lui_metal_set_sdl_waiting(value waiting)
+{
+    lui_waiting_for_sdl = Bool_val(waiting);
+    return Val_unit;
 }
 
 CAMLprim value lui_metal_present(value vctx)
@@ -1004,6 +1064,8 @@ CAMLprim value lui_metal_present_async(value a) { NO_METAL(); }
 CAMLprim value lui_metal_presented_frames(value a) { NO_METAL(); }
 CAMLprim value lui_metal_presentation_samples(value a) { NO_METAL(); }
 CAMLprim value lui_metal_set_frame_rate(value a, value b) { NO_METAL(); }
+CAMLprim value lui_metal_request_frame_tick(value a) { NO_METAL(); }
+CAMLprim value lui_metal_set_sdl_waiting(value a) { NO_METAL(); }
 CAMLprim value lui_metal_warm(value a, value b) { NO_METAL(); }
 CAMLprim value lui_metal_release(value a) { NO_METAL(); }
 

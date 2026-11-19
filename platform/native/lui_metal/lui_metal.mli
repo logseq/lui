@@ -68,6 +68,13 @@ val set_frame_rate : t -> int -> unit
 (** Request the window display cadence on macOS 14 or later. The system
     chooses a cadence supported by the attached display. *)
 
+val request_frame_tick : t -> bool
+(** Consume a display tick, or ask the display link to wake SDL at the next tick. *)
+
+val set_sdl_waiting : bool -> unit
+(** Bracket only SDL's blocking waits, where the binding releases the runtime
+    lock and a nested Cocoa live-resize loop may call back into OCaml. *)
+
 val read_frame : t -> w:int -> h:int -> bytes
 (** [read_frame r ~w ~h] is the target's pixels: premultiplied BGRA
     rows, top row first, [4*w] bytes a row. For tests and pixel-parity

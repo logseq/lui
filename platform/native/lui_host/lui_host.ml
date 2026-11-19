@@ -127,6 +127,8 @@ type t = {
      (start, extent) evaluated during every layout sync. *)
   mutable vport : int -> (float * float) option;
   mutable anchor_shift : int -> float * float;
+  mutable present_popup :
+    ((int -> string -> rect -> (unit -> Lui_scene.t) -> bool) * (unit -> unit)) option;
 }
 
 let no_measure _id _text _offered_w _offered_h = None
@@ -170,12 +172,18 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
     moved_hints = Hashtbl.create 16;
     hidden = (fun _ -> false);
     ctx_anchor = (fun () -> None); inv_count = 0;
-    vport = (fun _ -> None); anchor_shift = (fun _ -> (0.,0.)) }
+    vport = (fun _ -> None); anchor_shift = (fun _ -> (0.,0.));
+    present_popup = None }
 
 let store h = h.store
 let scene h = h.scene
 let wants_repaint h = h.dirty || Hashtbl.length h.transitions > 0
   || Lui_retained.animating h.retained
+
+let set_popup_presenter h presenter =
+  h.present_popup <- presenter;
+  Lui_retained.invalidate h.retained;
+  h.dirty <- true
 
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
@@ -408,7 +416,7 @@ let repaint h =
     match h.layout with Some l -> Some (l.llists ()) | None -> None
   in
   Lui_retained.paint_retained h.retained hooks h.store h.scene ?moved
-    ?vlists
+    ?vlists ?present_popup:h.present_popup
     ~hints:h.paint_hints ~width:h.width ~height:h.height ~scale:h.scale
     ~clear ();
   Hashtbl.reset h.paint_hints;

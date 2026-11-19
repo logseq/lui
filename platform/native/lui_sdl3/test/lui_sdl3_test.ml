@@ -46,9 +46,39 @@ let window_events_keep_logical_and_pixel_sizes_distinct () = with_windows (fun f
      | Key_down key -> key.scancode = 14 && key.keymod = Host.Kmod.lgui && not key.repeat
      | _ -> false))
 
+let cross_domain_work_wakes_ui () = with_windows (fun _ _ ->
+  Raw.Event.flushs 0 65535;
+  let ui = Domain.self () in
+  let ran_on = ref None in
+  let producer = Domain.spawn (fun () ->
+    Host.run_on_main_thread (fun () -> ran_on := Some (Domain.self ()))) in
+  Domain.join producer;
+  let event = Host.Event.create () in
+  Alcotest.(check bool) "work wakes event wait" true
+    (Host.wait_event_timeout (Some event) 500);
+  Alcotest.(check bool) "callback ran on waiting UI domain" true
+    (!ran_on = Some ui))
+
+let popup_pointer_coordinates () = with_windows (fun first _ ->
+  let window = Host.create_popup_window first ~tooltip:false
+      ~x:20 ~y:30 ~w:40 ~h:35 in
+  let popup = match window with Error _ -> None | Ok w -> Some w in
+  Fun.protect ~finally:(fun () -> Option.iter Host.destroy_window popup) (fun () ->
+    let window_id = Host.get_window_id (Option.value popup ~default:first) in
+    let e = Host.Event.(of_event (make ~window_id
+      (Mouse_button_down { x = 3.; y = 5.; clicks = 2; button = 1 }))) in
+    let routed = Host.Event.map_pointer (fun x y -> 20. +. x, 30. +. y) e in
+    Alcotest.(check bool) "pointer reaches parent coordinates" true
+      ((Host.Event.value routed).kind =
+        Host.Event.Mouse_button_down { x = 23.; y = 35.; clicks = 2; button = 1 });
+    Alcotest.(check int) "child window identity retained" window_id
+      (Host.Event.value routed).window_id))
+
 let () = Alcotest.run "lui_sdl3" [
   "SDL3", [
     Alcotest.test_case "window-scoped IME" `Quick text_input_is_window_scoped;
     Alcotest.test_case "owned event snapshots and pixel sizes" `Quick window_events_keep_logical_and_pixel_sizes_distinct;
+    Alcotest.test_case "cross-domain work wakes UI" `Quick cross_domain_work_wakes_ui;
+    Alcotest.test_case "popup pointer coordinates" `Quick popup_pointer_coordinates;
   ]
 ]

@@ -122,7 +122,9 @@ type drv = {
   gl_live_cell : bool ref;
   vsync : bool;
   blit_cell : Lui_blit.t option ref;
-  metal : Lui_metal.t option;
+  popups : Lui_blit.Popups.t;
+  mutable metal : Lui_metal.t option;
+  mutable display_link : bool;
   renderer_cell : Lui_host.renderer ref;
   app : (Demo_app.model, Demo_app.action) Lui_app.reducer_app;
   a11y : Lui_a11y.t;
@@ -166,17 +168,24 @@ let drawable (s : surf) =
   | 0, 0 -> (s.Multi.logical_w, s.Multi.logical_h)
   | d -> d
 
-(* SDL_SetTextInputRect works in window (logical) pixels; the surface's
-   backing scale converts the device-px rect. *)
 let set_ime_rect (s : surf) (r : Lui_scene.rect) =
   let sc = Multi.scale s in
-  Sdl.set_text_input_rect s.driver.sdl
+  let field = Rects.get s.Multi.rects (Ui.focused s.Multi.ui) in
+  let x = int_of_float (Float.min field.Lui_scene.x r.Lui_scene.x /. sc) in
+  let cursor = int_of_float (r.Lui_scene.x /. sc) - x in
+  Sdl.set_text_input_area s.driver.sdl
     (Some
        (Sdl.Rect.create
-          ~x:(int_of_float (r.Lui_scene.x /. sc))
+          ~x
           ~y:(int_of_float (r.Lui_scene.y /. sc))
-          ~w:(max 1 (int_of_float (r.Lui_scene.w /. sc)))
+          ~w:(max (cursor + 1) (int_of_float (field.Lui_scene.w /. sc)))
           ~h:(max 1 (int_of_float (r.Lui_scene.h /. sc)))))
+    ~cursor
+
+let start_ime window store id =
+  let kind = kind_name store id in
+  if Sdl.is_text_input_active window then Sdl.stop_text_input window;
+  Sdl.start_text_input ~multiline:(kind = "textarea") ~secure:(kind = "secure-field") window
 
 (* Re-read a window's drawable size and backing scale: on [Moved] the
    window may have crossed onto a monitor with a different scale, on
@@ -192,11 +201,21 @@ let refresh_hz_of (s : surf) =
     | Ok hz -> hz
     | Error _ -> 0.
 
+let update_display_link d =
+  Option.iter (fun metal ->
+    let hz = max 1 (int_of_float (Float.round (Frame.refresh_hz d.sched))) in
+    d.display_link <-
+      try Lui_metal.set_frame_rate metal hz; true
+      with Failure _ -> false) d.metal
+
 let refresh_scale (s : surf) =
   (match Sdl.get_window_display_id s.driver.sdl with
    | Ok di when di <> s.Multi.display -> s.Multi.display <- di
    | _ -> ());
-  Frame.set_refresh_hz s.driver.sched (refresh_hz_of s);
+  let sched = s.driver.sched in
+  let previous = Frame.refresh_hz sched in
+  Frame.set_refresh_hz sched (refresh_hz_of s);
+  if Frame.refresh_hz sched <> previous then update_display_link s.driver;
   let dw, dh = drawable s in
   if Multi.apply_drawable s ~dw ~dh then
     log "win=%d: drawable %dx%d scale %.2f (display %d)" s.driver.idx
@@ -237,8 +256,8 @@ let rec apply_actions (s : surf) acts =
            windows' focused fields. *)
         if id = 0 then Sdl.stop_text_input d.sdl
         else begin
-          Sdl.start_text_input d.sdl;
-          set_ime_rect s (Rects.get s.Multi.rects id)
+          start_ime d.sdl (Assembly.store d.asm) id;
+          set_ime_rect s (d.caret_rect ())
         end
       | Ime_rect r -> set_ime_rect s r
       | Quit -> quit := true)
@@ -250,6 +269,7 @@ let close_window id =
   match Multi.unregister windows id with
   | None -> ()
   | Some s ->
+    Lui_blit.Popups.clear s.driver.popups;
     ignore (Lui_app.dispose s.driver.app);
     (match !(s.driver.gctx_cell) with
      | Some c -> Sdl.gl_delete_context c
@@ -340,7 +360,7 @@ let poll_driver (s : surf) =
        the driver owns the clock and dismisses after 2.5 s. *)
     (match m.Demo_app.toast_open, d.toast_since with
      | true, None -> d.toast_since <- Some (perf_s ())
-     | true, Some t0 when perf_s () -. t0 > 2.5 ->
+     | true, Some t0 when perf_s () -. t0 >= 2.5 ->
        ignore (Lui_app.send d.app (Demo_app.Close Demo_app.P_toast));
        d.toast_since <- None
      | false, _ -> d.toast_since <- None
@@ -354,7 +374,7 @@ let poll_driver (s : surf) =
    only mark the frame dirty; nothing draws until [Frame.poll] says
    [Present]. Returns the scheduler's decision so the loop can sleep
    until the nearest deadline. *)
-let tick (s : surf) ~t0 =
+let tick ?(live_resize = false) (s : surf) ~t0 =
   let d = s.driver in
   (match d.metal, d.presentations with
    | Some metal, Some meter when not !headless ->
@@ -382,6 +402,7 @@ let tick (s : surf) ~t0 =
   ignore (Lui_app.flush d.app);
   poll_driver s;
   poll_drop s;
+  ignore (Lui_app.flush d.app);
   (* Report the caret once per frame: while a composition is open
      the state machine emits Ime_rect on movement so the candidate
      window tracks the caret; idle, the rect is only remembered. *)
@@ -393,8 +414,13 @@ let tick (s : surf) ~t0 =
   if !headless || Ui.want_frame s.ui s.host then
     Frame.request_frame d.sched;
   let decision =
-    if !headless then Frame.Present
-    else Frame.poll d.sched ~now_ms:(perf_s () *. 1000.) ~vsync:d.vsync
+    let now_ms = perf_s () *. 1000. in
+    if !headless || live_resize then Frame.Present
+    else match d.metal with
+      | Some metal when d.display_link && Frame.visibility d.sched = Frame.Shown ->
+        Frame.poll_display_link d.sched ~now_ms
+          ~ready:(fun () -> Lui_metal.request_frame_tick metal)
+      | _ -> Frame.poll d.sched ~now_ms ~vsync:d.vsync
   in
   (match decision with
    | Frame.Present ->
@@ -502,7 +528,14 @@ let rec demote (s : surf) reason =
      d.gctx_cell := None
    | None -> ());
   let next_gl = dead = "lui_metal" in
+  if next_gl then begin
+    Option.iter Lui_metal.release d.metal;
+    d.metal <- None;
+    d.display_link <- false
+  end;
   if dead <> "noop" then begin
+    Lui_blit.Popups.clear d.popups;
+    Lui_host.invalidate_paint s.host;
     Sdl.destroy_window d.sdl;
     d.sdl <-
       sdl_ok
@@ -731,11 +764,13 @@ let open_window ~title ~idx =
     (match Assembly.first_autofocus asm with
      | Some id ->
        Ui.set_focused ui store id;
-       Sdl.start_text_input !win
+       start_ime !win store id
      | None -> ());
   let id = Sdl.get_window_id !win in
   let d =
     { sdl = !win; gctx_cell; gl_live_cell; vsync; blit_cell; metal;
+      display_link = false;
+      popups = Lui_blit.Popups.create ();
       renderer_cell; app; a11y; drop_seen = 0; toast_since = None;
       reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
       frame = 0;
@@ -745,16 +780,27 @@ let open_window ~title ~idx =
         ~displayed_frames:(Lui_metal.presented_frames m)) metal;
       idx; sched = Frame.create (); asm; caret_rect }
   in
+  if not !headless then
+    Lui_host.set_popup_presenter host (Some
+      ((fun id kind (r : Lui_scene.rect) scene ->
+        Lui_blit.Popups.present d.popups ~parent:d.sdl ~id
+          ~tooltip:(kind = "tooltip") ~scale:!scale_cell
+          ~rect:(r.x, r.y, r.w, r.h) (fun () ->
+            let img = Lui_raster.render ~scene:(scene ()) () in
+            img.pix, img.stride / 4)),
+       (fun () -> Lui_blit.Popups.finish d.popups)));
   let s =
     Multi.make_surface ~id ~host ~driver:d ~ui ~rects ~scale_cell
       ~w:!cfg.width ~h:!cfg.height
   in
   Multi.register windows s;
   surf_cell := Some s;
+  if Ui.focused ui <> 0 then set_ime_rect s (caret_rect ());
   (match Sdl.get_window_display_id !win with
    | Ok di -> s.Multi.display <- di
    | Error _ -> ());
   Frame.set_refresh_hz d.sched (refresh_hz_of s);
+  update_display_link d;
   log "lui_window[%d]: %dx%d drawable (scale %.2f), renderer=%s%s"
     idx dw dh scale (!(renderer_cell)).Lui_host.name
     (if !headless then " [headless]" else "");
@@ -809,11 +855,20 @@ let handle_sdl_event e =
   | Window _ -> handle_window_event e
   | Display_changed -> Multi.iter windows refresh_scale
   | _ ->
-    let target = match window_id_of e with
-      | Some id -> Multi.find windows id
-      | None -> Multi.find_focused windows in
+    let target, e = match window_id_of e with
+      | Some id -> (match Multi.find windows id with
+          | Some s -> Some s, e
+          | None ->
+            let routed = ref (None, e) in
+            Multi.iter windows (fun s ->
+              Option.iter (fun e -> routed := Some s, e)
+                (Lui_blit.Popups.route s.driver.popups e));
+            !routed)
+      | None -> Multi.find_focused windows, e in
     (match target, input_of_event e with
-     | Some s, Some input -> apply_actions s (Multi.dispatch s input)
+     | Some s, Some input ->
+       Ui.tick_scrollbars s.ui ~now_ms:(perf_s () *. 1000.);
+       apply_actions s (Multi.dispatch s input)
      | _ -> ())
 
 let drain_events e =
@@ -827,6 +882,23 @@ let drain_events e =
   while Sdl.poll_event (Some e) do
     handle_sdl_event e
   done
+
+let live_resize_error = ref None
+
+let () =
+  Callback.register "lui_native_live_resize_frame" (fun id ->
+    match Multi.find windows id with
+    | Some s when !live_resize_error = None ->
+      (try
+         let w, h = Sdl.get_window_size s.driver.sdl in
+         let dw, dh = drawable s in
+         if dw <> s.Multi.drawable_w || dh <> s.Multi.drawable_h then begin
+           Multi.apply_logical_size s ~w ~h;
+           apply_actions s (Multi.dispatch s (Input.Resize (w, h)));
+           ignore (tick ~live_resize:true s ~t0:(perf_s ()))
+         end
+       with exn -> live_resize_error := Some exn)
+    | _ -> ())
 
 (* ---------- shell integration (interactive, process-wide) ---------- *)
 
@@ -851,12 +923,17 @@ let setup_shell () =
   Lui_shell.set_menu_handler
     (Some
        (fun id ->
+          let post action =
+            Queue.add action pending;
+            Option.iter (fun (s : surf) -> Sdl.push_expose_event s.driver.sdl)
+              (Multi.find_focused windows)
+          in
           match id with
-          | 1 -> Queue.add (Demo_app.Open Demo_app.P_toast) pending
-          | 2 -> Queue.add Demo_app.Req_notify pending
-          | 3 -> Queue.add Demo_app.Req_clipboard pending
-          | 4 -> Queue.add Demo_app.Req_a11y pending
-          | 9 -> quit := true
+          | 1 -> post (Demo_app.Open Demo_app.P_toast)
+          | 2 -> post Demo_app.Req_notify
+          | 3 -> post Demo_app.Req_clipboard
+          | 4 -> post Demo_app.Req_a11y
+          | 9 -> Sdl.push_quit_event ()
           | _ -> ()))
 
 (* ---------- main ---------- *)
@@ -932,27 +1009,28 @@ let () =
                (Input.Key_down (Input.Tab, Input.mods_none, false)))
         | None -> ()
     end;
-    (* Each tick returns the scheduler's decision; the loop sleeps
-       until the nearest present deadline across surfaces. Idle
-       surfaces sleep for events too — the wait returns as soon as
-       input lands, and housekeeping (model polls) caps the sleep. *)
+    (* Wake for input or the next frame or UI timer, not a periodic poll. *)
     let wait_ms = ref Float.infinity in
     Multi.iter windows (fun s ->
-        match tick s ~t0 with
-        | Frame.Wait_ms ms -> wait_ms := Float.min !wait_ms ms
-        | Frame.Present | Frame.Idle -> ());
+        (match tick s ~t0 with
+         | Frame.Wait_ms ms -> wait_ms := Float.min !wait_ms ms
+         | Frame.Present when Ui.want_frame s.ui s.host -> wait_ms := 0.
+         | Frame.Present | Frame.Idle -> ());
+        let deadline = Ui.next_input_deadline s.ui in
+        let deadline = match s.driver.toast_since with
+          | None -> deadline
+          | Some at -> Float.min deadline ((at +. 2.5) *. 1000.) in
+        wait_ms := Float.min !wait_ms (deadline -. perf_s () *. 1000.));
     incr iter_no;
-    if not !headless then begin
-      let ms =
-        if !wait_ms = Float.infinity then 250.
-        else Float.max 0. !wait_ms
-      in
-      (* Sleep/wake in one call: [SDL_WaitEventTimeout] returns early
-         the moment an event lands — a wake is just a slower first
-         poll, and the event routes through the same handler — or at
-         the deadline, where the next tick presents on time. *)
-      if Sdl.wait_event_timeout (Some e)
-           (int_of_float (Float.ceil ms))
+    if not !headless && continue () then begin
+      Lui_metal.set_sdl_waiting true;
+      let received =
+        Fun.protect ~finally:(fun () -> Lui_metal.set_sdl_waiting false) (fun () ->
+          if !wait_ms = Float.infinity then Sdl.wait_event (Some e)
+          else Sdl.wait_event_timeout (Some e)
+            (int_of_float (Float.ceil (Float.max 0. !wait_ms)))) in
+      Option.iter raise !live_resize_error;
+      if received
       then begin
         handle_sdl_event e;
         drain_events e

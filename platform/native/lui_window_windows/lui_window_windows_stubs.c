@@ -14,11 +14,13 @@
 #include <caml/fail.h>
 #include <caml/custom.h>
 #include <caml/signals.h>
+#include <caml/callback.h>
 
 #ifdef _WIN32
 
 #include <windows.h>
 #include <imm.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define LWW_MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -105,11 +107,151 @@ static char *utf16_to_8(const wchar_t *w, int wlen)
 static int ime_composing = 0;
 static int ime_had_result = 0;
 static HIMC ime_saved = NULL;
+static int reconverting = 0;
 
 /* UTF-8 byte length of the first [units] UTF-16 code units of [w]. */
 static int utf16_prefix_utf8_len(const wchar_t *w, int units)
 {
   return WideCharToMultiByte(CP_UTF8, 0, w, units, NULL, 0, NULL, NULL);
+}
+
+static int utf8_prefix_utf16_len(const char *s, int bytes)
+{
+  return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s,
+                             bytes, NULL, 0);
+}
+
+static int valid_utf16_offset(const wchar_t *w, DWORD n, DWORD i)
+{
+  return i <= n && (i == n || !(w[i] >= 0xdc00 && w[i] <= 0xdfff));
+}
+
+static LRESULT ime_char_position(HWND hwnd, IMECHARPOSITION *pos,
+                                 const wchar_t *marked, DWORD n)
+{
+  CAMLparam0();
+  CAMLlocal2(text, answer);
+  const value *geometry = caml_named_value("lui_win32_ime_geometry");
+  if (!geometry || !valid_utf16_offset(marked, n, pos->dwCharPos))
+    CAMLreturnT(LRESULT, 0);
+  char *utf8 = n ? utf16_to_8(marked, n) : NULL;
+  if (n && !utf8) CAMLreturnT(LRESULT, 0);
+  text = caml_copy_string(utf8 ? utf8 : "");
+  free(utf8);
+  int at = pos->dwCharPos ? utf16_prefix_utf8_len(marked, pos->dwCharPos) : 0;
+  answer = caml_callback2_exn(*geometry, text,
+      Val_int(at));
+  if (Is_exception_result(answer) || Is_long(answer)) CAMLreturnT(LRESULT, 0);
+  answer = Field(answer, 0);
+  POINT point = {Int_val(Field(answer, 0)), Int_val(Field(answer, 1))};
+  RECT area;
+  if (!ClientToScreen(hwnd, &point) || !GetClientRect(hwnd, &area))
+    CAMLreturnT(LRESULT, 0);
+  MapWindowPoints(hwnd, NULL, (POINT *)&area, 2);
+  pos->pt = point;
+  pos->cLineHeight = Int_val(Field(answer, 2));
+  pos->rcDocument = area;
+  CAMLreturnT(LRESULT, 1);
+}
+
+static LRESULT ime_query_char_position(HWND hwnd, IMECHARPOSITION *pos)
+{
+  if (!pos || pos->dwSize < sizeof(*pos)) return 0;
+  if (!ime_composing) return ime_char_position(hwnd, pos, L"", 0);
+  HIMC himc = ImmGetContext(hwnd);
+  if (!himc) return 0;
+  LONG bytes = ImmGetCompositionStringW(himc, GCS_COMPSTR, NULL, 0);
+  wchar_t *marked = NULL;
+  if (bytes > 0 && bytes % sizeof(*marked) == 0) {
+    marked = malloc((size_t)bytes);
+    if (marked && ImmGetCompositionStringW(himc, GCS_COMPSTR, marked, bytes) != bytes) {
+      free(marked);
+      marked = NULL;
+    }
+  }
+  ImmReleaseContext(hwnd, himc);
+  LRESULT result = marked ? ime_char_position(hwnd, pos, marked, bytes / sizeof(*marked))
+                          : bytes == 0 || bytes == IMM_ERROR_NODATA
+                            ? ime_char_position(hwnd, pos, L"", 0) : 0;
+  free(marked);
+  return result;
+}
+
+static LRESULT ime_request(HWND hwnd, WPARAM request, LPARAM payload)
+{
+  CAMLparam0();
+  CAMLlocal3(answer, record, range);
+  const value *surrounding = caml_named_value("lui_win32_ime_surrounding");
+  if (!surrounding) CAMLreturnT(LRESULT, 0);
+  answer = caml_callback_exn(*surrounding, Val_unit);
+  if (Is_exception_result(answer) || Is_long(answer)) CAMLreturnT(LRESULT, 0);
+
+  record = Field(answer, 0);
+  range = Field(record, 1);
+  int n, start, stop;
+  value vtext = Field(record, 0);
+  const char *text = String_val(vtext);
+  if (memchr(text, 0, caml_string_length(vtext))) CAMLreturnT(LRESULT, 0);
+  wchar_t *wide = utf8_to_16(text, &n);
+  if (!wide) CAMLreturnT(LRESULT, 0);
+  start = utf8_prefix_utf16_len(text, Int_val(Field(range, 0)));
+  stop = utf8_prefix_utf16_len(text, Int_val(Field(range, 1)));
+  LRESULT result = 0;
+  DWORD size = (DWORD)(sizeof(RECONVERTSTRING) + (n + 1) * sizeof(wchar_t));
+  RECONVERTSTRING *r = (RECONVERTSTRING *)payload;
+  switch (request) {
+    case IMR_RECONVERTSTRING:
+    case IMR_DOCUMENTFEED:
+      if (!r) result = size;
+      else if (r->dwSize >= size) {
+        r->dwSize = size;
+        r->dwVersion = 0;
+        r->dwStrLen = (DWORD)n;
+        r->dwStrOffset = sizeof(*r);
+        if (request == IMR_DOCUMENTFEED)
+          start = stop = utf8_prefix_utf16_len(text, Int_val(Field(record, 2)));
+        r->dwCompStrLen = r->dwTargetStrLen = stop - start;
+        r->dwCompStrOffset = r->dwTargetStrOffset = start * sizeof(wchar_t);
+        memcpy((char *)r + r->dwStrOffset, wide, (n + 1) * sizeof(wchar_t));
+        result = size;
+      }
+      break;
+    case IMR_CONFIRMRECONVERTSTRING: {
+      const value *confirm = caml_named_value("lui_win32_ime_confirm");
+      reconverting = 0;
+      if (!confirm || !r || r->dwSize < sizeof(*r) ||
+          r->dwStrLen != (DWORD)n || r->dwStrOffset < sizeof(*r) ||
+          r->dwStrOffset > r->dwSize ||
+          r->dwStrLen > (r->dwSize - r->dwStrOffset) / sizeof(wchar_t) ||
+          r->dwCompStrOffset % sizeof(wchar_t) != 0 ||
+          memcmp((char *)r + r->dwStrOffset, wide, n * sizeof(wchar_t)) != 0)
+        break;
+      DWORD lo = r->dwCompStrOffset / sizeof(wchar_t);
+      if (!valid_utf16_offset(wide, n, lo) || r->dwCompStrLen > (DWORD)n - lo ||
+          !valid_utf16_offset(wide, n, lo + r->dwCompStrLen)) break;
+      answer = caml_callback2_exn(*confirm,
+          Val_int(utf16_prefix_utf8_len(wide, lo)),
+          Val_int(utf16_prefix_utf8_len(wide, lo + r->dwCompStrLen)));
+      result = reconverting = !Is_exception_result(answer) && Bool_val(answer);
+      break;
+    }
+  }
+  free(wide);
+  CAMLreturnT(LRESULT, result);
+}
+
+static int replace_reconversion(const char *s)
+{
+  CAMLparam0();
+  CAMLlocal1(text);
+  if (!reconverting) CAMLreturnT(int, 0);
+  reconverting = 0;
+  const value *replace = caml_named_value("lui_win32_ime_replace");
+  if (replace) {
+    text = caml_copy_string(s);
+    (void)caml_callback_exn(*replace, text);
+  }
+  CAMLreturnT(int, 1);
 }
 
 static void push_ime_composition(HWND hwnd, LPARAM lp)
@@ -118,14 +260,17 @@ static void push_ime_composition(HWND hwnd, LPARAM lp)
   if (!himc) return;
   if (lp & GCS_RESULTSTR) {
     LONG n = ImmGetCompositionStringW(himc, GCS_RESULTSTR, NULL, 0);
-    if (n > 0) {
+    if (n == 0 && replace_reconversion("")) {
+      ime_had_result = 1;
+    } else if (n > 0) {
       wchar_t *buf = (wchar_t *)malloc((size_t)n + 2);
       if (buf) {
         char *u8;
         ImmGetCompositionStringW(himc, GCS_RESULTSTR, buf, n);
         u8 = utf16_to_8(buf, n / 2);
         if (u8) {
-          ev_push(EV_TEXT_INPUT, 0, 0, 0, 0, 0, u8);
+          if (!replace_reconversion(u8))
+            ev_push(EV_TEXT_INPUT, 0, 0, 0, 0, 0, u8);
           free(u8);
           ime_had_result = 1;
         }
@@ -292,6 +437,17 @@ static LRESULT CALLBACK lww_wndproc(HWND hwnd, UINT msg, WPARAM wp,
   case WM_IME_COMPOSITION:
     push_ime_composition(hwnd, lp);
     return TRUE;
+  case WM_IME_REQUEST:
+    switch (wp) {
+      case IMR_RECONVERTSTRING:
+      case IMR_DOCUMENTFEED:
+      case IMR_CONFIRMRECONVERTSTRING:
+        return ime_request(hwnd, wp, lp);
+      case IMR_QUERYCHARPOSITION:
+        return ime_query_char_position(hwnd, (IMECHARPOSITION *)lp);
+      default:
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
   case WM_IME_ENDCOMPOSITION:
     if (ime_composing && !ime_had_result) {
       /* Cancelled: clear the marked text, then end the session — the
@@ -301,6 +457,7 @@ static LRESULT CALLBACK lww_wndproc(HWND hwnd, UINT msg, WPARAM wp,
     }
     ime_composing = 0;
     ime_had_result = 0;
+    reconverting = 0;
     return TRUE;
   default:
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -655,6 +812,41 @@ CAMLprim value lww_send_wm_getobject(value vhwnd, value vwp, value vlp)
   CAMLreturn(caml_copy_nativeint((intnat)r));
 }
 
+CAMLprim value lww_test_ime_requests(value vhwnd)
+{
+  CAMLparam1(vhwnd);
+  HWND hwnd = (HWND)(uintptr_t)Nativeint_val(vhwnd);
+  LRESULT size = SendMessageW(hwnd, WM_IME_REQUEST, IMR_RECONVERTSTRING, 0);
+  if (size < (LRESULT)sizeof(RECONVERTSTRING)) CAMLreturn(Val_int(0));
+  RECONVERTSTRING *r = (RECONVERTSTRING *)calloc(1, (size_t)size);
+  if (!r) CAMLreturn(Val_int(0));
+  r->dwSize = (DWORD)size;
+  int checks = 0;
+  if (SendMessageW(hwnd, WM_IME_REQUEST, IMR_RECONVERTSTRING, (LPARAM)r) == size &&
+      r->dwStrLen == 4 && r->dwCompStrOffset == 2 && r->dwCompStrLen == 2)
+    checks |= 1;
+  if (SendMessageW(hwnd, WM_IME_REQUEST, IMR_CONFIRMRECONVERTSTRING, (LPARAM)r))
+    checks |= 2;
+  if (SendMessageW(hwnd, WM_IME_REQUEST, IMR_DOCUMENTFEED, (LPARAM)r) == size &&
+      r->dwCompStrOffset == 6 && r->dwCompStrLen == 0)
+    checks |= 4;
+  IMECHARPOSITION pos = {0};
+  pos.dwSize = sizeof(pos);
+  if (SendMessageW(hwnd, WM_IME_REQUEST, IMR_QUERYCHARPOSITION, (LPARAM)&pos) &&
+      pos.cLineHeight == 19)
+    checks |= 8;
+  const wchar_t marked[] = {0xd83d, 0xde00, L'x'};
+  pos.dwCharPos = 2;
+  if (ime_char_position(hwnd, &pos, marked, 3) && pos.cLineHeight == 20)
+    checks |= 16;
+  pos.dwCharPos = 1;
+  if (!ime_char_position(hwnd, &pos, marked, 3))
+    checks |= 32;
+  SendMessageW(hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
+  free(r);
+  CAMLreturn(Val_int(checks));
+}
+
 #else /* !_WIN32 — keep the library linkable on every platform */
 
 #define LWW_UN                                                  \
@@ -702,5 +894,7 @@ CAMLprim value lww_delay_ms(value a)
 { (void)a; return lww_unsupported(); }
 CAMLprim value lww_send_wm_getobject(value a, value b, value c)
 { (void)a; (void)b; (void)c; return lww_unsupported(); }
+CAMLprim value lww_test_ime_requests(value a)
+{ (void)a; return lww_unsupported(); }
 
 #endif /* _WIN32 */

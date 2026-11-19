@@ -96,3 +96,91 @@ let update_region t ~x0 ~y0 ~x1 ~y1 ~pix ~stride =
 let present t =
   ignore (Sdl.render_copy t.renderer t.texture);
   Sdl.render_present t.renderer
+
+let create_blit = create
+
+module Popups = struct
+  type surface = {
+    window : Sdl.window;
+    blit : t;
+    geometry : int * int * int * int;
+    mutable seen : bool;
+    mutable origin : float * float;
+    mutable ratio : float * float;
+  }
+
+  type t = (int, surface) Hashtbl.t
+
+  let create () = Hashtbl.create 4
+
+  let clear windows =
+    Hashtbl.iter (fun _ surface -> Sdl.destroy_window surface.window) windows;
+    Hashtbl.clear windows
+
+  let finish windows =
+    Hashtbl.filter_map_inplace (fun _ surface ->
+      if surface.seen then begin surface.seen <- false; Some surface end
+      else begin Sdl.destroy_window surface.window; None end) windows
+
+  let present windows ~parent ~id ~tooltip ~scale ~rect:(px, py, width, height) pixels =
+    let pw = int_of_float width and ph = int_of_float height in
+    let logical n = int_of_float (Float.round (n /. scale)) in
+    let x = logical px and y = logical py in
+    let w = max 1 (logical width) and h = max 1 (logical height) in
+    let origin = (px /. scale, py /. scale) in
+    let ratio = (width /. scale /. float w, height /. scale /. float h) in
+    let geometry = (x, y, w, h) in
+    let surface =
+      match Hashtbl.find_opt windows id with
+      | Some surface when surface.geometry = geometry -> Some surface
+      | old ->
+        Option.iter (fun surface -> Sdl.destroy_window surface.window) old;
+        Hashtbl.remove windows id;
+        match Sdl.create_popup_window parent ~tooltip ~x ~y ~w ~h with
+        | Error _ -> None
+        | Ok window ->
+          match create_blit window ~w:pw ~h:ph with
+          | Error _ -> Sdl.destroy_window window; None
+          | Ok blit ->
+            let surface = { window; blit; geometry; seen = false; origin; ratio } in
+            Hashtbl.add windows id surface;
+            Some surface
+    in
+    match surface with
+    | None -> false
+    | Some surface ->
+      let target = surface.blit in
+      let sized = if target.w = pw && target.h = ph then Ok ()
+        else resize target ~w:pw ~h:ph in
+      match sized with
+      | Error _ -> false
+      | Ok () ->
+        let pix, stride = pixels () in
+        match update target ~pix ~stride with
+        | Error _ -> false
+        | Ok () ->
+          match
+            (try Sdl.show_window surface.window;
+                 match Sdl.render_copy target.renderer target.texture with
+                 | Error _ -> false
+                 | Ok () -> Sdl.render_present target.renderer; true
+             with Failure _ -> false)
+          with
+          | false -> false
+          | true ->
+            surface.origin <- origin;
+            surface.ratio <- ratio;
+            surface.seen <- true;
+            true
+
+  let route windows event =
+    let e = Sdl.Event.value event in
+    Hashtbl.fold (fun _ surface found ->
+      if found <> None || Sdl.get_window_id surface.window <> e.window_id
+      then found
+      else
+        let x, y = surface.origin in
+        let sx, sy = surface.ratio in
+        Some (Sdl.Event.map_pointer
+          (fun a b -> x +. a *. sx, y +. b *. sy) event)) windows None
+end
