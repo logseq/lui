@@ -89,8 +89,70 @@ end
 module Pixel = struct let format_argb8888 = S.pixelformat_argb8888 end
 module Texture = struct let access_streaming = S.textureaccess_streaming end
 
-let init = S.init
-let quit = S.quit
+let work_event = ref 0
+
+let init flags =
+  match S.init flags with
+  | Ok () when !work_event = 0 ->
+    let event = S.Event.registers 1 in
+    if event < S.event_user || event >= S.event_last then begin
+      let error = S.Error.get () in
+      S.quit ();
+      Error (`Msg error)
+    end else begin
+      work_event := event;
+      Ok ()
+    end
+  | result -> result
+
+let pending = Hashtbl.create 8
+let pending_lock = Mutex.create ()
+let next_work = Atomic.make 0
+let work_error = ref None
+
+let take_work id =
+  Mutex.protect pending_lock (fun () ->
+      let work = Hashtbl.find_opt pending id in
+      Hashtbl.remove pending id;
+      work)
+
+let run_work userdata =
+  let id = Nativeint.to_int (Ctypes.raw_address_of_ptr userdata) in
+  Option.iter
+    (fun work ->
+      try
+        Fun.protect work ~finally:(fun () ->
+            require (S.Event.push (S.Event.create ~typ:!work_event ())))
+      with exn ->
+        let bt = Printexc.get_raw_backtrace () in
+        if Option.is_none !work_error then work_error := Some (exn, bt))
+    (take_work id)
+
+let quit () =
+  S.quit ();
+  Mutex.protect pending_lock (fun () -> Hashtbl.clear pending);
+  work_event := 0;
+  work_error := None
+
+let run_on_main_thread work =
+  if S.is_main_thread () then work ()
+  else begin
+    let id = 1 + Atomic.fetch_and_add next_work 1 in
+    Mutex.protect pending_lock (fun () -> Hashtbl.add pending id work);
+    let data = Ctypes.ptr_of_raw_address (Nativeint.of_int id) in
+    match S.run_on_main_thread run_work data false with
+    | Ok () -> ()
+    | Error _ as failure ->
+      ignore (take_work id);
+      require failure
+  end
+
+let check_work_error () =
+  match !work_error with
+  | None -> ()
+  | Some (exn, bt) ->
+    work_error := None;
+    Printexc.raise_with_backtrace exn bt
 let get_error = S.Error.get
 let delay = S.delay
 let get_performance_counter = S.get_performance_counter
@@ -101,10 +163,33 @@ let get_mod_state = S.get_mod_state
 let set_mod_state = S.set_mod_state
 let get_scancode_name = S.Scancode.get_name
 let create_window title ~w ~h flags = S.Window.create title w h flags
+let create_popup_window parent ~tooltip ~x ~y ~w ~h =
+  let kind = if tooltip then S.window_tooltip else S.window_popup_menu in
+  let flags = Window.(kind + hidden + high_pixel_density + S.window_not_focusable
+    + S.window_transparent) in
+  S.Window.create_popup (Some parent) x y w h flags
 let destroy_window = S.Window.destroy
 let show_window window = require (S.Window.show window)
 let raise_window window = require (S.Window.raise_ window)
 let get_window_id = S.Window.get_id
+type native_handle =
+  | Cocoa_window of nativeint
+  | X11_window of int
+  | Wayland_surface of nativeint
+
+let native_handle window =
+  let props = S.Window.get_properties window in
+  let pointer key =
+    Ctypes.raw_address_of_ptr (S.get_pointer_property props key Ctypes.null)
+  in
+  let cocoa = pointer S.prop_window_cocoa_window_pointer in
+  if cocoa <> Nativeint.zero then Some (Cocoa_window cocoa)
+  else
+    let wayland = pointer S.prop_window_wayland_surface_pointer in
+    if wayland <> Nativeint.zero then Some (Wayland_surface wayland)
+    else
+      let xid = S.get_number_property props S.prop_window_x11_window_number 0 in
+      if xid <> 0 then Some (X11_window xid) else None
 let get_window_size window = require (S.Window.get_size window)
 let get_window_size_in_pixels window = require (S.Window.get_size_in_pixels window)
 let unsafe_ptr_of_window (window : window) = Ctypes.(raw_address_of_ptr (to_voidp window))
@@ -124,10 +209,32 @@ let gl_make_current = S.gl_make_current
 let gl_delete_context context = require (S.gl_destroy_context context)
 let gl_set_swap_interval = S.gl_set_swap_interval
 let gl_swap_window window = require (S.Window.gl_swap window)
-let start_text_input window = require (S.start_text_input window)
+type capitalization = None_ | Sentences | Words | Letters
+
+let start_text_input ?(multiline=false) ?(secure=false)
+    ?autocorrect ?capitalization window =
+  let props = S.Properties.create () in
+  if props = 0 then failwith ("SDL3: " ^ S.Error.get ());
+  Fun.protect ~finally:(fun () -> S.Properties.destroy props) (fun () ->
+      let set = S.set_boolean_property props in
+      let set_number = S.set_number_property props in
+      require (set S.prop_textinput_multiline_boolean multiline);
+      if secure then require (set_number S.prop_textinput_type_number
+        S.textinput_type_text_password_hidden);
+      Option.iter (fun enabled ->
+          require (set S.prop_textinput_autocorrect_boolean enabled))
+        (if secure then Some false else autocorrect);
+      Option.iter (fun hint ->
+          let value = match hint with
+            | None_ -> S.capitalize_none | Sentences -> S.capitalize_sentences
+            | Words -> S.capitalize_words | Letters -> S.capitalize_letters in
+          require (set_number S.prop_textinput_capitalization_number value))
+        (if secure then Some None_ else capitalization);
+      require (S.start_text_input_with_properties window props))
 let stop_text_input window = require (S.stop_text_input window)
 let is_text_input_active = S.text_input_active
-let set_text_input_rect window rect = require (S.set_text_input_area window rect 0)
+let set_text_input_area window rect ~cursor =
+  require (S.set_text_input_area window rect cursor)
 let create_system_cursor cursor = S.SystemCursor.create (T.system_cursor_to_enum cursor)
 let set_cursor cursor = require (S.Cursor.set cursor)
 let destroy_cursor = S.Cursor.destroy
@@ -179,6 +286,19 @@ module Event = struct
   let create () = {raw=S.Event.create (); event=make (Other 0)}
   let of_event event = {raw=S.Event.create (); event}
   let value event = event.event
+  let map_pointer f event =
+    let e = value event in
+    let button (b : button) =
+      let x, y = f b.x b.y in { b with x; y } in
+    match e.kind with
+    | Mouse_motion m ->
+      let x, y = f m.x m.y in
+      of_event { e with kind = Mouse_motion { m with x; y } }
+    | Mouse_button_down b ->
+      of_event { e with kind = Mouse_button_down (button b) }
+    | Mouse_button_up b ->
+      of_event { e with kind = Mouse_button_up (button b) }
+    | _ -> event
 
   let window_change : int -> window_change = function
     | n when n = S.event_window_resized -> Resized
@@ -249,19 +369,22 @@ module Event = struct
     {timestamp_ns; window_id; kind}
 end
 
-let poll_event = function
-  | None -> S.Event.poll None
-  | Some event ->
-    if S.Event.poll (Some event.Event.raw) then begin
-      event.event <- Event.snapshot event.Event.raw; true
-    end else false
-let wait_event_timeout event timeout =
+let receive_event receive event =
   let raw = Option.map (fun event -> event.Event.raw) event in
-  if S.Event.wait_timeout raw timeout then begin
+  let received = receive raw in
+  check_work_error ();
+  if received then begin
     Option.iter (fun event -> event.Event.event <- Event.snapshot event.Event.raw) event;
     true
   end else false
-let pump_events = S.Event.pumps
+let poll_event event = receive_event S.Event.poll event
+let wait_event event =
+  receive_event (fun raw -> require (S.Event.wait raw); true) event
+let wait_event_timeout event timeout =
+  receive_event (fun raw -> S.Event.wait_timeout raw timeout) event
+let pump_events () =
+  S.Event.pumps ();
+  check_work_error ()
 let push_key_event window ~down ~scancode ~keymod ~repeat =
   let event = S.Event.create () in
   let key_event = S.Event.(get event key) in

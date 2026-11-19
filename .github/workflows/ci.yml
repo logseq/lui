@@ -292,3 +292,9 @@ jobs:
         run: opam exec -- dune build platform/services/
       - name: Test portable host services
         run: opam exec -- dune runtest platform/services/ -j 1
+      - name: Build experimental Win32 native host
+        if: runner.os == 'Windows'
+        run: opam exec -- dune build platform/native/lui_window_windows/
+      - name: Test experimental Win32 native host
+        if: runner.os == 'Windows'
+        run: opam exec -- dune runtest platform/native/lui_window_windows/ -j 1

@@ -114,6 +114,8 @@ external metal_present_async : ctx -> unit = "lui_metal_present_async"
 external metal_presented_frames : ctx -> int = "lui_metal_presented_frames"
 external metal_presentation_samples : ctx -> int * float array = "lui_metal_presentation_samples"
 external metal_set_frame_rate : ctx -> int -> unit = "lui_metal_set_frame_rate"
+external metal_request_frame_tick : ctx -> bool = "lui_metal_request_frame_tick"
+external set_sdl_waiting : bool -> unit = "lui_metal_set_sdl_waiting"
 external metal_warm : ctx -> pipe -> unit = "lui_metal_warm"
 external metal_release : obj -> unit = "lui_metal_release"
 external metal_trim : ctx -> unit = "lui_metal_trim"
@@ -579,6 +581,8 @@ let presentation_samples (t : t) = metal_presentation_samples t.ctx
 let set_frame_rate (t : t) fps =
   if fps <= 0 then invalid_arg "frame rate must be positive";
   metal_set_frame_rate t.ctx fps
+
+let request_frame_tick (t : t) = metal_request_frame_tick t.ctx
 
 let read_frame (t : t) ~w ~h : bytes =
   if w <= 0 || h <= 0 then error "read_frame: bad size %d\xC3\x97%d" w h;
