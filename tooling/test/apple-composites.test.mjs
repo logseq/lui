@@ -19,3 +19,11 @@ test('Apple navigation forms consume explicit sections and their slot content', 
   assert.match(form, /sectionSlot\(header\)/);
   assert.match(form, /sectionSlot\(footer\)/);
 });
+
+test('Apple navigation forms retain authored lists that own lifecycle or scrolling callbacks', () => {
+  const start = apple.indexOf('if content.children.count == 1,');
+  const condition = apple.slice(start, apple.indexOf('sectionContent = child', start));
+  for (const flag of ['supportsAppear', 'supportsPointer', 'tracksVisibleRange']) {
+    assert.ok(condition.includes(`!child.${flag}`), `list flattening must preserve ${flag}`);
+  }
+});

@@ -8,6 +8,11 @@ consume these explicit sections, render their header/footer slot content, and
 keep one native row per supplied control. Existing heading-based raw
 `Lui_element_combine.form_sheet` content remains supported unchanged.
 
+An authored list with appearance, scroll-completion, or visible-range callbacks
+keeps its own renderer rather than being flattened into the native form. Apple
+uses `appear-enabled`, `pointer-enabled` (also enabled by the scroll callbacks),
+and `track-visible-range` to preserve that lifecycle and event delivery.
+
 ### Phase 4 review: role-independent Apple text truncation
 
 Apple now applies the single-line limit to `heading`, `paragraph` and `label`

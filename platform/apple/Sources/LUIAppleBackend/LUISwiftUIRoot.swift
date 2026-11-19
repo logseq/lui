@@ -3229,7 +3229,8 @@ private struct LUINavigationFormRows: View {
         let sectionContent: LUINodeModel
         if content.children.count == 1,
            let childID = content.children.first,
-           let child = backend.model(id: childID), child.kind == .list {
+           let child = backend.model(id: childID), child.kind == .list,
+           !child.supportsAppear, !child.supportsPointer, !child.tracksVisibleRange {
             sectionContent = child
         } else {
             sectionContent = content
