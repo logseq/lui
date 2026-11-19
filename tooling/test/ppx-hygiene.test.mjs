@@ -110,6 +110,7 @@ test("phantom slots reject opaque wrong-kind children without the PPX", () => {
       ['context_menu_item ~padding:4 ~on_press:(fun () -> ()) ()', 'context_menu_item_el'],
       ['context_menu_item ~on_press:(fun () -> ()) []', 'context_menu_item_el'],
       ['menu_trigger ~text:"More" []', 't'],
+      ['input_group ~actions:(keyed_input_group_actions ~source:(Signal.constant (Signal.scheduler ()) [1; 2]) ~key:Fun.id ~cmp:Int.compare ~mount:(fun _ -> input_group_actions [])) (textarea [])', 't'],
     ]) {
       writeFileSync(join(dir, "probe.ml"), `open Lui_elements\nlet bad : ${type} = ${expression}\n`)
       const result = run(["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",

@@ -2,6 +2,20 @@
 
 ## Unreleased: Child capabilities and anchorless segments (ADR 0007 Phase 3c)
 
+`keyed_input_group_actions` is removed: an input group admits at most one
+actions container. Keep `input_group_actions` as the single `~actions` value
+and put keyed content inside it instead:
+
+```ocaml
+input_group
+  ~actions:(input_group_actions
+    [keyed ~source:actions ~key:action_id ~cmp:String.compare ~mount:action_button])
+  (textarea [])
+```
+
+`if_input_group_actions` still permits an absent or single container;
+`reactive_input_group_actions` switches a single container in place.
+
 Restricted parents now take abstract slot elements, not arbitrary `t` children:
 
 | Parent | Child type | Builders |

@@ -5456,7 +5456,6 @@ val if_radio : test:bool Signal.signal -> radio_el -> radio_el
 val reactive_radio : ?equal:('a -> 'a -> bool) -> ('a -> radio_el) -> 'a Signal.signal -> radio_el
 val if_swipe_action : test:bool Signal.signal -> swipe_action_el -> swipe_action_el
 val reactive_swipe_action : ?equal:('a -> 'a -> bool) -> ('a -> swipe_action_el) -> 'a Signal.signal -> swipe_action_el
-val keyed_input_group_actions : source:'a list Signal.signal -> key:('a -> 'b) -> cmp:('b -> 'b -> int) -> mount:('a Signal.signal -> input_group_actions_el) -> input_group_actions_el
 val if_input_group_actions : test:bool Signal.signal -> input_group_actions_el -> input_group_actions_el
 val reactive_input_group_actions : ?equal:('a -> 'a -> bool) -> ('a -> input_group_actions_el) -> 'a Signal.signal -> input_group_actions_el
 val keyed_dropdown_menu_item : source:'a list Signal.signal -> key:('a -> 'b) -> cmp:('b -> 'b -> int) -> mount:('a Signal.signal -> dropdown_menu_item_el) -> dropdown_menu_item_el
