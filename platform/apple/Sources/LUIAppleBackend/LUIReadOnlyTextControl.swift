@@ -99,10 +99,16 @@ private final class LUIReadOnlyProbeView: UIView {
     }
     private func configure(_ field: UITextField) {
         fieldDelegate.readOnly = readOnly
-        if field.delegate !== fieldDelegate {
+        guard field.delegate !== fieldDelegate else { return }
+        // Another probe may already own this field. Wrap the delegate it
+        // wraps, never the probe itself: two probes alternately wrapping each
+        // other form a cycle that `responds(to:)` recurses through forever.
+        if let other = field.delegate as? LUIReadOnlyFieldDelegate {
+            fieldDelegate.original = other.original
+        } else {
             fieldDelegate.original = field.delegate
-            field.delegate = fieldDelegate
         }
+        field.delegate = fieldDelegate
     }
     private func apply() {
         if nativeSearch {

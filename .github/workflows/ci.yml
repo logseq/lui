@@ -214,7 +214,7 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath "$RUNNER_TEMP/lui-ios-build"
           build-for-testing
-      - name: Actual UIKit bounded-row lifecycle
+      - name: Actual UIKit runtime checks
         run: |
           python3 - <<'PYTHON'
           import json
@@ -229,9 +229,11 @@ jobs:
           if device["state"] != "Booted":
               subprocess.run(["xcrun", "simctl", "boot", device["udid"]], check=True)
           subprocess.run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"], check=True)
-          subprocess.run([sys.executable, "platform/apple/Tests/RuntimeChecks/run-ios-check.py",
-              "bounded-virtual-rows", "--simulator", device["udid"],
-              "--diagnostics-dir", os.path.join(os.environ["RUNNER_TEMP"], "lui-uikit-diagnostics")], check=True)
+          for check in ("bounded-virtual-rows", "read-only-field-delegate"):
+              subprocess.run([sys.executable, "platform/apple/Tests/RuntimeChecks/run-ios-check.py",
+                  check, "--simulator", device["udid"],
+                  "--diagnostics-dir", os.path.join(os.environ["RUNNER_TEMP"], "lui-uikit-diagnostics", check)],
+                  check=True)
           PYTHON
       - name: Preserve UIKit failure diagnostics
         if: failure()
