@@ -246,12 +246,49 @@ let boundary_journal_savepoints () =
       = Some (StringValue "#334455"));
   Alcotest.(check int) "only committed handler survives" 1 (Lui_runtime.handler_count app);
   ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "committed insertion is reindexed for the host" true
+    (List.exists (function InsertChild (owner, child, 1) ->
+      owner = parent && child = permanent | _ -> false) !emitted);
   Alcotest.(check bool) "partial operations dropped" false
     (List.exists (function SetProp (_, TextValue, StringValue ("partial" | "transient")) -> true
       | _ -> false) !emitted);
   Alcotest.(check int) "journal compacted after recovery flush" 0
     (List.length app.runtime_journal.journal_entries);
   check_failure "stale savepoint rejected" (attempt (fun () -> Lui_runtime.rollback_boundary app saved));
+  Signal.dispose_scope scope
+
+let boundary_nested_mount_rollback () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
+    Lui_elements.text ~value:"inner fallback" [])
+    (fun _ _ -> failwith "inner mount") in
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    Lui_elements.text ~value:"outer fallback" [])
+    (fun context parent ->
+      ignore (inner context parent);
+      failwith "outer mount") context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "only enclosing fallback remains"
+    ["outer fallback"] (text_values app);
+  Alcotest.(check bool) "no insert refers to a rolled back parent" true
+    (List.for_all (function InsertChild (parent, _, _) -> Lui_runtime.node_live app parent
+      | _ -> true) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_echo_rollback () =
+  let app, scope, context, _ = boundary_fixture () in
+  let node = Lui_ui.text_field context in
+  Lui_ui.string_property context node TextValue "before";
+  ignore (Lui_runtime.flush app);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node TextValue "discarded";
+  let recovery = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node ForegroundValue "#334455";
+  Lui_runtime.commit_boundary_recovery app recovery;
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check bool) "discarded text is not a host echo" false
+    (Lui_runtime.event_is_value_echo app node (TextChanged (node, "discarded")));
   Signal.dispose_scope scope
 
 let boundary_journal_compaction () =
@@ -842,6 +879,8 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "boundary committed outer recovery", boundary_committed_outer_recovery;
    "boundary journal savepoints", boundary_journal_savepoints;
    "boundary journal compaction", boundary_journal_compaction;
+   "boundary nested mount rollback", boundary_nested_mount_rollback;
+   "boundary echo rollback", boundary_echo_rollback;
    "boundary reactive failure and latched fallback", boundary_reactive_update;
    "nested boundaries and fallback failures", boundary_nested;
    "boundary owned property projection", boundary_property_projection;
