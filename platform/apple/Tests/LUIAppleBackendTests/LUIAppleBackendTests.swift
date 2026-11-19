@@ -31,6 +31,24 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("Schema web-only hints are ignored on native batches")
+    func ignoresWebOnlyHints() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"set-prop","id":1,"property":"shrink","value":0},
+          {"op":"set-prop","id":1,"property":"focus-within-enabled","value":true},
+          {"op":"remove-prop","id":1,"property":"shrink"},
+          {"op":"remove-prop","id":1,"property":"focus-within-enabled"}
+        ]}
+        """)
+        let model = try #require(backend.model(id: 1))
+        for property in LUISchemaMatrix.webOnly {
+            #expect(model.property(property) == nil)
+        }
+    }
+
     @Test("Atomic subtree recreation publishes fresh models and child links")
     func atomicSubtreeRecreation() throws {
         let backend = LUIAppleBackend()
@@ -88,7 +106,11 @@ struct LUISwiftUIBackendTests {
                 let decoded = try JSONDecoder().decode(LUIWireValue.self, from: Data(json.utf8))
                 #expect(!decoded.normalized(for: property).matches(property, on: .box))
             }
-            if property != .progressValue {
+            if [.opacity, .labelOpacity, .hoverOpacity, .pressedOpacity, .disabledOpacity].contains(property) {
+                for number in [Double.nan, .infinity, -.infinity] {
+                    #expect(LUIWireValue.double(number).normalized(for: property) == .double(1))
+                }
+            } else if property != .progressValue {
                 for number in [Double.nan, .infinity, -.infinity] {
                     #expect(!LUIWireValue.double(number).normalized(for: property).matches(property, on: .box))
                 }
@@ -96,14 +118,28 @@ struct LUISwiftUIBackendTests {
         }
         for (property, number): (LUIProperty, Int) in [
             (.grow, -1), (.firstPaneWidth, -1), (.stepValue, 0), (.itemExtent, 0),
-            (.opacity, 2), (.labelOpacity, -1), (.hoverOpacity, 2),
-            (.pressedOpacity, -1), (.disabledOpacity, 2),
             (.widthViewport, 0), (.heightViewport, 2), (.minWidthViewport, 0),
             (.maxWidthViewport, 2), (.minHeightViewport, 0), (.maxHeightViewport, 2),
             (.availableHeight, -1), (.collisionPadding, -1),
         ] {
             #expect(!LUIWireValue.int(number).normalized(for: property).matches(property, on: .box))
         }
+        for property in [LUIProperty.opacity, .labelOpacity, .hoverOpacity, .pressedOpacity, .disabledOpacity] {
+            #expect(LUIWireValue.int(-1).normalized(for: property) == .double(0))
+            #expect(LUIWireValue.int(2).normalized(for: property) == .double(1))
+        }
+    }
+
+    @Test("BottomTabs accepts a temporarily empty destination list")
+    func emptyBottomTabs() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"bottom-tabs"},
+          {"op":"set-prop","id":1,"property":"accessibility-label","value":"Destinations"}
+        ]}
+        """)
+        #expect(backend.model(id: 1)?.children == [])
     }
 
     @Test("removed line-break nodes reject the batch without changing the tree")
@@ -2841,17 +2877,17 @@ struct LUISwiftUIBackendTests {
         #expect(box.surfaceWidth == 140)
         #expect(box.revision == revision + 1)
 
-        #expect(throws: LUIBackendError.self) {
-            try backend.apply(json: """
-            {"generation":3,"ops":[
-              {"op":"set-prop","id":1,"property":"min-width","value":170},
-              {"op":"set-prop","id":1,"property":"max-width","value":160}
-            ]}
-            """)
-        }
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"set-prop","id":1,"property":"min-width","value":170},
+          {"op":"set-prop","id":1,"property":"max-width","value":160}
+        ]}
+        """)
         #expect(backend.generation == 3)
-        #expect(box.surfaceMinWidth == 80)
-        #expect(box.revision == revision + 1)
+        #expect(box.surfaceMinWidth == 170)
+        #expect(box.surfaceMaxWidth == 170)
+        #expect(box.surfaceWidth == 170)
+        #expect(box.revision == revision + 2)
     }
 
     @Test("accepts minimum container-relative frame semantics")

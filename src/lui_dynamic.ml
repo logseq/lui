@@ -312,8 +312,24 @@ type 'item keyed_entry = {
   keyed_item_node : int;
 }
 
+let occurrence_keys (type key) parent (key_fn : _ -> key) compare items =
+  let module Counts = Map.Make (struct type t = key let compare = compare end) in
+  let counts = ref Counts.empty in
+  Array.map (fun item ->
+    let key = key_fn item in
+    let occurrence = Option.value (Counts.find_opt key !counts) ~default:0 in
+    counts := Counts.add key (occurrence + 1) !counts;
+    if occurrence > 0 then
+      Printf.eprintf "LUI duplicate key: key_hash=%d parent=%d occurrence=%d\n%!"
+        (Hashtbl.hash key) parent occurrence;
+    key, occurrence) items
+
 let keyed_controller (type key) context parent segment (key_fn : _ -> key) compare mount =
-  let module Keys = Map.Make (struct type t = key let compare = compare end) in
+  let module Keys = Map.Make (struct
+    type t = key * int
+    let compare (a, i) (b, j) =
+      let order = compare a b in if order = 0 then Int.compare i j else order
+  end) in
   let application = context.Lui_ui.ui_application in
   let scheduler = context.Lui_ui.ui_scheduler in
   let entries = ref Keys.empty in
@@ -334,15 +350,20 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
   let remove_entry index entry =
     detach_entry index entry;
     dispose_entry entry in
-  let reconcile ?commit items =
+  let reconcile ?commit ?identities items =
     if not !disposed && Lui_runtime.node_live application parent then begin
       let items = Array.of_list items in
+      let identities = match identities with
+        | Some identities -> identities
+        | None -> occurrence_keys parent key_fn compare items in
       let old = !ordered in
       let unchanged = ref (Array.length items = Array.length old) in
       let index = ref 0 in
       while !unchanged && !index < Array.length items do
         let key, entry = old.(!index) in
-        unchanged := compare key (key_fn items.(!index)) = 0
+        let previous_key, previous_occurrence = key in
+        let next_key, next_occurrence = identities.(!index) in
+        unchanged := compare previous_key next_key = 0 && previous_occurrence = next_occurrence
           && items.(!index) == Signal.get_state entry.keyed_item_state;
         incr index
       done;
@@ -355,9 +376,8 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
             raise failure) commit
       else begin
       let desired = ref Keys.empty in
-      Array.iteri (fun index item ->
-        let key = key_fn item in
-        if Keys.mem key !desired then invalid_arg "keyed collection contains a duplicate key";
+      Array.iteri (fun index _item ->
+        let key = identities.(index) in
         desired := Keys.add key index !desired) items;
       (* Reordering changes only the parent sequence. Retained row updates
          are queued through Signal.set; only removed subtrees are dropped
@@ -380,8 +400,8 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
         try dispose_entry entry with _ -> ()) !mounted in
       (try
       (* Own every candidate before running its constructor or mount hooks. *)
-      let fresh = Array.map (fun item ->
-        let key = key_fn item in
+      let fresh = Array.mapi (fun index item ->
+        let key = identities.(index) in
         match Keys.find_opt key !entries with
         | Some _ -> None
         | None ->
@@ -427,7 +447,7 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
            end else add index 1
          done;
          let next = Array.mapi (fun index item ->
-           let key = key_fn item in
+           let key = identities.(index) in
            let entry = match Keys.find_opt key !entries with
              | Some entry ->
                let old_index = Keys.find key !old_positions in
@@ -454,7 +474,8 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
                entry in
            key, entry) items in
          ordered := next;
-         nodes_ref := Array.to_list (Array.map (fun (key, entry) -> { ui_key = key; ui_node = entry.keyed_item_node }) next);
+         nodes_ref := Array.to_list (Array.map (fun ((key, _), entry) ->
+           { ui_key = key; ui_node = entry.keyed_item_node }) next);
          Option.iter (fun commit -> commit ()) commit
        with failure ->
          finish_replacements ();
@@ -491,12 +512,17 @@ let keyed_controller (type key) context parent segment (key_fn : _ -> key) compa
       match !failure with None -> () | Some error -> raise error
     end in
   Signal.on_dispose context.Lui_ui.ui_scope dispose_callback;
-  reconcile, { dispose_dynamic_keyed = dispose_callback; key_nodes = nodes_ref; key_compare = compare }
+  let identities_by_node () =
+    let nodes = Hashtbl.create (Array.length !ordered) in
+    Array.iter (fun (identity, entry) ->
+      Hashtbl.replace nodes entry.keyed_item_node identity) !ordered;
+    nodes in
+  reconcile, { dispose_dynamic_keyed = dispose_callback; key_nodes = nodes_ref; key_compare = compare }, identities_by_node
 
 
 let keyed context parent source key_fn compare mount =
   let segment = Lui_runtime.register_dynamic_segment context.Lui_ui.ui_application parent in
-  let reconcile, keyed = keyed_controller context parent segment key_fn compare mount in
+  let reconcile, keyed, _ = keyed_controller context parent segment key_fn compare mount in
   reconcile (Signal.sample source);
   let subscription = Signal.subscribe ~emit_initial:false source (fun items -> reconcile items) in
   ignore (Signal.own context.Lui_ui.ui_scope subscription);
@@ -506,12 +532,16 @@ let keyed context parent source key_fn compare mount =
 
 let virtual_rows (type key) ?viewport ?scroll_key context parent source
     (key_fn : _ -> key) compare mount =
-  let module Keys = Map.Make (struct type t = key let compare = compare end) in
+  let module Keys = Map.Make (struct
+    type t = key * int
+    let compare (a, i) (b, j) =
+      let order = compare a b in if order = 0 then Int.compare i j else order
+  end) in
   let application = context.Lui_ui.ui_application in
   if Option.is_some viewport && Option.is_none scroll_key then
     invalid_arg "shared virtual rows require semantic scroll_key";
   let segment = Lui_runtime.register_dynamic_segment ~exclusive:true application parent in
-  let reconcile, keyed = keyed_controller context parent segment key_fn compare mount in
+  let reconcile, keyed, identities_by_node = keyed_controller context parent segment key_fn compare mount in
   if not application.Lui_runtime.runtime_virtual_rows then begin
     reconcile (Signal.sample source);
     let subscription = Signal.subscribe ~emit_initial:false source (fun items -> reconcile items) in
@@ -523,6 +553,7 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
     let viewport_lease = Option.map (fun source ->
       (Option.get (Signal.sample (Lui_virtual.binding source))).Lui_virtual.lease) viewport in
     let dataset = ref [||] in
+    let dataset_identities = ref [||] in
     let positions = ref Keys.empty in
     let scroll_positions = ref Lui_protocol.String_map.empty in
     let revision = ref 0 and stopped = ref false in
@@ -555,10 +586,10 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
       List.init limit Fun.id in
     let build items =
       let items = Array.of_list items in
+      let identities = occurrence_keys parent key_fn compare items in
       let indices = ref Keys.empty and targets = ref Lui_protocol.String_map.empty in
       Array.iteri (fun index item ->
-        let key = key_fn item in
-        if Keys.mem key !indices then invalid_arg "keyed collection contains a duplicate key";
+        let key = identities.(index) in
         indices := Keys.add key index !indices;
         Option.iter (fun scroll_key ->
           let key = scroll_key item in
@@ -567,11 +598,11 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
           if Lui_protocol.String_map.mem key !targets then
             invalid_arg "virtual_rows contains a duplicate scroll_key";
           targets := Lui_protocol.String_map.add key index !targets) scroll_key) items;
-      items, !indices, !targets in
+      items, identities, !indices, !targets in
     let window_keys = ref [] and native_pins = ref [] and adopted_pins = ref [] in
     let visible_indices indices = List.filter_map (fun key -> Keys.find_opt key indices) !window_keys in
-    let reconcile_indices ?window_pins items indices targets epoch selected =
-      let visible_keys = List.map (fun index -> key_fn items.(index)) selected in
+    let reconcile_indices ?window_pins ?(identities = !dataset_identities) items indices targets epoch selected =
+      let visible_keys = List.map (Array.get identities) selected in
       (* Cold semantic keys are unioned before every reconciliation, including
          bootstrap and source publications, before any row has a native id. *)
       let retained = match viewport with
@@ -583,15 +614,17 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         | Some pins -> pins
         | None -> List.rev_append !native_pins !adopted_pins in
       let pins = List.map (Lui_runtime.canonical_node application) pins in
+      let mounted_identities = identities_by_node () in
       let physical = List.filter_map (fun entry ->
         if List.mem (Lui_runtime.canonical_node application entry.ui_node) pins
-        then Keys.find_opt entry.ui_key indices else None)
+        then Option.bind (Hashtbl.find_opt mounted_identities entry.ui_node)
+          (fun identity -> Keys.find_opt identity indices) else None)
         !(keyed.key_nodes) in
       let selected = List.sort_uniq Int.compare
         (List.rev_append physical (List.rev_append retained selected)) in
       let target_index = target targets (property Lui_protocol.ScrollTarget) in
       let selected_items = List.map (Array.get items) selected in
-      reconcile selected_items ~commit:(fun () ->
+      reconcile selected_items ~identities:(Array.of_list (List.map (Array.get identities) selected)) ~commit:(fun () ->
         List.iter (fun (name, value) -> Lui_runtime.set_prop application parent name value)
           [ Lui_protocol.VirtualTotalCount, Lui_protocol.IntValue (Array.length items);
             Lui_protocol.VirtualGeneration, Lui_protocol.IntValue epoch;
@@ -608,19 +641,22 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
             ~contains:(fun key -> Lui_protocol.String_map.mem key targets)
             (List.combine keys children)) viewport;
         Lui_runtime.validate_virtual_list application parent;
-        dataset := items; positions := indices; scroll_positions := targets;
+        dataset := items; dataset_identities := identities; positions := indices; scroll_positions := targets;
         window_keys := visible_keys;
         Option.iter (fun pins -> native_pins := pins; adopted_pins := []) window_pins;
         revision := epoch) in
     let update_source items =
       if not !stopped && Lui_runtime.node_live application parent then begin
-        let items, indices, targets = build items in
+        let items, identities, indices, targets = build items in
+        let mounted_identities = identities_by_node () in
         (* Keep matched mounted keys through the generation handshake. A new
            bootstrap is needed only if no old row remains, avoiding growth
            across repeated source revisions before the host responds. *)
         let selected = (match viewport with
           | Some _ -> visible_indices indices
-          | None -> List.filter_map (fun entry -> Keys.find_opt entry.ui_key indices)
+          | None -> List.filter_map (fun entry ->
+              Option.bind (Hashtbl.find_opt mounted_identities entry.ui_node)
+                (fun identity -> Keys.find_opt identity indices))
               !(keyed.key_nodes)) |> List.sort_uniq Int.compare in
         let selected = if selected = [] then bootstrap (Array.length items) else selected in
         let saved = Lui_runtime.checkpoint
@@ -630,7 +666,7 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
           invalid_arg "virtual_rows generation overflow";
         incr application.Lui_runtime.next_virtual_generation;
         let epoch = !(application.Lui_runtime.next_virtual_generation) in
-        (try reconcile_indices items indices targets epoch selected with failure ->
+        (try reconcile_indices ~identities items indices targets epoch selected with failure ->
           (* A retirement callback can fail after the new revision committed;
              that accepted revision must keep its allocated identity. *)
           if !revision = previous_revision then Lui_runtime.restore application saved;

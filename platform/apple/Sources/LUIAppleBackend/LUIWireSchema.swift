@@ -299,6 +299,7 @@ enum LUIProperty: String, Decodable, Hashable {
 }
 
 enum LUISchemaMatrix {
+    static let webOnly: Set<LUIProperty> = [.focusWithinEnabled, .shrink]
     // Evaluated from Lui_protocol.property_supported, independent of rendering.
     static let admitted: [LUINodeKind: Set<LUIProperty>] = [
         .accordion: [.text, .height, .accessibilityIdentifier, .styleClass, .selected, .toggleEnabled, .alignment, .pointerEnabled],

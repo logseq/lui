@@ -9,6 +9,17 @@ import { fileURLToPath } from 'node:url';
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const generator = join(repository, 'tooling/generate_component_schema.mjs');
 
+test('Android kind predicates derive from the canonical admission export', () => {
+  const admission = JSON.parse(readFileSync(join(repository, 'schema/apple-property-admission.json'), 'utf8'));
+  const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
+  const kotlin = readFileSync(join(repository, 'platform/android/lui/src/main/kotlin/dev/lui/LuiWireSchema.kt'), 'utf8');
+  const kinds = name => schema.nodeKinds.find(k => k.wire === name).swift;
+  const generated = name => [...kotlin.match(new RegExp(`val ${name}:.*?setOf\\(([^)]*)\\)`))[1].matchAll(/LuiNodeKind\.(\w+)/g)].map(m => m[1]);
+  assert.deepEqual(generated('mainCrossKinds'), Object.entries(admission.kinds).filter(([, props]) => props.includes('main')).map(([kind]) => kinds(kind)));
+  assert.deepEqual(generated('modalSurfaceKinds'), admission.modalKinds.map(kinds));
+  assert.deepEqual(schema.properties.filter(p => p.webOnly).map(p => p.wire), ['focus-within-enabled', 'shrink']);
+});
+
 function runGenerator(arguments_) {
   return spawnSync(process.execPath, [generator, ...arguments_], {
     cwd: repository,

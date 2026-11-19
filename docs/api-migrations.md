@@ -1,5 +1,113 @@
 # LUI API migration guide
 
+## Unreleased: Shared Android admission and native web-only hints
+
+Android main/cross alignment and modal-surface kind sets are now generated
+from the canonical OCaml admission export by `generate_component_schema.mjs`.
+Grid, checkbox, and radio accept main/cross alignment; drawer follows the
+same modal property restrictions as dialog and sheet.
+
+Android renderer dispatch remains independent of admission: drawers still use
+the existing navigation-drawer renderer, while dialogs and sheets use their
+dedicated modal renderer. For example, a shared drawer retains its main content
+and selected-state-controlled drawer panel after schema admission updates.
+
+The shared component schema now marks `shrink` and `focus-within-enabled`
+(the wire property behind `on_focus_within`) as web-only. SwiftUIHost and
+KotlinHost ignore their writes/removals instead of rejecting them, including
+direct native host batches. For example, a shared `row ~shrink:0.` view can
+mount on native hosts without a platform guard; native layout defaults remain
+unchanged and no focus-within callback is generated there. Web behavior and
+GenericHost's existing strict admission remain unchanged. There were no other
+web-only property annotations in the schema; future annotations feed these
+same generated host filters. No wire names or formats changed.
+
+## Unreleased: Numeric clamping and Apple bottom-tabs resilience
+
+The OCaml runtime emit path and Web, Apple, and Android retained stores now
+clamp negative `width`, `height`, `min-width`, `max-width`, `min-height`,
+`max-height`, `gap`, `padding` (including directional and axis variants),
+`border-width`, `corner-radius`, `tooltip-delay`, `duration`, and
+`resize-duration` to zero. Margins and signed offsets are unchanged. Values
+of the wrong wire type and properties unsupported by a node kind still reject.
+
+Pixel size constraints resolve after the batch's property writes:
+`effective_max = max(min_size, max_size)` and
+`effective_fixed = clamp(fixed, min_size, effective_max)`. An absent minimum
+means zero and an absent maximum remains unbounded; absent dimensions and
+`"auto"` stay absent/automatic. For example, `width=10, min-width=100,
+max-width=50` now stores and renders `width=100, min-width=100, max-width=100`
+instead of rejecting. Later writes resolve against these canonical stored
+values, not a hidden copy of the original conflicting values. Pure protocol
+validators still validate canonical values; low-level integrations can call
+`Lui_protocol.normalize_property_value` and `normalize_size_properties` before
+validating. `size_properties` names the affected pixel-size properties.
+
+Web replays only retained pixel-size properties after normalization. Absent
+pixel dimensions do not clear viewport-derived CSS: for example, setting
+`min-height=10` preserves an existing `width-viewport=0.5` as `50dvw`.
+Explicit pixel-size removals still clear their corresponding CSS dimension.
+
+`opacity`, `hover-opacity`, `pressed-opacity`, `disabled-opacity`, and
+`label-opacity` clamp to `[0,1]`. Non-finite values for these opacity properties
+fall back to the neutral opacity default `1` and emit a stderr diagnostic naming
+the property, reason, and fallback. For example, a reactive computation returning
+`nan` for opacity now emits `1.0`, not invalid JSON. The low-level wire encoder
+continues to reject non-finite floats; applications bypassing the runtime must
+normalize before encoding. Other float properties retain their existing rules.
+
+Apple `bottom_tabs` no longer rejects a dynamic child count outside `2...5`;
+it logs a diagnostic and renders the supplied destinations using the existing
+tab renderer. Required accessible labels and valid `bottom_tab` children remain
+enforced. For example, publishing a temporary empty destination list is accepted
+while loading; restoring two or more destinations requires no remount workaround.
+There are no schema or wire-format changes, and valid existing values behave
+as before.
+
+## Unreleased: OCaml runtime resilience
+
+Children-position `reactive` now compares physically identical values first,
+then attempts structural equality. If structural equality raises
+`Invalid_argument` (for example on a record containing a closure), the value
+is treated as changed. Explicit `~equal` comparators keep their existing
+semantics. For example, `reactive (fun model -> pane model) model_s` can now
+receive fresh closure-bearing records repeatedly; use
+`reactive ~equal:(fun a b -> a.id = b.id) pane model_s` when identity alone
+should retain the branch.
+The comparator is also available as `Lui_elements.default_subtree_equal` for
+low-level `Lui_dynamic.switch` integrations; replace an unguarded `(=)` argument
+with this function to use the same closure-safe policy.
+
+`keyed` and `virtual_rows` business keys now use occurrence order to distinguish
+duplicates instead of rejecting the publication. The first occurrence retains
+the original identity; later occurrences retain identity by `(key, occurrence)`
+across publications. For example, `[a; a; b]` reordered to `[a; b; a]` moves
+the second `a` row without remounting it. Unique keys behave as before and
+remain recommended: inserting a duplicate before another duplicate changes
+which item owns each occurrence's local state. Diagnostics on stderr identify
+the polymorphic key by `key_hash`, the parent node, and the duplicate occurrence
+(starting at 1). Arbitrary polymorphic keys have no public text printer.
+Virtual rows' separate semantic `scroll_key` uniqueness and nonempty shared
+viewport key requirements remain enforced; use unique semantic keys for shared
+viewports even if business keys repeat.
+
+After `apply_batch` returns `false`, the rejected delta is no longer requeued.
+The rejection is still reported as `Invalid_argument "backend rejected patch
+batch"`. On the next flush, even without new pending operations, the runtime
+sends an authoritative `resync_batch` snapshot of the latest retained state
+under the next host generation. Later successful turns resume incremental
+delivery. For example, catch a rejected flush, restore/reset the host through
+its existing resync mechanism when using an explicit bridge snapshot. For a
+synchronous backend returning `false`, simply flush again: recovery now prefixes
+the snapshot with `DetachSubtree` for every root acknowledged by that backend,
+including roots removed from the runtime in the rejected delta. This clears
+the old mirror before recreating live nodes without a new host-reset callback.
+Explicit bridge snapshots remain create/set/insert-only: Apple's
+`applySnapshot` and Android's replacement-store path still perform their own
+reset. The Web backend reports apply errors as exceptions rather than `false`;
+this rejection policy does not change its DOM error recovery. Exceptions from `apply_batch` retain the existing
+uncertain-commit semantics. There is no wire-format change.
+
 ## Unreleased: SDL popup presentation
 
 Experimental macOS/Linux SDL hosts may now present menu, popover and tooltip

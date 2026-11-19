@@ -3,6 +3,40 @@ open Alcotest
 
 let batch ops = { generation = 1; ops }
 
+let test_rejected_runtime_batch_recovers () =
+  let host = Lui_store.create () in
+  let reject = ref false in
+  let backend = { backend_profile = generic_profile ();
+    apply_batch = (fun batch ->
+      if !reject then false else (Lui_store.apply_batch host batch; true)) } in
+  let runtime = Lui_runtime.create (Signal.scheduler ()) backend in
+  let root = Lui_runtime.create_node runtime Column in
+  let child = Lui_runtime.create_node runtime Text in
+  let obsolete = Lui_runtime.create_node runtime Text in
+  Lui_runtime.insert_child runtime root child 0;
+  Lui_runtime.set_prop runtime child TextValue (StringValue "before");
+  ignore (Lui_runtime.flush runtime);
+  reject := true;
+  Lui_runtime.drop_subtree runtime obsolete;
+  Lui_runtime.set_prop runtime child TextValue (StringValue "after");
+  check_raises "host rejects delta" (Invalid_argument "backend rejected patch batch")
+    (fun () -> ignore (Lui_runtime.flush runtime));
+  check bool "host still has old root" true (Lui_store.mem host obsolete);
+  reject := false;
+  ignore (Lui_runtime.flush runtime);
+  let expected = Lui_store.create () in
+  Lui_store.apply_batch expected (Lui_runtime.resync_batch runtime);
+  check (list int) "host tree matches snapshot" (Lui_store.preorder expected)
+    (Lui_store.preorder host);
+  check int "no obsolete nodes survive" (Lui_store.node_count expected) (Lui_store.node_count host);
+  check (option string) "latest property restored" (Some "after")
+    (Lui_store.string_prop host child "text");
+  check (list int) "child order restored" [child] (Lui_store.child_ids host root);
+  Lui_runtime.set_prop runtime child TextValue (StringValue "later");
+  ignore (Lui_runtime.flush runtime);
+  check (option string) "later delta applies" (Some "later")
+    (Lui_store.string_prop host child "text")
+
 let apply t ops = Lui_store.apply_batch t (batch ops)
 
 let test_create_and_insert () =
@@ -383,6 +417,7 @@ let () =
   run "lui_store"
     [ ("tree",
        [ test_case "create+insert" `Quick test_create_and_insert;
+         test_case "runtime rejection resync replaces mirror" `Quick test_rejected_runtime_batch_recovers;
          test_case "insert order" `Quick test_insert_order;
          test_case "move" `Quick test_move_child;
          test_case "move across parents" `Quick test_move_across_parents;

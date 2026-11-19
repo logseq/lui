@@ -5,7 +5,7 @@ package dev.lui
  * wire. */
 internal object LuiKindRules {
 
-    val modalSurfaceKinds = setOf(LuiNodeKind.dialog, LuiNodeKind.sheet)
+    val modalSurfaceKinds = LuiSchemaMatrix.modalSurfaceKinds
 
     val overlaySurfaceKinds = setOf(
         LuiNodeKind.panel,
@@ -16,6 +16,9 @@ internal object LuiKindRules {
     )
 
     fun isModalSurface(kind: LuiNodeKind): Boolean = kind in modalSurfaceKinds
+
+    fun usesModalSurfaceRenderer(kind: LuiNodeKind): Boolean =
+        kind == LuiNodeKind.dialog || kind == LuiNodeKind.sheet
 
     // Kinds carrying typography/selectability — mirrors the
     // `FontSize | … | UserSelect` arm of `Lui_protocol.property_supported`:
@@ -111,19 +114,7 @@ internal object LuiKindRules {
         if (kind == LuiNodeKind.pagination) 2 else 4
 
     fun isMainCrossKind(kind: LuiNodeKind): Boolean =
-        kind == LuiNodeKind.row ||
-            kind == LuiNodeKind.column ||
-            kind == LuiNodeKind.list ||
-            kind == LuiNodeKind.virtualList ||
-            kind == LuiNodeKind.card ||
-            kind == LuiNodeKind.panel ||
-            kind == LuiNodeKind.box ||
-            kind == LuiNodeKind.button ||
-            kind == LuiNodeKind.menuItem ||
-            kind == LuiNodeKind.listItem ||
-            kind == LuiNodeKind.popover ||
-            kind == LuiNodeKind.link ||
-            isHorizontalGroupKind(kind)
+        kind in LuiSchemaMatrix.mainCrossKinds
 
     fun isTreeRowKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.row ||
@@ -315,8 +306,7 @@ internal object LuiKindRules {
     /** Ported from the Flutter backend's `_supports`: whether a `set-prop`
      * op is admissible for the node's kind. */
     fun supports(kind: LuiNodeKind, property: String, value: LuiWireValue): Boolean {
-        if (property == "focus-within-enabled") return false
-        if (property == "shrink") return false
+        if (property in LuiSchemaMatrix.webOnly) return true
         when (property) {
             "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" ->
                 return kind == LuiNodeKind.virtualList && schemaValueSupported(property, value)
@@ -977,6 +967,8 @@ internal object LuiKindRules {
     // `Lui_protocol.property_value_supported`.
     private fun schemaValueSupported(property: String, value: LuiWireValue): Boolean =
         when (property) {
+            "main" -> value.stringValue in mainAlignments
+            "cross" -> value.stringValue in crossAlignments
             "virtual-total-count" -> value.intValue?.let { it >= 0 } == true
             "virtual-generation" -> (value as? LuiWireValue.IntValue)?.value?.let { it > 0 && it <= Long.MAX_VALUE / 2 } == true
             "virtual-indices" -> value.stringValue?.let { luiVirtualIndices(it) != null } == true

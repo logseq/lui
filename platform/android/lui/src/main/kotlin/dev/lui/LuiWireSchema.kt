@@ -319,6 +319,9 @@ enum class LuiProperty(val wireName: String) {
  * kind follows the common-property rules in the backend.
  */
 object LuiSchemaMatrix {
+    val webOnly: Set<String> = setOf("focus-within-enabled", "shrink")
+    val mainCrossKinds: Set<LuiNodeKind> = setOf(LuiNodeKind.box, LuiNodeKind.breadcrumb, LuiNodeKind.button, LuiNodeKind.buttonGroup, LuiNodeKind.card, LuiNodeKind.checkbox, LuiNodeKind.column, LuiNodeKind.grid, LuiNodeKind.link, LuiNodeKind.list, LuiNodeKind.listItem, LuiNodeKind.menuItem, LuiNodeKind.pagination, LuiNodeKind.panel, LuiNodeKind.popover, LuiNodeKind.radio, LuiNodeKind.row, LuiNodeKind.tabs, LuiNodeKind.toggleGroup, LuiNodeKind.virtualList)
+    val modalSurfaceKinds: Set<LuiNodeKind> = setOf(LuiNodeKind.dialog, LuiNodeKind.drawer, LuiNodeKind.sheet)
     val restrictive: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
         LuiNodeKind.accordion to setOf(LuiProperty.text, LuiProperty.selected, LuiProperty.toggleEnabled, LuiProperty.height, LuiProperty.pointerEnabled, LuiProperty.styleClass),
         LuiNodeKind.stepper to setOf(LuiProperty.active, LuiProperty.accessibilityLabel, LuiProperty.pointerEnabled),

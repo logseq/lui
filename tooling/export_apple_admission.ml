@@ -33,6 +33,8 @@ let () =
   let name = Lui_wire_schema.property_name in
   let kind_name = Lui_wire_schema.node_kind_name in
   Yojson.Basic.to_channel stdout (`Assoc [
+    "modalKinds", `List (List.filter_map (fun kind ->
+      if modal_surface kind then Some (`String (kind_name kind)) else None) kinds);
     "kinds", `Assoc (List.map (fun kind -> kind_name kind,
       `List (List.filter_map (fun p -> if property_supported kind p then Some (`String (name p)) else None) properties)) kinds);
     "values", `List (List.map json_value values);

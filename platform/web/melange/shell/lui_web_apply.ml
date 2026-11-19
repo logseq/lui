@@ -879,8 +879,24 @@ let apply_dom_op renderer previous_nodes children_of effects visible
       if known_node renderer previous_nodes node then
         apply_detach_subtree renderer previous_nodes children_of effects node
   | SetProp (node, property, value) ->
-      apply_set_prop renderer effects node property value
-  | RemoveProp (node, property) -> apply_remove_prop renderer effects node property
+      let properties = match Hashtbl.find_opt renderer.web_store.retained_nodes node with
+        | Some current -> current.retained_properties
+        | None -> Property_map.empty in
+      if List.mem property size_properties then
+        List.iter (fun property ->
+          Option.iter (apply_set_prop renderer effects node property)
+            (Property_map.find_opt property properties)) size_properties
+      else apply_set_prop renderer effects node property
+        (Option.value (Property_map.find_opt property properties)
+          ~default:(normalize_property_value property value))
+  | RemoveProp (node, property) ->
+      apply_remove_prop renderer effects node property;
+      if List.mem property size_properties then
+        Option.iter (fun current ->
+          List.iter (fun property ->
+            Option.iter (apply_set_prop renderer effects node property)
+              (Property_map.find_opt property current.retained_properties)) size_properties)
+          (Hashtbl.find_opt renderer.web_store.retained_nodes node)
   | SetExtensionProp (node, property, value) ->
       Ext.apply_extension_property renderer node property value
   | RemoveExtensionProp (node, property) ->

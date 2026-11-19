@@ -189,6 +189,7 @@ let rec collect_subtree nodes node_id acc =
   | None -> acc
 
 let apply_set_prop nodes node_id property value =
+  let value = normalize_property_value property value in
   let current = fetch nodes node_id "node" in
   match standard_kind current with
   | Some kind ->
@@ -618,6 +619,9 @@ let validate_extension_node registry current identifier =
 
 let validate_nodes ?affected nodes registry =
   let validate node current =
+       let properties = normalize_size_properties current.retained_properties in
+       let current = { current with retained_properties = properties } in
+       replace nodes node current;
        match current.semantic_kind with
        | StandardSemantic kind -> (
            try validate_standard_node nodes registry current kind

@@ -5,6 +5,127 @@ let runtime () = Lui_runtime.create (Signal.scheduler ()) (backend (fun _ -> tru
 let attempt f = try f (); None with exn -> Some exn
 let check_failure label result = Alcotest.(check bool) label true (Option.is_some result)
 
+type closure_model = { callback : unit -> string }
+
+let numeric_normalization () =
+  List.iter (fun property ->
+    List.iter (fun number ->
+      Alcotest.(check bool) "nonnegative scalar canonicalized" true
+        (normalize_property_value property (IntValue number) = IntValue (max 0 number)))
+      [-7; 0; 12])
+    [WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; Gap;
+     PaddingValue; PaddingHorizontal; PaddingVertical; PaddingTop; PaddingRight;
+     PaddingBottom; PaddingLeft; BorderWidth; CornerRadius; TooltipDelay;
+     DurationValue; ResizeDuration];
+  List.iter (fun property ->
+    List.iter (fun (number, expected) ->
+      Alcotest.(check bool) "opacity canonicalized with finite fallback" true
+        (normalize_property_value property (FloatValue number) = FloatValue expected))
+      [-0.5, 0.; 0.4, 0.4; 1.5, 1.; nan, 1.; infinity, 1.; neg_infinity, 1.])
+    [Opacity; LabelOpacity; HoverOpacity; PressedOpacity; DisabledOpacity];
+  Alcotest.(check bool) "empty dimensions stay absent" true
+    (Property_map.is_empty (normalize_size_properties Property_map.empty));
+  let emitted = ref [] in
+  let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun batch ->
+    emitted := batch.ops; true)) in
+  let node = Lui_runtime.create_node app Box in
+  List.iter (fun (property, value) -> Lui_runtime.set_prop app node property value)
+    [WidthValue, IntValue 10; MinWidth, IntValue 100; MaxWidth, IntValue 50;
+     HeightValue, IntValue 500; MinHeight, IntValue (-5); MaxHeight, IntValue 200;
+     PaddingValue, IntValue (-4); Opacity, FloatValue nan];
+  ignore (Lui_runtime.flush app);
+  let properties = List.fold_left (fun properties -> function
+    | SetProp (id, property, value) when id = node -> Property_map.add property value properties
+    | _ -> properties) Property_map.empty !emitted in
+  List.iter (fun (property, expected) ->
+    Alcotest.(check bool) "wire carries canonical value" true
+      (Property_map.find_opt property properties = Some expected))
+    [WidthValue, IntValue 100; MinWidth, IntValue 100; MaxWidth, IntValue 100;
+     HeightValue, IntValue 200; MinHeight, IntValue 0; MaxHeight, IntValue 200;
+     PaddingValue, IntValue 0; Opacity, FloatValue 1.];
+  Alcotest.check_raises "wrong types still reject"
+    (Invalid_argument "invalid property value: kind=box prop=width value=\"bad\"")
+    (fun () -> Lui_runtime.set_prop app node WidthValue (StringValue "bad"));
+  Lui_runtime.set_prop app node WidthValue (IntValue 1000);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "later fixed size clamps to effective maximum" true
+    (List.exists (function SetProp (_, WidthValue, IntValue 100) -> true | _ -> false) !emitted)
+
+let closure_subtree_publication () =
+  let app = runtime () in
+  let scheduler = app.Lui_runtime.runtime_scheduler in
+  let scope = Signal.scope "closure-switch" in
+  let context = Lui_ui.context app scope in
+  let parent = Lui_ui.column context in
+  let initial = { callback = (fun () -> "initial") } in
+  let source = Signal.state scheduler initial in
+  let mounts = ref 0 in
+  ignore (Lui_dynamic.switch context parent (Signal.value source)
+    Lui_elements.default_subtree_equal (fun row model ->
+      incr mounts; Lui_ui.text row (model.callback ())));
+  Signal.set source initial;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "physical republish retains branch" 1 !mounts;
+  List.iter (fun label ->
+    Signal.set source { callback = (fun () -> label) };
+    ignore (Lui_runtime.flush app)) ["second"; "third"];
+  Alcotest.(check int) "functional publications mount repeatedly" 3 !mounts;
+  Signal.dispose_scope scope
+
+let duplicate_keyed_publication () =
+  let app = runtime () in
+  let scheduler = app.Lui_runtime.runtime_scheduler in
+  let scope = Signal.scope "duplicate-rows" in
+  let context = Lui_ui.context app scope in
+  let parent = Lui_ui.column context in
+  let source = Signal.state scheduler [1; 1; 2] in
+  ignore (Lui_dynamic.keyed context parent (Signal.value source) Fun.id Int.compare
+    (fun row item -> Lui_ui.text row (string_of_int (Signal.sample item))));
+  ignore (Lui_runtime.flush app);
+  let initial = Lui_runtime.children app parent in
+  Alcotest.(check int) "all duplicates mount" 3 (List.length initial);
+  Signal.set source [1; 2; 1];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list int)) "occurrences retain deterministic identities"
+    [List.nth initial 0; List.nth initial 2; List.nth initial 1]
+    (Lui_runtime.children app parent);
+  Signal.set source [];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list int)) "empty publication clears duplicates" []
+    (Lui_runtime.children app parent);
+  Signal.dispose_scope scope
+
+let rejected_batch_resync () =
+  let reject = ref false and batches = ref [] in
+  let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun batch ->
+    batches := batch :: !batches; not !reject)) in
+  let node = Lui_runtime.create_node app Text in
+  Lui_runtime.set_prop app node TextValue (StringValue "initial");
+  ignore (Lui_runtime.flush app);
+  reject := true;
+  Lui_runtime.set_prop app node TextValue (StringValue "rejected");
+  check_failure "rejection reported" (attempt (fun () -> ignore (Lui_runtime.flush app)));
+  Alcotest.(check bool) "rejected delta not requeued" true (!(app.pending_ops) = []);
+  let snapshot = DetachSubtree node :: (Lui_runtime.resync_batch app).ops in
+  check_failure "rejected recovery remains scheduled"
+    (attempt (fun () -> ignore (Lui_runtime.flush app)));
+  Alcotest.(check bool) "recovery runs without new pending operations" true
+    ((List.hd !batches).ops = snapshot);
+  Lui_runtime.set_prop app node TextValue (StringValue "latest");
+  let expected = DetachSubtree node :: (Lui_runtime.resync_batch app).ops in
+  reject := false;
+  ignore (Lui_runtime.flush app);
+  let recovered = List.hd !batches in
+  Alcotest.(check bool) "next turn sends authoritative latest snapshot" true
+    (recovered.ops = expected);
+  Alcotest.(check int) "recovery uses next host generation" 2 recovered.generation;
+  let count = List.length !batches in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "idle turn sends no further snapshot" count (List.length !batches);
+  Lui_runtime.set_prop app node TextValue (StringValue "after");
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "later deltas progress" 3 (List.hd !batches).generation
+
 let keyed_states () =
   let app = runtime () in
   let scheduler = app.Lui_runtime.runtime_scheduler in
@@ -303,6 +424,10 @@ let sequence_ordering () =
 
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["keyed state isolation and lifetime", keyed_states;
+   "closure-bearing subtree publications", closure_subtree_publication;
+   "numeric normalization and runtime emission", numeric_normalization;
+   "duplicate keyed publications", duplicate_keyed_publication;
+   "rejected batch authoritative recovery", rejected_batch_resync;
    "extension validation retries", extension_retry;
    "backend exceptions and reentrant writes", backend_failure;
    "subscription startup cleanup", subscription_failure;

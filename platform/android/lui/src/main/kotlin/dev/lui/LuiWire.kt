@@ -46,6 +46,23 @@ sealed class LuiWireValue {
             else -> null
         }
 
+    internal fun normalized(property: String): LuiWireValue = when (property) {
+        "width", "height", "min-width", "max-width", "min-height", "max-height",
+        "gap", "padding", "padding-horizontal", "padding-vertical", "padding-top",
+        "padding-right", "padding-bottom", "padding-left", "border-width",
+        "corner-radius", "tooltip-delay", "duration", "resize-duration" ->
+            if (this is IntValue) IntValue(value.coerceAtLeast(0)) else this
+        "opacity", "label-opacity", "hover-opacity", "pressed-opacity", "disabled-opacity" -> {
+            val number = numberValue
+            if (number == null) this else if (number.isFinite()) DoubleValue(number.coerceIn(0.0, 1.0))
+            else {
+                System.err.println("LUI numeric normalization: property=$property reason=non-finite fallback=1")
+                DoubleValue(1.0)
+            }
+        }
+        else -> this
+    }
+
     /** JSON literal form, for extension-event payloads. */
     fun toJsonLiteral(): String = when (this) {
         is Str -> JsonPrimitive(value).toString()
