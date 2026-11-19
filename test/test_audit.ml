@@ -415,6 +415,30 @@ let boundary_host_tweak_order () =
     Signal.dispose_scope scope
   done
 
+let anchorless_host_tweak_order () =
+  List.iter (fun initially_visible ->
+    let app, scope, context, verify = rollback_host_fixture () in
+    let visible = Signal.state context.ui_scheduler initially_visible in
+    let wrap child context parent =
+      let tweak = Lui_ui.platform_tweak context "boundary-tweak" in
+      ignore (child context (Some tweak));
+      Lui_elements.attach context parent tweak;
+      tweak in
+    let view = Lui_elements.column [
+      Lui_elements.if_ ~test:(Signal.value visible)
+        (wrap (Lui_elements.column [
+          wrap (Lui_elements.text ~value:"content" [])]))
+    ] in
+    ignore (wrap view context None);
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    verify ();
+    List.iter (fun next ->
+      Signal.set visible next;
+      ignore (Lui_runtime.flush app);
+      verify ()) [false; true; false; true];
+    Signal.dispose_scope scope) [false; true]
+
 let boundary_resync_selection () =
   let app, scope, context, emitted = boundary_fixture () in
   let node = Lui_ui.text context "before" in
@@ -1246,6 +1270,7 @@ let anchorless_state_lifetime () =
 
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["anchorless restricted ranges", anchorless_restricted_ranges;
+   "anchorless host tweak order", anchorless_host_tweak_order;
    "anchorless boundary rollback", anchorless_boundary_rollback;
    "anchorless registration allocation", anchorless_registration_allocation;
    "anchorless static sibling", anchorless_static_sibling;

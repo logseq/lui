@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+### Dynamic platform tweak attachment order
+
+Anchorless dynamic segments now reconcile child edges from descendants to
+ancestors. A platform tweak's child is attached before the tweak is inserted
+into its parent, including on `if_` visibility changes. This preserves the
+host's exactly-one-child validation for nested tweaks and avoids rejected
+batches on Apple and Web. No application API changes are required; use the
+same `if_ ~test` around a tweaked subtree on initial mount and later toggles.
+
 ### Phase 4 review: explicit sections in form sheets
 
 `Ui.form_sheet` now supplies an inset-grouped list as its content container,
