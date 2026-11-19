@@ -7,6 +7,11 @@ from the canonical OCaml admission export by `generate_component_schema.mjs`.
 Grid, checkbox, and radio accept main/cross alignment; drawer follows the
 same modal property restrictions as dialog and sheet.
 
+Android renderer dispatch remains independent of admission: drawers still use
+the existing navigation-drawer renderer, while dialogs and sheets use their
+dedicated modal renderer. For example, a shared drawer retains its main content
+and selected-state-controlled drawer panel after schema admission updates.
+
 The shared component schema now marks `shrink` and `focus-within-enabled`
 (the wire property behind `on_focus_within`) as web-only. SwiftUIHost and
 KotlinHost ignore their writes/removals instead of rejecting them, including
