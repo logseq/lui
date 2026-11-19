@@ -100,6 +100,11 @@ from the canonical OCaml admission export by `generate_component_schema.mjs`.
 Grid, checkbox, and radio accept main/cross alignment; drawer follows the
 same modal property restrictions as dialog and sheet.
 
+Android renderer dispatch remains independent of admission: drawers still use
+the existing navigation-drawer renderer, while dialogs and sheets use their
+dedicated modal renderer. For example, a shared drawer retains its main content
+and selected-state-controlled drawer panel after schema admission updates.
+
 The shared component schema now marks `shrink` and `focus-within-enabled`
 (the wire property behind `on_focus_within`) as web-only. SwiftUIHost and
 KotlinHost ignore their writes/removals instead of rejecting them, including
@@ -130,6 +135,11 @@ values, not a hidden copy of the original conflicting values. Pure protocol
 validators still validate canonical values; low-level integrations can call
 `Lui_protocol.normalize_property_value` and `normalize_size_properties` before
 validating. `size_properties` names the affected pixel-size properties.
+
+Web replays only retained pixel-size properties after normalization. Absent
+pixel dimensions do not clear viewport-derived CSS: for example, setting
+`min-height=10` preserves an existing `width-viewport=0.5` as `50dvw`.
+Explicit pixel-size removals still clear their corresponding CSS dimension.
 
 `opacity`, `hover-opacity`, `pressed-opacity`, `disabled-opacity`, and
 `label-opacity` clamp to `[0,1]`. Non-finite values for these opacity properties

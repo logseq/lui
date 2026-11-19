@@ -884,9 +884,8 @@ let apply_dom_op renderer previous_nodes children_of effects visible
         | None -> Property_map.empty in
       if List.mem property size_properties then
         List.iter (fun property ->
-          match Property_map.find_opt property properties with
-          | Some value -> apply_set_prop renderer effects node property value
-          | None -> apply_remove_prop renderer effects node property) size_properties
+          Option.iter (apply_set_prop renderer effects node property)
+            (Property_map.find_opt property properties)) size_properties
       else apply_set_prop renderer effects node property
         (Option.value (Property_map.find_opt property properties)
           ~default:(normalize_property_value property value))

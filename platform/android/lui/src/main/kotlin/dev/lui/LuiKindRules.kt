@@ -17,6 +17,9 @@ internal object LuiKindRules {
 
     fun isModalSurface(kind: LuiNodeKind): Boolean = kind in modalSurfaceKinds
 
+    fun usesModalSurfaceRenderer(kind: LuiNodeKind): Boolean =
+        kind == LuiNodeKind.dialog || kind == LuiNodeKind.sheet
+
     // Kinds carrying typography/selectability — mirrors the
     // `FontSize | … | UserSelect` arm of `Lui_protocol.property_supported`:
     // the foreground set minus purely graphical kinds (icon, spinner,

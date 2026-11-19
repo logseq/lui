@@ -171,7 +171,7 @@ fun LuiNodeView(backend: LuiBackend, id: Long) {
         when {
             node.kind == LuiNodeKind.root ->
                 node.children.firstOrNull()?.let { LuiNodeView(backend, it) }
-            LuiKindRules.isModalSurface(node.kind) -> LuiModalSurface(backend, node, id)
+            LuiKindRules.usesModalSurfaceRenderer(node.kind) -> LuiModalSurface(backend, node, id)
             else -> LuiChromeSurface(backend, node, id)
         }
     }
