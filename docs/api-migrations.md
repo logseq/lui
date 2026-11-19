@@ -417,6 +417,12 @@ and `submenu`, and checks them against generated canonical admission data.
 
 ## Unreleased: Canonical design-token and typography parity
 
+Web `headline` text now uses the canonical typography rule's `1.4` line-height
+instead of inheriting `1.5`. Explicit per-node font sizes still take precedence.
+This slightly tightens the headline and moves following content upward; the
+Phone BottomTabs Gallery baselines include this intentional change. Applications
+that need fixed line spacing can supply an explicit `line_height` metric.
+
 `schema/components.json` now inventories the cross-backend vocabulary under
 `designTokens`. Colors use existing hyphenated wire spellings (the ADR's
 `surface_raised` and `muted_foreground` identifiers correspond to
