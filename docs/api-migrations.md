@@ -1,5 +1,94 @@
 # LUI API migration guide
 
+## Unreleased: Admission-safe element parameters (ADR 0007 Phase 3a, step 1)
+
+`Lui_elements` constructors now expose only properties and events admitted by
+`Lui_protocol` for their node kind. Unsupported optional parameters are removed,
+including their `_signal` twins wherever present. `key` remains reload metadata;
+`toggle_button`/`menu_item` keep `checked` (an alias for `selected`), and `radio`
+keeps `selected` (an alias for `checked`). Required values, vocabulary types,
+event payload types, and child types are unchanged in this step.
+
+The following sets abbreviate the removed property parameters:
+
+```text
+A = gap, main, cross, columns
+P = padding, padding_horizontal, padding_vertical
+M = margin, margin_horizontal, margin_vertical,
+    margin_top, margin_right, margin_bottom, margin_left
+D = width, height, min_width, max_width, min_height, max_height
+B = background, foreground, border_color, border_width, corner_radius
+F = container_relative_frame, container_relative_frame_inset
+U = A + grow + P + M + D + B + F + style_class + data_attrs
+```
+
+`+` combines sets; `-` excludes names. Every listed name also removes its signal
+twin if the old constructor exposed one.
+
+| Constructor family | Removed properties |
+| --- | --- |
+| row, column, panel, card, box, button, radio, checkbox, popover | columns |
+| stack, overlay, view_that_fits, bubble, text, heading, paragraph, label, toggle_button, toggle, slider, number_stepper, textarea, switch_, spinner, icon, table_cell, resizable, status_bar, file_image | A |
+| edge_inset, scroll, select, combobox, dropdown_menu, split | main, cross, columns |
+| alert | A + text_alignment |
+| radio_group, progress, divider, separator, spacer, image, media_surface, table | A + foreground |
+| text_field, secure_field, input, search_field | A + submit_on_enter |
+| list, virtual_list, tabs, button_group, toggle_group, breadcrumb, pagination | columns, foreground |
+| bottom_tabs | A + P + M + B + F |
+| bottom_tab, stepper, step, timeline_item, file_picker | U |
+| context_menu | U + disabled |
+| menu_item | columns, role, tree_level, expanded |
+| list_item, link | gap, columns |
+| avatar | A + grow + P + M |
+| timeline | U - gap - grow |
+| input_group | U - grow - width - height - min_width |
+| input_group_actions | U - gap |
+| accordion | U - height - style_class |
+| table_row | main, cross, columns, foreground |
+| tree | main, cross, columns, foreground, role, tree_level, expanded |
+| dialog | main, cross, grow, columns + F |
+| drawer, sheet | A + grow + B + F + min_width, max_width, min_height, max_height |
+| tooltip | U - F |
+| toast | A + grow + B + D + F |
+| toolbar | main, cross, grow, columns, padding_horizontal, padding_vertical + M + foreground, border_color + (D - height) + F |
+| kbd | A + M + F |
+
+No property parameters were removed from grid, menu_trigger, menu, submenu,
+list_section, swipe_actions, swipe_action, or file_preview.
+
+| Constructor | Removed event parameters |
+| --- | --- |
+| toggle_button | on_press |
+| select | on_input, on_submit |
+| dropdown_menu | on_press, on_input, on_submit |
+| menu_item | on_input, on_submit, on_dismiss |
+| list_item | on_input |
+| tree | on_press, on_change, on_toggle, on_press_detail, on_pointer_down, on_pointer_up, on_context_menu |
+
+Move layout/styling to a container that admits it, and wire callbacks on the
+interactive children rather than the owning collection. For example:
+
+```ocaml
+(* Before: gap is not a Text property. *)
+text ~gap:8 ~value:"Status" []
+
+(* After: keep spacing on an admitted layout container. *)
+row ~gap:8 [text ~value:"Status" []]
+```
+
+`context_menu` keeps its platform menu surface and item styling; it no longer
+accepts arbitrary surface decorations. The Windows demo drops its rejected
+background/border/radius/padding arguments, retaining menu items and their
+foreground colors and using the host's standard menu decoration. Do not put a
+generic box inside a context menu: its child-kind contract still applies.
+
+`apply_universal` is now internal, not a public low-level styling escape hatch.
+Use admitted constructor parameters (or an admitted enclosing container), not
+`Lui_elements.apply_universal`. The JSON-view renderer's constructor calls are
+updated alongside the signatures, so it also stops forwarding unsupported arguments.
+The schema tooling test parses those signatures, including `separator`, `menu`,
+and `submenu`, and checks them against generated canonical admission data.
+
 ## Unreleased: Canonical design-token and typography parity
 
 `schema/components.json` now inventories the cross-backend vocabulary under

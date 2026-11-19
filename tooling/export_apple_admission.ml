@@ -32,7 +32,32 @@ let () =
   let kinds = Lui_wire_schema.all_node_kinds in
   let name = Lui_wire_schema.property_name in
   let kind_name = Lui_wire_schema.node_kind_name in
+  let detail = { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = "" } in
+  let events = [
+    "Press", Press 0; "LongPress", LongPress 0;
+    "TextChanged", TextChanged (0, ""); "Submit", Submit 0;
+    "ToggleChanged", ToggleChanged (0, false); "Change", Change 0;
+    "ValueChanged", ValueChanged (0, 0.); "Dismiss", Dismiss 0;
+    "DoublePress", DoublePress 0; "Appear", Appear 0;
+    "ScrollCompleted", ScrollCompleted (0, 0, "");
+    "VisibleRange", VisibleRange (0, 0, 0); "Picked", Picked (0, "");
+    "PressModifiers", PressModifiers (0, 0); "PressDetail", PressDetail (0, detail);
+    "PointerDown", PointerDown (0, detail); "PointerUp", PointerUp (0, detail);
+    "PointerEnter", PointerEnter 0; "PointerLeave", PointerLeave 0;
+    "ContextMenuPress", ContextMenuPress (0, detail); "Load", Load 0;
+    "NavigatePrevious", NavigatePrevious 0; "NavigateNext", NavigateNext 0;
+    "NavigationKey", NavigationKey (0, "ArrowRight", false);
+    "ScrollEdges", ScrollEdges (0, false, false);
+    "VirtualWindow", VirtualWindow (0, 0, 0, 0, []);
+    "PointerMove", PointerMove (0, detail); "PointerCancel", PointerCancel (0, detail);
+    "ToggleChangedDetail", ToggleChangedDetail (0, false, 0);
+    "FocusWithinChanged", FocusWithinChanged (0, false);
+    "VirtualRetention", VirtualRetention (0, 0, "");
+  ] in
   Yojson.Basic.to_channel stdout (`Assoc [
+    "events", `Assoc (List.map (fun (name, event) -> name,
+      `List (List.filter_map (fun kind ->
+        if event_supported kind event then Some (`String (kind_name kind)) else None) kinds)) events);
     "modalKinds", `List (List.filter_map (fun kind ->
       if modal_surface kind then Some (`String (kind_name kind)) else None) kinds);
     "kinds", `Assoc (List.map (fun kind -> kind_name kind,
