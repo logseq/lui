@@ -531,9 +531,9 @@ let error_boundary ~fallback child : t =
   let publication_checkpoint = ref None in
   let checkpoint () =
     match !publication_checkpoint with
-    | Some saved -> saved
-    | None ->
-        let saved = Lui_runtime.checkpoint application in
+    | Some saved when Lui_runtime.boundary_savepoint_valid application saved -> saved
+    | _ ->
+        let saved = Lui_runtime.boundary_savepoint application in
         if !mounted then begin
           publication_checkpoint := Some saved;
           (* Effects run before the next publication, after this observer wave. *)
@@ -552,16 +552,18 @@ let error_boundary ~fallback child : t =
           Fun.protect ~finally:(fun () -> running := false) (fun () ->
             try action () with exception_ ->
               failed := true;
+              Lui_runtime.rollback_boundary application saved;
+              let recovery_start = Lui_runtime.boundary_savepoint application in
               (try Signal.dispose_scope content.Lui_ui.ui_scope with _ -> ());
-              Lui_runtime.restore application saved;
-              application.Lui_runtime.pending_ops := saved.Lui_runtime.checkpoint_pending_ops;
               List.iter (fun node ->
                 match Hashtbl.find_opt application.Lui_runtime.event_handlers node with
                 | None -> ()
                 | Some handlers ->
                     application.Lui_runtime.runtime_handler_count :=
                       !(application.Lui_runtime.runtime_handler_count) - List.length handlers;
-                    Hashtbl.remove application.Lui_runtime.event_handlers node)
+                    Lui_runtime.journal_list application Lui_runtime.Handler_member
+                      application.Lui_runtime.event_handlers node
+                      (fun handler -> handler.Lui_runtime.handler_id) [])
                 (Lui_runtime.collect_subtree_nodes application.Lui_runtime.runtime_children
                   (Lui_runtime.canonical_node application anchor));
               List.iter (Lui_runtime.drop_subtree application)
@@ -576,7 +578,8 @@ let error_boundary ~fallback child : t =
               let recovery = Lui_ui.child_context context
                 (Lui_ui.owner_name context "error-fallback") in
               ignore (fallback diagnostic recovery (Some anchor));
-              Signal.mount recovery.Lui_ui.ui_scope)
+              Signal.mount recovery.Lui_ui.ui_scope;
+              Lui_runtime.commit_boundary_recovery application recovery_start)
         end)
   in
   let content = { content with Lui_ui.ui_protect = protect } in
@@ -1123,14 +1126,17 @@ let scroll ?virtual_owner ?key ?gap ?grow ?padding ?padding_horizontal ?padding_
     let application = context.Lui_ui.ui_application in
     if not (List.mem Lui_virtual.Shared_viewport_retention_v1 application.Lui_runtime.runtime_virtual_capabilities) then
       invalid_arg "shared virtual viewport capability was not negotiated";
-    let binding = Lui_virtual.Internal.bind_owner owner ~node
+    let binding = Lui_virtual.Internal.bind_owner
+      ~rollback:(Lui_runtime.journal_capture application Lui_runtime.Virtual_state node) owner ~node
       ~schedule_receipts:(fun () ->
-        Hashtbl.replace application.Lui_runtime.runtime_virtual_receipts node owner)
+        Lui_runtime.journal_replace application Lui_runtime.Virtual_receipts
+          application.Lui_runtime.runtime_virtual_receipts node owner)
       ~publish:(fun epoch retentions releases ->
       Lui_runtime.set_prop application node VirtualViewportEpoch (IntValue epoch);
       Lui_runtime.set_prop application node VirtualRetentions (StringValue retentions);
       Lui_runtime.set_prop application node VirtualRetentionReleases (StringValue releases)) in
-    Hashtbl.add application.Lui_runtime.runtime_virtual_owners node owner;
+    Lui_runtime.journal_replace application Lui_runtime.Virtual_owners
+      application.Lui_runtime.runtime_virtual_owners node owner;
     Lui_ui.on_event context node (function
       | VirtualRetention (node, ticket, receipt) ->
         Lui_virtual.Internal.accept_receipt owner ~node ~ticket receipt
@@ -1140,7 +1146,8 @@ let scroll ?virtual_owner ?key ?gap ?grow ?padding ?padding_horizontal ?padding_
         let node = Lui_runtime.canonical_node application node in
         if Option.fold ~none:false ~some:(fun current -> current == owner)
           (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_owners node) then
-          Hashtbl.remove application.Lui_runtime.runtime_virtual_owners node
+          Lui_runtime.journal_remove application Lui_runtime.Virtual_owners
+            application.Lui_runtime.runtime_virtual_owners node
       end)) virtual_owner;
   apply_universal ?key ?gap ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
   Option.iter (Lui_ui.float_property context node Opacity) opacity;
@@ -1191,7 +1198,8 @@ let virtual_list ?viewport ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?
       | Some bound -> bound
       | None -> invalid_arg "shared virtual source has no bound owner" in
     let bound = Lui_virtual.Internal.bind_source source ~node ~owner_node:owner.node in
-    Hashtbl.add application.Lui_runtime.runtime_virtual_sources node source;
+    Lui_runtime.journal_replace application Lui_runtime.Virtual_sources
+      application.Lui_runtime.runtime_virtual_sources node source;
     Lui_ui.int_property context node VirtualOwnerNode owner.node;
     Lui_ui.int_property context node VirtualOwnerEpoch owner.lease;
     Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
@@ -1199,7 +1207,8 @@ let virtual_list ?viewport ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?
         let node = Lui_runtime.canonical_node application node in
         if Option.fold ~none:false ~some:(fun current -> current == source)
           (Hashtbl.find_opt application.Lui_runtime.runtime_virtual_sources node) then
-          Hashtbl.remove application.Lui_runtime.runtime_virtual_sources node
+          Lui_runtime.journal_remove application Lui_runtime.Virtual_sources
+            application.Lui_runtime.runtime_virtual_sources node
       end)) viewport;
   Option.iter (Lui_ui.int_property context node VirtualOverscan) overscan;
   Option.iter (Lui_ui.float_property context node VirtualItemExtent) item_extent;

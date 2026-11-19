@@ -168,7 +168,7 @@ let switch context parent source equal mount =
                Signal.mount branch_context.Lui_ui.ui_scope;
                finish_replacements ();
                !current_retired := true;
-               Lui_runtime.retire_checkpoint_dynamic_segments saved old_node;
+               Lui_runtime.retire_checkpoint_dynamic_segments application saved old_node;
                current_key := next_key;
                node_ref := Some desired_root;
                current_scope := branch_context.Lui_ui.ui_scope;
@@ -689,10 +689,11 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
           let selected = visible_indices !positions in
           reconcile_indices !dataset !positions !scroll_positions !revision selected
         end))) viewport in
-    segment.Lui_runtime.dynamic_segment_on_property := Some (fun name value ->
+    Lui_runtime.journal_ref application Lui_runtime.Segment_on_property
+      segment.Lui_runtime.dynamic_segment_id segment.Lui_runtime.dynamic_segment_on_property (Some (fun name value ->
       if name = Lui_protocol.ScrollTarget && not !stopped then
         Lui_runtime.set_prop application parent Lui_protocol.VirtualScrollIndex
-          (Lui_protocol.IntValue (target !scroll_positions value)));
+          (Lui_protocol.IntValue (target !scroll_positions value))));
     let subscription = Signal.subscribe ~emit_initial:false source (fun items ->
       context.Lui_ui.ui_protect (fun () -> update_source items)) in
     ignore (Signal.own context.Lui_ui.ui_scope subscription);
@@ -716,7 +717,8 @@ let virtual_rows (type key) ?viewport ?scroll_key context parent source
         Signal.dispose_subscription subscription;
         Option.iter (fun unsubscribe -> unsubscribe ()) unsubscribe_retention;
         Option.iter (fun clear -> clear ()) clear_adopted_pins;
-        segment.Lui_runtime.dynamic_segment_on_property := None;
+        Lui_runtime.journal_ref application Lui_runtime.Segment_on_property
+          segment.Lui_runtime.dynamic_segment_id segment.Lui_runtime.dynamic_segment_on_property None;
         dataset := [||]; positions := Keys.empty;
         window_keys := []; native_pins := []; adopted_pins := [];
         scroll_positions := Lui_protocol.String_map.empty;

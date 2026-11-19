@@ -123,6 +123,159 @@ let boundary_publication_rollback () =
         | SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
     Signal.dispose_scope scope) [false; true]
 
+let boundary_interleaved_fallbacks () =
+  let app, scope, context, _ = boundary_fixture () in
+  let source = Signal.state context.ui_scheduler "before" in
+  let deferred = ref (fun () -> ()) in
+  let first_errors = ref 0 and second_errors = ref 0 in
+  let bind context parent project =
+    let value = Lui_ui.map context project (Signal.value source) in
+    let node = Lui_ui.text_signal context value in
+    Lui_elements.attach context parent node;
+    node in
+  let fail value = if value = "bad" then failwith "interleaved failure" else value in
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    incr second_errors; Lui_elements.text ~value:"second fallback" [])
+    (fun context parent ->
+      let node = bind context parent Fun.id in
+      deferred := (fun () -> ignore (bind context parent fail));
+      node) context None);
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    incr first_errors; Lui_elements.text ~value:"first fallback" [])
+    (fun context parent -> bind context parent fail) context None);
+  !deferred ();
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Signal.set source "bad";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "first sibling latched" 1 !first_errors;
+  Alcotest.(check int) "second sibling latched" 1 !second_errors;
+  Alcotest.(check (list string)) "both committed fallbacks survive interleaved callbacks"
+    ["first fallback"; "second fallback"] (List.sort String.compare (text_values app));
+  Signal.set source "later";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "latched fallbacks remain mounted"
+    ["first fallback"; "second fallback"] (List.sort String.compare (text_values app));
+  Signal.dispose_scope scope
+
+let boundary_sibling_mount_work () =
+  let measure count =
+    let app, scope, context, _ = boundary_fixture () in
+    Gc.full_major ();
+    let allocated = Gc.allocated_bytes () and started = Sys.time () in
+    for _ = 1 to count do
+      ignore (Lui_elements.error_boundary
+        ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" [])
+        (Lui_elements.text ~value:"child" []) context None)
+    done;
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    let elapsed = Sys.time () -. started in
+    let allocated = Gc.allocated_bytes () -. allocated in
+    Printf.printf "boundary sibling mount N=%d allocated=%.0f bytes time=%.6fs\n%!"
+      count allocated elapsed;
+    Alcotest.(check int) "all sibling contents mount" count
+      (List.length (List.filter ((=) "child") (text_values app)));
+    Signal.dispose_scope scope;
+    allocated in
+  let small = measure 100 and large = measure 1000 in
+  Alcotest.(check bool) "tenfold sibling count has linear mount allocation" true
+    (large < 25. *. small)
+
+let boundary_committed_outer_recovery () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let outside = Lui_ui.text context "outside" in
+  let source = Signal.state context.ui_scheduler "before" in
+  let bind context parent project =
+    let value = Lui_ui.map context project (Signal.value source) in
+    let node = Lui_ui.text_signal context value in
+    Lui_elements.attach context parent node;
+    node in
+  let fail value = if value = "bad" then failwith "outer publication" else value in
+  let inner = Lui_elements.error_boundary ~fallback:(fun _ context parent ->
+    Lui_ui.string_property context outside ForegroundValue "#334455";
+    Lui_elements.text ~value:"inner fallback" [] context parent)
+    (fun context parent -> bind context parent fail) in
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    Lui_elements.text ~value:"outer fallback" [])
+    (fun context parent ->
+      ignore (bind context parent (fun value ->
+        if value = "bad" then Lui_ui.string_property context outside TextValue "partial";
+        value));
+      ignore (inner context parent);
+      bind context parent fail) context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Signal.set source "bad";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "outer rollback restores its writes but replaces nested content"
+    ["outer fallback"; "outside"] (List.sort String.compare (text_values app));
+  Alcotest.(check bool) "committed recovery on another property survives outer rollback" true
+    (Property_map.find_opt ForegroundValue (Hashtbl.find app.runtime_properties outside)
+      = Some (StringValue "#334455"));
+  Alcotest.(check bool) "uncommitted outer writes never reach the host" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_journal_savepoints () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let parent = Lui_ui.column context in
+  let outside = Lui_ui.text context "outside" in
+  let stable = Lui_ui.text context "stable" in
+  Lui_ui.append context parent stable;
+  ignore (Lui_runtime.flush app);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context outside TextValue "partial";
+  let transient = Lui_ui.text context "transient" in
+  Lui_ui.append context parent transient;
+  Lui_runtime.on_event scope app outside (fun _ -> ());
+  let recovery = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context outside ForegroundValue "#334455";
+  let permanent = Lui_ui.text context "permanent" in
+  Lui_ui.append context parent permanent;
+  Lui_runtime.on_event scope app outside (fun _ -> ());
+  Lui_runtime.commit_boundary_recovery app recovery;
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check (list int)) "committed insertion survives rollback of a sibling insertion"
+    [stable; permanent] (Lui_runtime.children app parent);
+  Alcotest.(check bool) "uncommitted node removed" false (Lui_runtime.node_live app transient);
+  Alcotest.(check (list string)) "independent properties roll back separately"
+    ["outside"; "permanent"; "stable"] (List.sort String.compare (text_values app));
+  Alcotest.(check bool) "committed foreground retained" true
+    (Property_map.find_opt ForegroundValue (Hashtbl.find app.runtime_properties outside)
+      = Some (StringValue "#334455"));
+  Alcotest.(check int) "only committed handler survives" 1 (Lui_runtime.handler_count app);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "partial operations dropped" false
+    (List.exists (function SetProp (_, TextValue, StringValue ("partial" | "transient")) -> true
+      | _ -> false) !emitted);
+  Alcotest.(check int) "journal compacted after recovery flush" 0
+    (List.length app.runtime_journal.journal_entries);
+  check_failure "stale savepoint rejected" (attempt (fun () -> Lui_runtime.rollback_boundary app saved));
+  Signal.dispose_scope scope
+
+let boundary_journal_compaction () =
+  List.iter (fun outcome ->
+    let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun _ ->
+      match outcome with
+      | `Applied -> true
+      | `Rejected -> false
+      | `Exception -> failwith "backend failure"
+      | `Empty -> Alcotest.fail "empty flush called the host")) in
+    let saved = Lui_runtime.boundary_savepoint app in
+    (match outcome with `Empty -> () | _ -> ignore (Lui_runtime.create_node app Text));
+    let error = attempt (fun () -> ignore (Lui_runtime.flush app)) in
+    Alcotest.(check bool) "backend failures propagate"
+      (outcome = `Exception || outcome = `Rejected)
+      (Option.is_some error);
+    Alcotest.(check int) "journal entries released" 0
+      (List.length app.runtime_journal.journal_entries);
+    Alcotest.(check int) "journal versions released" 0
+      (Hashtbl.length app.runtime_journal.journal_versions);
+    Alcotest.(check bool) "savepoint expires at flush end" false
+      (Lui_runtime.boundary_savepoint_valid app saved))
+    [`Empty; `Applied; `Rejected; `Exception]
+
 let boundary_reactive_update () =
   let app, scope, context, emitted = boundary_fixture () in
   let source = Signal.state context.ui_scheduler 0 in
@@ -910,6 +1063,11 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "boundary initial mount rollback", boundary_initial_mount;
    "boundary shared publication work", boundary_shared_publication_work;
    "boundary publication rollback", boundary_publication_rollback;
+   "boundary interleaved committed fallbacks", boundary_interleaved_fallbacks;
+   "boundary sibling mount work", boundary_sibling_mount_work;
+   "boundary committed outer recovery", boundary_committed_outer_recovery;
+   "boundary journal savepoints", boundary_journal_savepoints;
+   "boundary journal compaction", boundary_journal_compaction;
    "boundary reactive failure and latched fallback", boundary_reactive_update;
    "nested boundaries and fallback failures", boundary_nested;
    "boundary owned property projection", boundary_property_projection;
