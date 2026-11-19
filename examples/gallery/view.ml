@@ -478,12 +478,14 @@ let card_section model_source : t =
         ; paragraph ~value:(reactive Model.document_action model_source) []
         ; button ~text:"Save changes" ~on_press:noop []
         ]
-    ; Lui.Ui.form_section ~title:"Semantic form"
-        [ Lui.Ui.form_field ~label:"Name" ~help:"Your display name"
-            (text_field ~placeholder:"Name" [])
-        ; Lui.Ui.hstack
-            [ text ~role:`caption ~truncate:true ~value:"Single-line caption" []
-            ; button ~text:"Save" ~on_press:noop []
+    ; list ~style:`inset_grouped
+        [ Lui.Ui.form_section ~title:"Semantic form"
+            [ Lui.Ui.form_field ~label:"Name" ~help:"Your display name"
+                (text_field ~placeholder:"Name" [])
+            ; Lui.Ui.hstack
+                [ text ~role:`caption ~truncate:true ~value:"Single-line caption" []
+                ; button ~text:"Save" ~on_press:noop []
+                ]
             ]
         ]
     ]

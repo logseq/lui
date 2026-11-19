@@ -8,6 +8,9 @@ consume these explicit sections, render their header/footer slot content, and
 keep one native row per supplied control. Existing heading-based raw
 `Lui_element_combine.form_sheet` content remains supported unchanged.
 
+Outside a form sheet, place `Ui.form_section` inside an `Elements.list`, not
+directly inside a column. Gallery's Card example uses this admitted list parent.
+
 An authored list with appearance, scroll-completion, or visible-range callbacks
 keeps its own renderer rather than being flattened into the native form. Apple
 uses `appear-enabled`, `pointer-enabled` (also enabled by the scroll callbacks),
@@ -98,6 +101,8 @@ No mobile files were edited. This is a source audit, not a mobile visual check.
 Repository Gallery's Card example now demonstrates direct vertical children;
 its implicit card padding changes to 16. Explicitly padded examples keep their
 padding. Multi-child surfaces now flow instead of overlapping across all hosts.
+The Phone Card baselines include these defaults, the headline role, and the
+semantic-form example; their existing pixel budgets are unchanged.
 
 ### Typography and truncation
 
