@@ -7,6 +7,608 @@ let check_failure label result = Alcotest.(check bool) label true (Option.is_som
 
 type closure_model = { callback : unit -> string }
 
+let boundary_fixture () =
+  let emitted = ref [] in
+  let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun batch ->
+    emitted := batch.ops; true)) in
+  let scope = Signal.scope "boundary-tests" in
+  app, scope, Lui_ui.context app scope, emitted
+
+let text_values app =
+  Hashtbl.fold (fun _ properties values ->
+    match Property_map.find_opt TextValue properties with
+    | Some (StringValue value) -> value :: values
+    | _ -> values) app.Lui_runtime.runtime_properties []
+
+let partial_view context parent =
+  ignore (Lui_elements.text ~value:"partial" [] context parent);
+  failwith "view failed"
+
+let boundary_initial_mount () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let sibling = Lui_ui.text context "sibling" in
+  let diagnostic = ref None in
+  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
+    diagnostic := Some error;
+    Lui_elements.text ~value:"fallback" []) partial_view context None);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "failed mount reports its exception and phase" true
+    (match !diagnostic with
+     | Some { exception_ = Failure message; phase = `Mount; state_path; _ } ->
+         message = "view failed" && state_path <> ""
+     | _ -> false);
+  Alcotest.(check bool) "unrelated pending node survives rollback" true
+    (Lui_runtime.node_live app sibling);
+  Alcotest.(check (list string)) "only sibling and fallback survive" ["fallback"; "sibling"]
+    (List.sort String.compare (text_values app));
+  Alcotest.(check bool) "partial writes do not reach the batch" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_shared_publication_work () =
+  let measure count =
+    let app, scope, context, _ = boundary_fixture () in
+    let source = Signal.state context.ui_scheduler "before" in
+    let child context parent =
+      let container = Lui_ui.column context in
+      Lui_elements.attach context parent container;
+      for _ = 1 to count do
+        let node = Lui_ui.text_signal context (Signal.value source) in
+        Lui_elements.attach context (Some container) node
+      done;
+      container in
+    ignore (Lui_elements.error_boundary
+      ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" []) child context None);
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    Gc.full_major ();
+    let allocated = Gc.allocated_bytes () and started = Sys.time () in
+    Signal.set source "after";
+    ignore (Lui_runtime.flush app);
+    let elapsed = Sys.time () -. started in
+    let allocated = Gc.allocated_bytes () -. allocated in
+    Printf.printf "boundary publication N=%d allocated=%.0f bytes time=%.6fs\n%!"
+      count allocated elapsed;
+    Alcotest.(check int) "every binding publishes" count
+      (List.length (List.filter ((=) "after") (text_values app)));
+    Signal.dispose_scope scope;
+    allocated in
+  let small = measure 100 and large = measure 1000 in
+  Alcotest.(check bool) "tenfold fanout has linear checkpoint allocation" true
+    (large < 25. *. small)
+
+let boundary_publication_rollback () =
+  List.iter (fun broken_fallback ->
+    let app, scope, context, emitted = boundary_fixture () in
+    let outside = Lui_ui.text context "outside" in
+    let source = Signal.state context.ui_scheduler "before" in
+    let inner_errors = ref 0 and outer_errors = ref 0 in
+    let child context parent =
+      let first = Lui_ui.map context (fun value ->
+        if value = "bad" then begin
+          Lui_ui.string_property context outside TextValue "partial";
+          "partial"
+        end else value) (Signal.value source) in
+      let node = Lui_ui.text_signal context first in
+      Lui_elements.attach context parent node;
+      let second = Lui_ui.map context (fun value ->
+        if value = "bad" then failwith "late publication failure" else value)
+          (Signal.value source) in
+      let node = Lui_ui.text_signal context second in
+      Lui_elements.attach context parent node;
+      node in
+    let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr inner_errors;
+      if broken_fallback then partial_view else Lui_elements.text ~value:"inner" []) child in
+    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr outer_errors;
+      Lui_elements.text ~value:"outer" [])
+      (Lui_elements.column [Lui_elements.text ~value:"stable" []; inner]) context None);
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    Signal.set source "successful";
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "successful wave updates both bindings" 2
+      (List.length (List.filter ((=) "successful") (text_values app)));
+    Signal.set source "bad";
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "inner boundary catches first" 1 !inner_errors;
+    Alcotest.(check int) "fallback failures propagate outward"
+      (if broken_fallback then 1 else 0) !outer_errors;
+    Alcotest.(check (list string)) "whole publication rolls back opaque writes"
+      (if broken_fallback then ["outer"; "outside"] else ["inner"; "outside"; "stable"])
+      (List.sort String.compare (text_values app));
+    Alcotest.(check bool) "partial writes never reach the host" false
+      (List.exists (function
+        | SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+    Signal.dispose_scope scope) [false; true]
+
+let boundary_interleaved_fallbacks () =
+  let app, scope, context, _ = boundary_fixture () in
+  let source = Signal.state context.ui_scheduler "before" in
+  let deferred = ref (fun () -> ()) in
+  let first_errors = ref 0 and second_errors = ref 0 in
+  let bind context parent project =
+    let value = Lui_ui.map context project (Signal.value source) in
+    let node = Lui_ui.text_signal context value in
+    Lui_elements.attach context parent node;
+    node in
+  let fail value = if value = "bad" then failwith "interleaved failure" else value in
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    incr second_errors; Lui_elements.text ~value:"second fallback" [])
+    (fun context parent ->
+      let node = bind context parent Fun.id in
+      deferred := (fun () -> ignore (bind context parent fail));
+      node) context None);
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    incr first_errors; Lui_elements.text ~value:"first fallback" [])
+    (fun context parent -> bind context parent fail) context None);
+  !deferred ();
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Signal.set source "bad";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "first sibling latched" 1 !first_errors;
+  Alcotest.(check int) "second sibling latched" 1 !second_errors;
+  Alcotest.(check (list string)) "both committed fallbacks survive interleaved callbacks"
+    ["first fallback"; "second fallback"] (List.sort String.compare (text_values app));
+  Signal.set source "later";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "latched fallbacks remain mounted"
+    ["first fallback"; "second fallback"] (List.sort String.compare (text_values app));
+  Signal.dispose_scope scope
+
+let boundary_sibling_mount_work () =
+  let measure count =
+    let app, scope, context, _ = boundary_fixture () in
+    Gc.full_major ();
+    let allocated = Gc.allocated_bytes () and started = Sys.time () in
+    for _ = 1 to count do
+      ignore (Lui_elements.error_boundary
+        ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" [])
+        (Lui_elements.text ~value:"child" []) context None)
+    done;
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    let elapsed = Sys.time () -. started in
+    let allocated = Gc.allocated_bytes () -. allocated in
+    Printf.printf "boundary sibling mount N=%d allocated=%.0f bytes time=%.6fs\n%!"
+      count allocated elapsed;
+    Alcotest.(check int) "all sibling contents mount" count
+      (List.length (List.filter ((=) "child") (text_values app)));
+    Signal.dispose_scope scope;
+    allocated in
+  let small = measure 100 and large = measure 1000 in
+  Alcotest.(check bool) "tenfold sibling count has linear mount allocation" true
+    (large < 25. *. small)
+
+let boundary_committed_outer_recovery () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let outside = Lui_ui.text context "outside" in
+  let source = Signal.state context.ui_scheduler "before" in
+  let bind context parent project =
+    let value = Lui_ui.map context project (Signal.value source) in
+    let node = Lui_ui.text_signal context value in
+    Lui_elements.attach context parent node;
+    node in
+  let fail value = if value = "bad" then failwith "outer publication" else value in
+  let inner = Lui_elements.error_boundary ~fallback:(fun _ context parent ->
+    Lui_ui.string_property context outside ForegroundValue "#334455";
+    Lui_elements.text ~value:"inner fallback" [] context parent)
+    (fun context parent -> bind context parent fail) in
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    Lui_elements.text ~value:"outer fallback" [])
+    (fun context parent ->
+      ignore (bind context parent (fun value ->
+        if value = "bad" then Lui_ui.string_property context outside TextValue "partial";
+        value));
+      ignore (inner context parent);
+      bind context parent fail) context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Signal.set source "bad";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "outer rollback restores its writes but replaces nested content"
+    ["outer fallback"; "outside"] (List.sort String.compare (text_values app));
+  Alcotest.(check bool) "committed recovery on another property survives outer rollback" true
+    (Property_map.find_opt ForegroundValue (Hashtbl.find app.runtime_properties outside)
+      = Some (StringValue "#334455"));
+  Alcotest.(check bool) "uncommitted outer writes never reach the host" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_journal_savepoints () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let parent = Lui_ui.column context in
+  let outside = Lui_ui.text context "outside" in
+  let stable = Lui_ui.text context "stable" in
+  Lui_ui.append context parent stable;
+  ignore (Lui_runtime.flush app);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context outside TextValue "partial";
+  let transient = Lui_ui.text context "transient" in
+  Lui_ui.append context parent transient;
+  Lui_runtime.on_event scope app outside (fun _ -> ());
+  let recovery = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context outside ForegroundValue "#334455";
+  let permanent = Lui_ui.text context "permanent" in
+  Lui_ui.append context parent permanent;
+  Lui_runtime.on_event scope app outside (fun _ -> ());
+  Lui_runtime.commit_boundary_recovery app recovery;
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check (list int)) "committed insertion survives rollback of a sibling insertion"
+    [stable; permanent] (Lui_runtime.children app parent);
+  Alcotest.(check bool) "uncommitted node removed" false (Lui_runtime.node_live app transient);
+  Alcotest.(check (list string)) "independent properties roll back separately"
+    ["outside"; "permanent"; "stable"] (List.sort String.compare (text_values app));
+  Alcotest.(check bool) "committed foreground retained" true
+    (Property_map.find_opt ForegroundValue (Hashtbl.find app.runtime_properties outside)
+      = Some (StringValue "#334455"));
+  Alcotest.(check int) "only committed handler survives" 1 (Lui_runtime.handler_count app);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "committed insertion is reindexed for the host" true
+    (List.exists (function InsertChild (owner, child, 1) ->
+      owner = parent && child = permanent | _ -> false) !emitted);
+  Alcotest.(check bool) "partial operations dropped" false
+    (List.exists (function SetProp (_, TextValue, StringValue ("partial" | "transient")) -> true
+      | _ -> false) !emitted);
+  Alcotest.(check int) "journal compacted after recovery flush" 0
+    (List.length app.runtime_journal.journal_entries);
+  check_failure "stale savepoint rejected" (attempt (fun () -> Lui_runtime.rollback_boundary app saved));
+  Signal.dispose_scope scope
+
+let boundary_nested_mount_rollback () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
+    Lui_elements.text ~value:"inner fallback" [])
+    (fun _ _ -> failwith "inner mount") in
+  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+    Lui_elements.text ~value:"outer fallback" [])
+    (fun context parent ->
+      ignore (inner context parent);
+      failwith "outer mount") context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "only enclosing fallback remains"
+    ["outer fallback"] (text_values app);
+  Alcotest.(check bool) "no insert refers to a rolled back parent" true
+    (List.for_all (function InsertChild (parent, _, _) -> Lui_runtime.node_live app parent
+      | _ -> true) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_echo_rollback () =
+  let app, scope, context, _ = boundary_fixture () in
+  let node = Lui_ui.text_field context in
+  Lui_ui.string_property context node TextValue "before";
+  ignore (Lui_runtime.flush app);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node TextValue "discarded";
+  let recovery = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node ForegroundValue "#334455";
+  Lui_runtime.commit_boundary_recovery app recovery;
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check bool) "discarded text is not a host echo" false
+    (Lui_runtime.event_is_value_echo app node (TextChanged (node, "discarded")));
+  Signal.dispose_scope scope
+
+let boundary_journal_compaction () =
+  List.iter (fun outcome ->
+    let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun _ ->
+      match outcome with
+      | `Applied -> true
+      | `Rejected -> false
+      | `Exception -> failwith "backend failure"
+      | `Empty -> Alcotest.fail "empty flush called the host")) in
+    let saved = Lui_runtime.boundary_savepoint app in
+    (match outcome with `Empty -> () | _ -> ignore (Lui_runtime.create_node app Text));
+    let error = attempt (fun () -> ignore (Lui_runtime.flush app)) in
+    Alcotest.(check bool) "backend failures propagate"
+      (outcome = `Exception || outcome = `Rejected)
+      (Option.is_some error);
+    Alcotest.(check int) "journal entries released" 0
+      (List.length app.runtime_journal.journal_entries);
+    Alcotest.(check int) "journal versions released" 0
+      (Hashtbl.length app.runtime_journal.journal_versions);
+    Alcotest.(check bool) "savepoint expires at flush end" false
+      (Lui_runtime.boundary_savepoint_valid app saved))
+    [`Empty; `Applied; `Rejected; `Exception]
+
+let rollback_host_fixture () =
+  let host = Hashtbl.create 16 and parents = Hashtbl.create 16 in
+  let tweaks = Hashtbl.create 16 in
+  let children node = match Hashtbl.find_opt host node with
+    | Some children -> children
+    | None -> Alcotest.failf "host references missing node %d" node in
+  let unlink parent child =
+    let current = children parent in
+    if not (List.mem child current) then Alcotest.fail "host removes a missing edge";
+    Hashtbl.replace host parent (List.filter ((<>) child) current);
+    Hashtbl.remove parents child in
+  let rec detach node =
+    List.iter detach (children node);
+    Option.iter (fun parent -> unlink parent node) (Hashtbl.find_opt parents node);
+    Hashtbl.remove host node in
+  let insert parent child index =
+    ignore (children child);
+    if Hashtbl.mem tweaks child && List.length (children child) <> 1 then
+      Alcotest.fail "host attaches an incomplete tweak";
+    let current = children parent in
+    if index < 0 || index > List.length current then Alcotest.fail "host insert index";
+    Hashtbl.replace host parent (Lui_runtime.insert_list index child current);
+    Hashtbl.replace parents child parent in
+  let registry = Lui_extension.registry () in
+  Lui_extension.register_tweak registry
+    (Lui_extension.tweak "boundary-tweak" [generic_profile ()] []);
+  let app = Lui_runtime.create_with_extensions (Signal.scheduler ())
+    (backend (fun batch ->
+      List.iter (function
+        | CreateNode (node, _) -> Hashtbl.replace host node []
+        | CreateExtension (node, _, _) ->
+            Hashtbl.replace host node []; Hashtbl.replace tweaks node ()
+        | InsertChild (parent, child, index) -> insert parent child index
+        | RemoveChild (parent, child) ->
+            ignore (children child); unlink parent child
+        | MoveChild (parent, child, index) -> unlink parent child; insert parent child index
+        | DropNode node | DetachSubtree node -> detach node
+        | _ -> ()) batch.ops;
+      true)) registry in
+  let scope = Signal.scope "rollback-host" in
+  let verify () =
+    let ids table = Hashtbl.to_seq_keys table |> List.of_seq |> List.sort Int.compare in
+    let expected = List.sort Int.compare
+      (ids app.mounted_nodes @ ids app.runtime_extension_nodes) in
+    Alcotest.(check (list int)) "host has exactly the runtime nodes" expected (ids host);
+    Hashtbl.iter (fun parent actual ->
+      Alcotest.(check (list int)) "host child order matches runtime"
+        (Lui_runtime.children app parent) actual) host in
+  app, scope, Lui_ui.context app scope, verify
+
+let boundary_host_detach_descendants () =
+  let app, scope, context, verify = rollback_host_fixture () in
+  let parent = Lui_ui.column context in
+  let content = Lui_ui.column context in
+  Lui_ui.append context parent content;
+  Lui_ui.append context content (Lui_ui.text context "descendant");
+  ignore (Lui_runtime.flush app);
+  verify ();
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context parent BackgroundValue "#334455";
+  Lui_runtime.rollback_boundary app saved;
+  Lui_runtime.drop_subtree app content;
+  ignore (Lui_runtime.flush app);
+  verify ();
+  Signal.dispose_scope scope
+
+let boundary_host_detach_unlink () =
+  let app, scope, context, verify = rollback_host_fixture () in
+  let parent = Lui_ui.column context in
+  let child = Lui_ui.column context in
+  Lui_ui.append context parent child;
+  Lui_ui.append context child (Lui_ui.text context "descendant");
+  ignore (Lui_runtime.flush app);
+  Lui_runtime.drop_subtree app child;
+  ignore (Lui_runtime.flush app);
+  verify ();
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context parent BackgroundValue "#334455";
+  Lui_runtime.rollback_boundary app saved;
+  ignore (Lui_runtime.flush app);
+  verify ();
+  Signal.dispose_scope scope
+
+let boundary_host_tweak_order () =
+  for offset = 0 to 15 do
+    let app, scope, context, verify = rollback_host_fixture () in
+    for _ = 1 to offset do ignore (Lui_ui.box context) done;
+    let parent = Lui_ui.column context in
+    ignore (Lui_runtime.flush app);
+    let saved = Lui_runtime.boundary_savepoint app in
+    Lui_ui.string_property context parent BackgroundValue "#334455";
+    Lui_runtime.rollback_boundary app saved;
+    let recovery = Lui_runtime.boundary_savepoint app in
+    let tweak = Lui_ui.platform_tweak context "boundary-tweak" in
+    Lui_ui.append context tweak (Lui_ui.text context "fallback");
+    Lui_ui.append context parent tweak;
+    Lui_runtime.commit_boundary_recovery app recovery;
+    ignore (Lui_runtime.flush app);
+    verify ();
+    Signal.dispose_scope scope
+  done
+
+let boundary_resync_selection () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let node = Lui_ui.text context "before" in
+  ignore (Lui_runtime.flush app);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check bool) "empty rollback needs no resync" false
+    !(app.runtime_resync_required);
+  Lui_ui.string_property context node TextValue "successful";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "successful publication stays incremental" false
+    (List.exists (function DetachSubtree _ -> true | _ -> false) !emitted);
+  Lui_ui.string_property context node TextValue "pending";
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node TextValue "partial";
+  Lui_runtime.rollback_boundary app saved;
+  Alcotest.(check bool) "queued rollback schedules authoritative resync" true
+    !(app.runtime_resync_required);
+  Alcotest.(check int) "entire pending delta is discarded" 0
+    (List.length !(app.pending_ops));
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "resync removes the accepted host root" true
+    (List.exists (function DetachSubtree root -> root = node | _ -> false) !emitted);
+  Alcotest.(check bool) "resync preserves earlier pending state" true
+    (List.exists (function SetProp (root, TextValue, StringValue "pending") ->
+      root = node | _ -> false) !emitted);
+  Alcotest.(check bool) "failed writes are not serialized" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true
+      | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_resync_sizes () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let node = Lui_ui.box context in
+  ignore (Lui_runtime.flush app);
+  Lui_runtime.set_prop app node WidthValue (IntValue 10);
+  Lui_runtime.set_prop app node MinWidth (IntValue 100);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node BackgroundValue "#334455";
+  Lui_runtime.rollback_boundary app saved;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "surviving sizes normalize before resync" true
+    (Property_map.find_opt WidthValue (Hashtbl.find app.runtime_properties node)
+      = Some (IntValue 100));
+  Lui_runtime.remove_prop app node MinWidth;
+  ignore (Lui_runtime.flush app);
+  Lui_runtime.set_prop app node WidthValue (IntValue 10);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "later authored width is not skipped" true
+    (List.exists (function SetProp (owner, WidthValue, IntValue 10) ->
+      owner = node | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
+let boundary_reactive_update () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let source = Signal.state context.ui_scheduler 0 in
+  let mounts = ref 0 and failures = ref 0 in
+  let child context parent =
+    let parent = Option.get parent in
+    ignore (Lui_dynamic.switch context parent (Signal.value source) Int.equal
+      (fun context value ->
+        incr mounts;
+        if value = 1 then partial_view context None
+        else begin
+          let node = Lui_ui.text context (string_of_int value) in
+          Lui_ui.on_event context node (fun _ -> ());
+          node
+        end));
+    parent in
+  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
+    incr failures;
+    Alcotest.(check bool) "update diagnostic" true (error.phase = `Update);
+    Lui_elements.text ~value:"fallback" []) child context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "successful initial view" ["0"] (text_values app);
+  Signal.set source 2;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "successful reactive update" ["2"] (text_values app);
+  Signal.set source 1;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "failed branch replaced" ["fallback"] (text_values app);
+  Alcotest.(check bool) "partial reactive writes discarded" false
+    (List.exists (function SetProp (_, TextValue, StringValue "partial") -> true | _ -> false) !emitted);
+  Signal.set source 3;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "failed child is not retried" 3 !mounts;
+  Alcotest.(check int) "diagnostic emitted once" 1 !failures;
+  Alcotest.(check int) "failed subscriptions released" 0 (Lui_runtime.dynamic_segment_count app);
+  Alcotest.(check int) "rolled-back handlers are released" 0 !(app.runtime_handler_count);
+  Alcotest.(check (list string)) "fallback stays latched" ["fallback"] (text_values app);
+  Signal.dispose_scope scope
+
+let boundary_nested () =
+  List.iter (fun broken_fallback ->
+    let app, scope, context, _ = boundary_fixture () in
+    let outer_errors = ref 0 and inner_errors = ref 0 in
+    let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr inner_errors;
+      if broken_fallback then partial_view
+      else Lui_elements.text ~value:"inner" []) partial_view in
+    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr outer_errors;
+      Lui_elements.text ~value:"outer" []) inner context None);
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "nearest boundary handles the child" 1 !inner_errors;
+    Alcotest.(check int) "fallback failure reaches enclosing boundary"
+      (if broken_fallback then 1 else 0) !outer_errors;
+    Alcotest.(check (list string)) "no partial nested view survives"
+      [if broken_fallback then "outer" else "inner"] (text_values app);
+    Signal.dispose_scope scope) [false; true]
+
+let boundary_property_projection () =
+  let app, scope, context, _ = boundary_fixture () in
+  let source = Signal.state context.ui_scheduler "ok" in
+  let child context parent =
+    let projected = Lui_ui.map context (fun value ->
+      if value = "bad" then failwith "projection failed" else value) (Signal.value source) in
+    let node = Lui_ui.text_signal context projected in
+    Lui_elements.attach context parent node;
+    node in
+  ignore (Lui_elements.error_boundary
+    ~fallback:(fun _ -> Lui_elements.text ~value:"fallback" []) child context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Signal.set source "bad";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "owned projection failures are isolated" ["fallback"] (text_values app);
+  Signal.dispose_scope scope
+
+let boundary_reactive_attributes () =
+  let app, scope, context, _ = boundary_fixture () in
+  let attributes = Signal.state context.ui_scheduler [] in
+  let failures = ref 0 in
+  let child = Lui_elements.row ~data_attrs_signal:(Signal.value attributes)
+    [Lui_elements.text ~value:"child" []] in
+  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
+    incr failures;
+    Alcotest.(check bool) "attribute update diagnostic" true (error.phase = `Update);
+    Lui_elements.text ~value:"fallback" []) child context None);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "empty attributes mount" ["child"] (text_values app);
+  Signal.set attributes ["data-state", "ready"];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "valid attributes publish" true
+    (Hashtbl.fold (fun _ properties found -> found ||
+      Property_map.find_opt DataAttrs properties =
+        Some (StringValue (data_attrs_encode ["data-state", "ready"])))
+      app.Lui_runtime.runtime_properties false);
+  Signal.set attributes ["id", "unsupported"];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "encoding failure caught once" 1 !failures;
+  Alcotest.(check (list string)) "attribute failure isolated" ["fallback"] (text_values app);
+  Signal.set attributes [];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "attribute fallback stays latched" ["fallback"] (text_values app);
+  Signal.dispose_scope scope
+
+let boundary_retained_rows () =
+  List.iter (fun virtualized ->
+    let app, scope, context, _ = boundary_fixture () in
+    let source = Signal.state context.ui_scheduler [1, "ok"] in
+    let failures = ref 0 in
+    let mount item_source context parent =
+      let projected = Lui_ui.map context (fun (_, value) ->
+        if value = "bad" then failwith "row projection failed" else value) item_source in
+      let node = Lui_ui.text_signal context projected in
+      Lui_elements.attach context parent node;
+      node in
+    let source = Signal.value source, source in
+    let rows = if virtualized then
+        Lui_elements.virtual_list [Lui_elements.virtual_rows ~source:(fst source)
+          ~key:fst ~cmp:Int.compare ~mount ()]
+      else Lui_elements.column [Lui_elements.keyed ~source:(fst source)
+        ~key:fst ~cmp:Int.compare ~mount] in
+    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr failures; Lui_elements.text ~value:"fallback" []) rows context None);
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check (list string)) "initial row" ["ok"] (text_values app);
+    Signal.set (snd source) [1, "updated"];
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check (list string)) "retained row updates" ["updated"] (text_values app);
+    Signal.set (snd source) [1, "bad"];
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check int) "row failure caught once" 1 !failures;
+    Alcotest.(check (list string)) "row failure isolated" ["fallback"] (text_values app);
+    Signal.set (snd source) [];
+    ignore (Lui_runtime.flush app);
+    Alcotest.(check (list string)) "row fallback stays latched" ["fallback"] (text_values app);
+    Alcotest.(check int) "row subscriptions released" 0 (Lui_runtime.dynamic_segment_count app);
+    Signal.dispose_scope scope) [false; true]
+
 let numeric_normalization () =
   List.iter (fun property ->
     List.iter (fun number ->
@@ -424,6 +1026,26 @@ let sequence_ordering () =
 
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["keyed state isolation and lifetime", keyed_states;
+   "boundary initial mount rollback", boundary_initial_mount;
+   "boundary shared publication work", boundary_shared_publication_work;
+   "boundary publication rollback", boundary_publication_rollback;
+   "boundary interleaved committed fallbacks", boundary_interleaved_fallbacks;
+   "boundary sibling mount work", boundary_sibling_mount_work;
+   "boundary committed outer recovery", boundary_committed_outer_recovery;
+   "boundary journal savepoints", boundary_journal_savepoints;
+   "boundary journal compaction", boundary_journal_compaction;
+   "boundary nested mount rollback", boundary_nested_mount_rollback;
+   "boundary echo rollback", boundary_echo_rollback;
+   "boundary host detach descendants", boundary_host_detach_descendants;
+   "boundary host detach unlink", boundary_host_detach_unlink;
+   "boundary host tweak order", boundary_host_tweak_order;
+   "boundary resync selection", boundary_resync_selection;
+   "boundary resync sizes", boundary_resync_sizes;
+   "boundary reactive failure and latched fallback", boundary_reactive_update;
+   "nested boundaries and fallback failures", boundary_nested;
+   "boundary owned property projection", boundary_property_projection;
+   "boundary reactive attribute encoding", boundary_reactive_attributes;
+   "boundary retained keyed and virtual rows", boundary_retained_rows;
    "closure-bearing subtree publications", closure_subtree_publication;
    "numeric normalization and runtime emission", numeric_normalization;
    "duplicate keyed publications", duplicate_keyed_publication;

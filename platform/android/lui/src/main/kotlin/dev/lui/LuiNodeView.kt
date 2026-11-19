@@ -480,10 +480,10 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             textAlign = textAlignment(node.propString("text-alignment") ?: LocalButtonTextAlignment.current),
-            maxLines = if (node.propString("white-space") == "nowrap") 1
+            maxLines = if (node.propString("white-space") == "nowrap" || LuiTypography.singleLine(node.propString("style-class"))) 1
                 else node.propInt("line-clamp", Int.MAX_VALUE),
-            softWrap = node.propString("white-space") !in setOf("nowrap", "pre"),
-            overflow = if (node.propString("text-overflow") == "ellipsis") TextOverflow.Ellipsis
+            softWrap = node.propString("white-space") !in setOf("nowrap", "pre") && !LuiTypography.singleLine(node.propString("style-class")),
+            overflow = if (node.propString("text-overflow") == "ellipsis" || LuiTypography.singleLine(node.propString("style-class"))) TextOverflow.Ellipsis
                 else TextOverflow.Clip,
             style = LuiTypography.textStyle(
                 node.propString("size"),
@@ -497,7 +497,8 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             style = LuiTypography.headingStyle(node.propInt("heading-level", 1)),
-            maxLines = node.propInt("line-clamp", Int.MAX_VALUE),
+            maxLines = if (LuiTypography.singleLine(node.propString("style-class"))) 1 else node.propInt("line-clamp", Int.MAX_VALUE),
+            overflow = if (LuiTypography.singleLine(node.propString("style-class"))) TextOverflow.Ellipsis else TextOverflow.Clip,
         )
 
         LuiNodeKind.button -> LuiButton(backend, node, id, modifier, children)

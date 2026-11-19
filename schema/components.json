@@ -1,5 +1,12 @@
 {
   "schemaVersion": 1,
+  "designTokens": {
+    "colors": ["background", "surface", "surface-raised", "card", "foreground", "muted-foreground", "primary", "secondary", "accent", "muted", "destructive", "warning", "success", "info", "border", "input", "ring", "glass", "bar", "transparent"],
+    "spaces": ["none", "xs", "sm", "md", "lg", "xl", "page"],
+    "radii": ["none", "sm", "md", "lg", "xl", "full"],
+    "textRoles": ["display", "title", "headline", "subheadline", "body", "caption", "footnote", "code"],
+    "textModifiers": ["semibold", "single-line"]
+  },
   "reference": {
     "repository": "vercel-labs/native",
     "revision": "4e015e925fc9974e2ab92840d6f8bb5a8f201c2d",

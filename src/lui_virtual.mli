@@ -65,7 +65,7 @@ val cancel_retention : retention -> unit
     are lease-fenced. Obligation publishers run synchronously before
     reconciliation; source receipt refreshes are scheduled after transactions. *)
 module Internal : sig
-  val bind_owner : owner -> node:int -> publish:(int -> string -> string -> unit) -> schedule_receipts:(unit -> unit) -> binding
+  val bind_owner : ?rollback:((unit -> unit -> unit) -> unit) -> owner -> node:int -> publish:(int -> string -> string -> unit) -> schedule_receipts:(unit -> unit) -> binding
   val flush_receipts : owner -> unit
   val unbind_owner : owner -> binding -> bool
   val bind_source : source -> node:int -> owner_node:int -> binding

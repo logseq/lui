@@ -4,6 +4,56 @@
 
 :root {
   --lui-radius: 0.5rem;
+  --lui-space-none: 0px;
+  --lui-space-xs: 4px;
+  --lui-space-sm: 8px;
+  --lui-space-md: 12px;
+  --lui-space-lg: 16px;
+  --lui-space-xl: 24px;
+  --lui-space-page: 24px;
+  --lui-radius-none: 0px;
+  --lui-radius-sm: calc(var(--lui-radius) - 4px);
+  --lui-radius-md: calc(var(--lui-radius) - 2px);
+  --lui-radius-lg: var(--lui-radius);
+  --lui-radius-xl: calc(var(--lui-radius) + 4px);
+  --lui-radius-full: 9999px;
+}
+
+:root, .dark, [data-kb-theme] {
+  --lui-surface: var(--lui-secondary);
+  --lui-surface-raised: var(--lui-card);
+  --lui-muted: var(--lui-secondary);
+  --lui-info: var(--lui-accent);
+  --lui-info-foreground: var(--lui-accent-foreground);
+  --lui-surface-foreground: var(--lui-foreground);
+  --lui-surface-raised-foreground: var(--lui-card-foreground);
+  --lui-glass: color-mix(in srgb, var(--lui-background) 80%, transparent);
+  --lui-bar: var(--lui-glass);
+  --lui-transparent: transparent;
+  --color-surface: var(--lui-surface);
+  --color-surface-raised: var(--lui-surface-raised);
+  --color-surface-foreground: var(--lui-surface-foreground);
+  --color-surface-raised-foreground: var(--lui-surface-raised-foreground);
+  --color-muted: var(--lui-muted);
+  --color-info: var(--lui-info);
+  --color-info-foreground: var(--lui-info-foreground);
+  --color-glass: var(--lui-glass);
+  --color-bar: var(--lui-bar);
+  --color-glass-foreground: var(--lui-foreground);
+  --color-bar-foreground: var(--lui-foreground);
+}
+
+@layer utilities {
+  .display { font-size: 2.25rem; line-height: 1.2; font-weight: 600; }
+  .title, .title2 { font-size: 1.375rem; line-height: 1.3; font-weight: 600; }
+  .headline { font-size: 1.0625rem; line-height: 1.4; font-weight: 600; }
+  .subheadline { font-size: 0.9375rem; line-height: 1.4; font-weight: 600; }
+  .body { font-size: 1rem; line-height: 1.5; }
+  .caption { font-size: 0.75rem; line-height: 1.4; }
+  .footnote { font-size: 0.8125rem; line-height: 1.4; }
+  .code, .mono { font-family: ui-monospace, monospace; }
+  .semibold { font-weight: 600; }
+  .single-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 :root,
@@ -153,6 +203,17 @@ body {
 }
 
 @theme {
+  --color-surface: var(--lui-surface);
+  --color-surface-raised: var(--lui-surface-raised);
+  --color-surface-foreground: var(--lui-surface-foreground);
+  --color-surface-raised-foreground: var(--lui-surface-raised-foreground);
+  --color-muted: var(--lui-muted);
+  --color-info: var(--lui-info);
+  --color-info-foreground: var(--lui-info-foreground);
+  --color-glass: var(--lui-glass);
+  --color-bar: var(--lui-bar);
+  --color-glass-foreground: var(--lui-foreground);
+  --color-bar-foreground: var(--lui-foreground);
   --color-background: var(--lui-background);
   --color-foreground: var(--lui-foreground);
   --color-card: var(--lui-card);

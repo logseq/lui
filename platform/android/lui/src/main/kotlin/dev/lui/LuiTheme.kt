@@ -97,18 +97,34 @@ internal val LocalLuiHostPalette = compositionLocalOf<LuiHostPalette?> { null }
 
 internal val LocalLuiInheritedForeground = compositionLocalOf<Color?> { null }
 
-private fun resolveLuiThemeColor(
+internal val luiForegroundTokens = mapOf(
+    "background" to "foreground", "surface" to "foreground",
+    "surface-raised" to "foreground", "card" to "card-foreground",
+    "primary" to "primary-foreground", "secondary" to "secondary-foreground",
+    "accent" to "accent-foreground", "muted" to "muted-foreground",
+    "destructive" to "destructive-foreground", "warning" to "warning-foreground",
+    "success" to "success-foreground", "info" to "info-foreground",
+    "glass" to "foreground", "bar" to "foreground",
+)
+
+internal val luiSpaceTokens = mapOf("none" to 0, "xs" to 4, "sm" to 8, "md" to 16, "lg" to 24, "xl" to 32, "page" to 16)
+internal val luiRadiusTokens = mapOf("none" to 0, "sm" to 4, "md" to 8, "lg" to 12, "xl" to 16, "full" to 9999)
+
+internal fun resolveLuiThemeColor(
     lower: String,
     foreground: Boolean,
     tokens: Map<String, Color>,
     scheme: ColorScheme,
 ): Color? {
-    tokens[lower]?.let { return it }
-    return when (lower) {
+    val token = if (foreground) luiForegroundTokens[lower] ?: lower else lower
+    tokens[token]?.let { return it }
+    return when (token) {
         "transparent" -> Color.Transparent
         "background" -> scheme.surface
         "foreground" -> scheme.onSurface
         "surface" -> scheme.surface
+        "surface-raised", "card" -> scheme.surfaceContainerHigh
+        "card-foreground" -> scheme.onSurface
         "surface-container-lowest" -> scheme.surfaceContainerLowest
         "surface-container-low" -> scheme.surfaceContainerLow
         "surface-container" -> scheme.surfaceContainer
@@ -122,7 +138,7 @@ private fun resolveLuiThemeColor(
         "primary-foreground" -> scheme.onPrimary
         "accent" -> if (foreground) scheme.primary else scheme.secondaryContainer
         "accent-foreground" ->
-            if (foreground) scheme.onPrimary else scheme.onSecondaryContainer
+            if (foreground && token == lower) scheme.onPrimary else scheme.onSecondaryContainer
         "secondary" ->
             if (foreground) scheme.onSurfaceVariant else scheme.secondaryContainer
         "secondary-foreground" -> scheme.onSecondaryContainer
@@ -136,9 +152,13 @@ private fun resolveLuiThemeColor(
         "success-foreground" -> Color(0xFF34C759)
         "warning" -> Color(0xFFFF9500).copy(alpha = 0.15f)
         "warning-foreground" -> Color(0xFFFF9500)
+        "info" -> scheme.primaryContainer
+        "info-foreground" -> scheme.onPrimaryContainer
         "error" -> scheme.errorContainer
         "error-foreground" -> scheme.onErrorContainer
         "border" -> scheme.outlineVariant
+        "input" -> scheme.outlineVariant
+        "ring" -> scheme.primary
         "black" -> Color.Black
         "white" -> Color.White
         "red" -> Color(0xFFB3261E)
@@ -227,6 +247,7 @@ object LuiThemeTokenDecoder {
 }
 
 object LuiTypography {
+    fun singleLine(styleClass: String?): Boolean = styleClass?.split(' ')?.contains("single-line") == true
     private val cssLength = Regex("^\\s*([+-]?\\d*\\.?\\d+)(px|pt|sp|em|rem)?\\s*$")
 
     /** Wire props consumed by [nodeSpec]; used to skip the decode for
@@ -359,17 +380,21 @@ object LuiTypography {
         val theme = MaterialTheme.typography
         val classes = styleClass?.split(' ') ?: emptyList()
         var style: TextStyle = when {
+            classes.contains("display") -> theme.displaySmall
+            classes.contains("title") -> theme.titleLarge
             classes.contains("title2") -> theme.titleLarge
             classes.contains("headline") -> theme.titleMedium
             classes.contains("subheadline") -> theme.bodyMedium
             classes.contains("caption") -> theme.bodySmall
             classes.contains("footnote") -> theme.labelMedium
+            classes.contains("body") -> theme.bodyLarge
+            classes.contains("code") -> theme.bodyLarge
             else -> textStyleForSize(size)
         }
         if (classes.contains("semibold")) {
             style = style.copy(fontWeight = FontWeight.SemiBold)
         }
-        if (classes.contains("mono")) {
+        if (classes.contains("mono") || classes.contains("code")) {
             style = style.copy(fontFamily = FontFamily.Monospace)
         }
         return style.luiInherited()

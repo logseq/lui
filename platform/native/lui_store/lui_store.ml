@@ -53,7 +53,7 @@ let layout_prop_names =
     "margin-bottom"; "margin-left"; "margin-horizontal"; "margin-vertical";
     "orientation"; "overflow"; "padding"; "padding-horizontal";
     "padding-vertical"; "padding-top"; "padding-right"; "padding-bottom"; "padding-left"; "placeholder"; "position"; "selected"; "size";
-    "text"; "title"; "value"; "first-pane-width" ]
+    "text"; "title"; "value"; "first-pane-width"; "style-class" ]
 
 let layout_props =
   let t = Hashtbl.create 64 in
@@ -78,7 +78,7 @@ let paint_prop_names =
   [ "background"; "foreground"; "opacity"; "shadow"; "corner-radius";
     "border-color"; "border-style"; "z-index";
     "cursor"; "caret-color"; "tint"; "image"; "name"; "src"; "fit";
-    "blend-mode"; "secure"; "style-class"; "variant"; "placement";
+    "blend-mode"; "secure"; "variant"; "placement";
     "autofocus"; "submit-on-enter"; "scroll-x"; "scroll-y";
     "key"; "id"; "class" ]
 

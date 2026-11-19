@@ -45,6 +45,21 @@ let light_tokens : (string * color) list =
     ("primary", color 37 99 235 255);
     ("primary-foreground", color 255 255 255 255);
     ("secondary", color 244 244 245 255);
+    ("secondary-foreground", color 24 24 27 255);
+    ("background-foreground", color 24 24 27 255);
+    ("surface-raised", color 255 255 255 255);
+    ("surface-foreground", color 24 24 27 255);
+    ("surface-raised-foreground", color 24 24 27 255);
+    ("card-foreground", color 24 24 27 255);
+    ("accent-foreground", color 255 255 255 255);
+    ("destructive-foreground", color 255 255 255 255);
+    ("warning-foreground", color 24 24 27 255);
+    ("success-foreground", color 24 24 27 255);
+    ("info", color 37 99 235 255);
+    ("info-foreground", color 255 255 255 255);
+    ("glass", color 244 244 245 204);
+    ("bar", color 244 244 245 255);
+    ("transparent", color 0 0 0 0);
     ("danger", color 220 38 38 255);
     ("destructive", color 220 38 38 255);
     ("warning", color 217 119 6 255);
@@ -81,6 +96,21 @@ let dark_tokens : (string * color) list =
     ("primary", color 59 130 246 255);
     ("primary-foreground", color 255 255 255 255);
     ("secondary", color 39 39 42 255);
+    ("secondary-foreground", color 244 244 245 255);
+    ("background-foreground", color 244 244 245 255);
+    ("surface-raised", color 50 50 54 255);
+    ("surface-foreground", color 244 244 245 255);
+    ("surface-raised-foreground", color 244 244 245 255);
+    ("card-foreground", color 244 244 245 255);
+    ("accent-foreground", color 255 255 255 255);
+    ("destructive-foreground", color 255 255 255 255);
+    ("warning-foreground", color 24 24 27 255);
+    ("success-foreground", color 24 24 27 255);
+    ("info", color 59 130 246 255);
+    ("info-foreground", color 255 255 255 255);
+    ("glass", color 39 39 42 204);
+    ("bar", color 39 39 42 255);
+    ("transparent", color 0 0 0 0);
     ("danger", color 239 68 68 255);
     ("destructive", color 239 68 68 255);
     ("warning", color 245 158 11 255);
@@ -97,9 +127,17 @@ let tokens = function Light -> light_tokens | Dark -> dark_tokens
 
 let color_of mode name = List.assoc_opt name (tokens mode)
 
+let foreground_tokens = Lui_paint.foreground_tokens
+let foreground_of mode name = color_of mode (Lui_paint.foreground_token name)
+let text_roles = Lui_paint.text_roles
+
 (* ---------- metrics ---------- *)
 
 let radius = 6.
+let space_tokens = [ "none", 0.; "xs", 4.; "sm", 8.; "md", 12.; "lg", 16.; "xl", 24.; "page", 16. ]
+let radius_tokens = [ "none", 0.; "sm", 4.; "md", 6.; "lg", 8.; "xl", 12.; "full", 9999. ]
+let space_of name = List.assoc_opt name space_tokens
+let radius_of name = List.assoc_opt name radius_tokens
 let space n = 4. *. n
 let control_height = 28.
 let control_radius = 6.

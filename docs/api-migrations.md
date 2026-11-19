@@ -1,5 +1,144 @@
 # LUI API migration guide
 
+## Unreleased: Canonical design-token and typography parity
+
+Web `headline` text now uses the canonical typography rule's `1.4` line-height
+instead of inheriting `1.5`. Explicit per-node font sizes still take precedence.
+This slightly tightens the headline and moves following content upward; the
+Phone BottomTabs Gallery baselines include this intentional change. Applications
+that need fixed line spacing can supply an explicit `line_height` metric.
+
+`schema/components.json` now inventories the cross-backend vocabulary under
+`designTokens`. Colors use existing hyphenated wire spellings (the ADR's
+`surface_raised` and `muted_foreground` identifiers correspond to
+`surface-raised` and `muted-foreground`):
+
+| Category | Canonical names |
+| --- | --- |
+| Colors | background, surface, surface-raised, card, foreground, muted-foreground, primary, secondary, accent, muted, destructive, warning, success, info, border, input, ring, glass, bar, transparent |
+| Spacing | none, xs, sm, md, lg, xl, page |
+| Radius | none, sm, md, lg, xl, full |
+| Text roles | display, title, headline, subheadline, body, caption, footnote, code |
+| Text modifiers | semibold, single-line |
+
+Existing colors, custom colors, theme overrides, and legacy aliases such as
+`title2` and `mono` remain available. Newly admitted colors reuse existing
+platform surfaces and accents rather than introducing a new palette.
+Foreground slots resolve container tokens through their corresponding ink
+token: for example `~foreground:"secondary"` uses `secondary-foreground`, not
+the pale secondary background. Explicit `*-foreground` theme overrides win.
+Apple keeps its adaptive secondary style only when the corresponding
+`secondary-foreground` or `muted-foreground` theme override is absent.
+Background and border slots retain existing values; literal colors are not
+remapped. Applications intentionally using a container fill as text ink can
+continue to supply its literal color instead.
+
+Use `text ~style_class:"headline semibold single-line" ~value:title []` for
+semantic type and one-line ellipsis. `.caption` and the other named roles now
+work on all four renderers; `.code` selects the platform monospace family.
+Explicit typography properties continue to override role defaults. Native
+class changes invalidate text measurement as well as painting. Apple uses
+Dynamic Type roles; Android retains Material typography rather than adopting
+Apple point sizes.
+
+Named metric lookup tables are available in each backend, with Web CSS
+variables `--lui-space-*` and `--lui-radius-*`. These are platform defaults, not
+new string-valued wire properties: shared constructors still accept numeric
+geometry. Typed `space`/`radius` arguments remain a later ADR phase.
+
+| Backend | Spacing none/xs/sm/md/lg/xl/page | Radius none/sm/md/lg/xl/full |
+| --- | --- | --- |
+| Web | 0/4/8/12/16/24/24 px | 0/4/6/8/12/9999 px (relative to existing `--lui-radius`) |
+| Apple | 0/4/8/12/16/24/16 pt | 0/6/8/12/16/9999 pt |
+| Android | 0/4/8/16/24/32/16 dp | 0/4/8/12/16/9999 dp |
+| Native | 0/4/8/12/16/24/16 logical px | 0/4/6/8/12/9999 logical px |
+
+`tooling/test/design-token-parity.test.mjs` parses the actual backend tables,
+including both Native palettes, foreground-slot counterparts, metric scales,
+and consumed typography roles. Missing canonical names fail the existing Node
+tooling test command; platform-specific extra tokens remain valid.
+
+## Unreleased: Subtree error boundaries
+
+`Lui_elements.error_boundary ~fallback child` isolates exceptions raised while
+mounting a child or running its owned reactive view updates. For example:
+
+```ocaml
+error_boundary
+  ~fallback:(fun diagnostic -> text ~value:diagnostic.message [])
+  (reactive (fun model -> render model) model_s)
+```
+
+The diagnostic contains `exception_`, `message`, `state_path`, and `phase`
+(`Mount` or `Update`). A stderr diagnostic is logged once. The failed content's
+runtime writes are undone, its scope is disposed, and its prior children are
+replaced by the fallback. Runtime mutations use an application-scoped undo
+journal: each boundary takes a constant-size savepoint on mount and at the first
+protected callback in a publication wave. Later callbacks share that savepoint.
+A failure discards all uncommitted runtime writes since it, including opaque
+writes made through runtime helpers outside the subtree. Runtime state from
+before the savepoint is preserved.
+
+A successful fallback commits its recovery entries. An outer or interleaved
+sibling rollback never resurrects that boundary's disposed content or undoes
+its committed writes. Independent properties, children and handlers retain
+their own undo history; a committed recovery wins when it writes the same property.
+Recovery entries belong to their boundary anchor. If an enclosing mount rolls
+back creation of that anchor, the nested recovery is discarded with it; only
+the enclosing fallback remains. Replacing an existing ancestor's failed subtree
+can also unmount a nested fallback normally. A fallback that itself fails does
+not commit its partial recovery.
+Runtime identifiers remain monotonic across boundary rollbacks.
+
+If the flush has queued operations when rollback occurs, its entire pending
+delta is discarded and Phase 1 authoritative resync is scheduled. After
+recovery settles, the host receives detaches for its previously accepted roots,
+followed by a complete snapshot of the surviving runtime tree. This preserves
+earlier pending state and committed sibling recoveries without replaying stale
+indices, unlinking descendants before subtree removal, or attaching incomplete
+tweaks. Successful publications remain incremental.
+Before resync, surviving and restored size properties are normalized even if
+their original operations were discarded (for example, width 10 with
+min-width 100 is stored and sent as width 100).
+
+Text, toggle and numeric echo markers have independent undo entries; unrelated
+recovery styling cannot commit the echo marker of a discarded value.
+
+Savepoints reset before the next mutation round. The shared journal is compacted
+at flush end, including rejected batches and exceptions, so boundaries retain
+no full-tree snapshots. External side effects and signal state changes are not
+transactional.
+
+Fallbacks **latch**: later publications do not retry the failed child. Remount
+the boundary (for example through an enclosing reactive switch) to retry with
+fresh subscriptions. A fallback is outside its own boundary, so a failing
+fallback reaches the nearest enclosing boundary, or propagates to the caller
+when none exists. An inner boundary handles errors before its enclosing one.
+
+The construct uses existing boxes with `display=contents` as a stable outer
+anchor and a disposable content anchor; no wire kind or host changes are
+required. As with other transparent anchors, use it where a box is an admissible child, not in
+restricted slots such as direct menu-item lists. It protects owned reactive
+subtree switches, collections, conditionals, and PPX-owned property projections.
+Retained keyed and virtual rows inherit the enclosing boundary's protection,
+including later row-property projections after a successful reconciliation.
+Element-owned signal encoders also run inside that protection: publishing an
+unsupported reactive `data_attrs` name mounts the fallback instead of raising
+from signal stabilization. Empty and valid attribute lists behave as before.
+External signal producers, event/timer callbacks, disposal callbacks, backend
+rejections, and explicit reentrant flushes are not error-boundary transactions.
+Outside a boundary, exceptions retain their existing propagation behavior.
+OCaml eagerly evaluates constructor arguments: exceptions raised before a
+child's mount closure runs must be deferred with `scoped` or `reactive` to be
+inside the boundary.
+
+Low-level `Lui_ui.ui_context` records now include an inherited `ui_protect`
+callback. Prefer the context constructors; custom record literals must supply
+`ui_protect = (fun action -> action ())` outside a boundary. PPX-generated
+mount-owned projections use the scope-owning `Lui_ui.map`/`map2` helpers to
+route update failures to this callback. Runtime property binding helpers accept
+an optional `~protect` callback; existing callers retain exception propagation.
+
 ## Unreleased: Shared Android admission and native web-only hints
 
 Android main/cross alignment and modal-surface kind sets are now generated

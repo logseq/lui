@@ -1,5 +1,20 @@
 import SwiftUI
 
+enum LUIDesignTokens {
+    static let spaces: [String: CGFloat] = ["none": 0, "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "page": 16]
+    static let radii: [String: CGFloat] = ["none": 0, "sm": 6, "md": 8, "lg": 12, "xl": 16, "full": 9999]
+    static let textRoles: [String: Font.TextStyle] = [
+        "display": .largeTitle, "title": .title2, "headline": .headline,
+        "subheadline": .subheadline, "body": .body, "caption": .caption,
+        "footnote": .footnote, "code": .body,
+    ]
+    static func role(in classes: Set<String>) -> String {
+        if classes.contains("title2") { return "title" }
+        return ["display", "title", "headline", "subheadline", "caption", "footnote", "code"]
+            .first { classes.contains($0) } ?? "body"
+    }
+}
+
 private struct LUISemanticColorsKey: EnvironmentKey {
     static let defaultValue: [String: Color] = [:]
 }
@@ -321,6 +336,14 @@ enum LUIThemeColorPolicy {
         name?.lowercased() == "secondary"
     }
 
+    static func usesSecondaryStyle(_ name: String?, semanticColors: [String: Color]) -> Bool {
+        switch name?.lowercased() {
+        case "secondary": semanticColors["secondary-foreground"] == nil
+        case "muted-foreground": semanticColors["muted-foreground"] == nil
+        default: false
+        }
+    }
+
     static func usesDefaultForeground(kind: LUINodeKind) -> Bool {
         switch kind {
         case .panel, .card, .resizable, .alert, .bubble:
@@ -332,8 +355,19 @@ enum LUIThemeColorPolicy {
 }
 
 enum LUIThemeColorResolver {
-    static func color(_ name: String?, semanticColors: [String: Color]) -> Color? {
-        resolve(name, semanticColors: semanticColors, depth: 0)
+    static let foregroundTokens = [
+        "background": "foreground", "surface": "foreground",
+        "surface-raised": "foreground", "card": "card-foreground",
+        "primary": "primary-foreground", "secondary": "secondary-foreground",
+        "accent": "accent-foreground", "muted": "muted-foreground",
+        "destructive": "destructive-foreground", "success": "success-foreground",
+        "warning": "warning-foreground", "info": "info-foreground",
+        "glass": "foreground", "bar": "foreground",
+    ]
+
+    static func color(_ name: String?, semanticColors: [String: Color], foreground: Bool = false) -> Color? {
+        let token = foreground ? name.flatMap { foregroundTokens[$0.lowercased()] } ?? name : name
+        return resolve(token, semanticColors: semanticColors, depth: 0)
     }
 
     private static func resolve(
@@ -399,19 +433,20 @@ enum LUIThemeColorResolver {
     }
 
     private static func semanticColor(_ name: String?) -> Color? {
-        if LUIThemeColorPolicy.isMutedForeground(name) {
-            return .secondary
-        }
-        if LUIThemeColorPolicy.isAccentForeground(name) {
-            return .accentColor
-        }
         return switch name?.lowercased() {
         case nil: nil
         case "transparent": .clear
         case "background": systemBackground
+        case "surface", "muted": .secondary.opacity(0.15)
+        case "surface-raised", "card": systemBackground
+        case "card-foreground": .primary
+        case "glass", "bar": .secondary.opacity(0.15)
         case "foreground": .primary
+        case "muted-foreground": .secondary
+        case "accent": .accentColor
         case "primary": .accentColor
         case "primary-foreground": .white
+        case "accent-foreground": .white
         case "secondary": .secondary.opacity(0.15)
         case "glass-fallback": .clear
         case "secondary-foreground": .primary
@@ -419,11 +454,15 @@ enum LUIThemeColorResolver {
         case "success-foreground": .green
         case "warning": .orange.opacity(0.15)
         case "warning-foreground": .orange
+        case "info": .blue.opacity(0.15)
+        case "info-foreground": .blue
         case "error": .red.opacity(0.15)
         case "error-foreground": .red
         case "destructive": .red
         case "destructive-foreground": .white
         case "border": .secondary.opacity(0.35)
+        case "input": .secondary.opacity(0.35)
+        case "ring": .accentColor
         case "black": .black
         case "white": .white
         case "red": .red

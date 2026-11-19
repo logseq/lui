@@ -143,10 +143,12 @@ let inherited_num store id name =
   let rec walk id =
     match num_prop store id name with
     | Some v -> Some v
-    | None -> (
+    | None -> (match Lui_paint.text_class_number store id name with
+      | Some _ as value -> value
+      | None -> (
       match Lui_store.parent store id with
       | Some pid when pid <> id -> walk pid
-      | _ -> None)
+      | _ -> None))
   in
   walk id
 
@@ -154,10 +156,12 @@ let inherited_int store id name =
   let rec walk id =
     match Lui_store.int_prop store id name with
     | Some v -> Some v
-    | None -> (
+    | None -> (match Lui_paint.text_class_number store id name with
+      | Some value -> Some (int_of_float value)
+      | None -> (
       match Lui_store.parent store id with
       | Some pid when pid <> id -> walk pid
-      | _ -> None)
+      | _ -> None))
   in
   walk id
 
@@ -165,10 +169,12 @@ let inherited_str store id name =
   let rec walk id =
     match Lui_store.prop store id name with
     | Some (Lui_protocol.StringValue s) -> Some s
-    | _ -> (
+    | _ -> (match Lui_paint.text_class_string store id name with
+      | Some _ as value -> value
+      | None -> (
       match Lui_store.parent store id with
       | Some pid when pid <> id -> walk pid
-      | _ -> None)
+      | _ -> None))
   in
   walk id
 
@@ -251,8 +257,9 @@ let resolve_style store id =
       (inherited_str store id "white-space" = Some "nowrap");
     (* text-overflow does not inherit. *)
     ts_ellipsis =
-      (Lui_store.string_prop store id "text-overflow"
-       = Some "ellipsis");
+      (match Lui_store.string_prop store id "text-overflow" with
+       | Some value -> value = "ellipsis"
+       | None -> Lui_paint.text_class_string store id "text-overflow" = Some "ellipsis");
     ts_under = under; ts_strike = strike; ts_over = over }
 
 (* The node's text style, memoized on the store revision: the props
@@ -271,6 +278,7 @@ let style_of t store id =
 (* The layout text_ops, measure and hit-testing share: letter-spacing
    rides in as a span so shaped runs carry the extra advance. *)
 let layout_of t (st : text_style) ~width s =
+  let s = if st.ts_nowrap then String.map (function '\n' | '\r' -> ' ' | c -> c) s else s in
   if st.ts_kern = 0. then
     Lui_text.Cache.layout t.shapes ~width st.ts_font s
   else

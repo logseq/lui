@@ -1899,6 +1899,17 @@ module Theme = struct
       ("primary-foreground", color 255 255 255 255);
       ("secondary", color 39 39 42 255);
       ("secondary-foreground", color 244 244 245 255);
+      ("background-foreground", color 244 244 245 255);
+      ("surface-raised", color 50 50 54 255);
+      ("surface-foreground", color 244 244 245 255);
+      ("surface-raised-foreground", color 244 244 245 255);
+      ("warning-foreground", color 24 24 27 255);
+      ("success-foreground", color 24 24 27 255);
+      ("info", color 59 130 246 255);
+      ("info-foreground", color 255 255 255 255);
+      ("glass", color 39 39 42 204);
+      ("bar", color 39 39 42 255);
+      ("transparent", color 0 0 0 0);
       ("muted", color 39 39 42 255);
       ("muted-foreground", color 161 161 170 255);
       ("accent", color 59 130 246 255);

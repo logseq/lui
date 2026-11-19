@@ -117,13 +117,53 @@ let window_palette_matches_dark_tokens () =
       | None -> Alcotest.failf "window palette missing token %S" name)
     (Lui_theme.tokens Lui_theme.Dark)
 
+let foreground_slots_and_metrics () =
+  List.iter (fun mode ->
+    Alcotest.check (Alcotest.option color_testable) "secondary foreground is its ink"
+      (Lui_theme.color_of mode "secondary-foreground")
+      (Lui_theme.foreground_of mode "secondary");
+    List.iter (fun (container, ink) ->
+      Alcotest.(check bool) (container ^ " has ink") true
+        (Option.is_some (Lui_theme.color_of mode ink))) Lui_theme.foreground_tokens)
+    [Lui_theme.Light; Lui_theme.Dark];
+  Alcotest.(check (option (float 0.001))) "no spacing" (Some 0.) (Lui_theme.space_of "none");
+  Alcotest.(check (option (float 0.001))) "full radius" (Some 9999.) (Lui_theme.radius_of "full");
+  Alcotest.(check (option (float 0.001))) "unknown spacing" None (Lui_theme.space_of "missing")
+
+let semantic_text_classes () =
+  let store = Lui_store.create () in
+  let set value =
+    Lui_store.apply_batch store
+      { Lui_protocol.generation = 1;
+        ops = [Lui_protocol.SetProp (1, Lui_protocol.StyleClass, Lui_protocol.StringValue value)] } in
+  Lui_store.apply_batch store
+    { Lui_protocol.generation = 0; ops = [Lui_protocol.CreateNode (1, Lui_protocol.Text)] };
+  List.iter (fun (name, (size, weight)) ->
+    set name;
+    Alcotest.(check (option (float 0.001))) name (Some size)
+      (Lui_paint.text_class_number store 1 "font-size");
+    Alcotest.(check (option (float 0.001))) name (Some (float weight))
+      (Lui_paint.text_class_number store 1 "font-weight")) Lui_theme.text_roles;
+  set "caption semibold single-line";
+  Alcotest.(check (option (float 0.001))) "semibold" (Some 600.) (Lui_paint.text_class_number store 1 "font-weight");
+  Alcotest.(check (option string)) "nowrap" (Some "nowrap") (Lui_paint.text_class_string store 1 "white-space");
+  Alcotest.(check (option string)) "ellipsis" (Some "ellipsis") (Lui_paint.text_class_string store 1 "text-overflow");
+  set "code";
+  Alcotest.(check (option string)) "code font" (Some "monospace") (Lui_paint.text_class_string store 1 "font-family");
+  set "";
+  Alcotest.(check (option string)) "empty styles" None (Lui_paint.text_class_string store 1 "white-space");
+  set "not-single-line";
+  Alcotest.(check (option string)) "exact class match" None (Lui_paint.text_class_string store 1 "white-space")
+
 let () =
   Alcotest.run "lui_theme"
     [ ("tokens",
        [ Alcotest.test_case "light/dark same names" `Quick
            both_modes_cover_same_names;
          Alcotest.test_case "every token resolves" `Quick
-           every_token_resolves ]);
+           every_token_resolves;
+         Alcotest.test_case "foreground slots and metrics" `Quick foreground_slots_and_metrics;
+         Alcotest.test_case "semantic text classes" `Quick semantic_text_classes ]);
       ("contrast",
        [ Alcotest.test_case "text pairs >= 4.5" `Quick
            text_pairs_meet_wcag ]);
