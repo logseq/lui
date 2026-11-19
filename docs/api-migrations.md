@@ -498,9 +498,18 @@ A successful fallback commits its recovery entries. An outer or interleaved
 sibling rollback never resurrects that boundary's disposed content or undoes
 its committed writes. Independent properties, children and handlers retain
 their own undo history; a committed recovery wins when it writes the same property.
-Replacing an ancestor's failed subtree can still unmount a nested fallback
-normally. A fallback that itself fails does not commit its partial recovery.
+Recovery entries belong to their boundary anchor. If an enclosing mount rolls
+back creation of that anchor, the nested recovery is discarded with it; only
+the enclosing fallback remains. Replacing an existing ancestor's failed subtree
+can also unmount a nested fallback normally. A fallback that itself fails does
+not commit its partial recovery.
 Runtime identifiers remain monotonic across boundary rollbacks.
+
+After rollback, structural operations are regenerated against the last accepted
+host child order. Committed insertions therefore receive valid indices even
+when preceding transient siblings were discarded. Text, toggle and numeric
+echo markers have independent undo entries; unrelated recovery styling cannot
+commit the echo marker of a discarded value.
 
 Savepoints reset before the next mutation round. The shared journal is compacted
 at flush end, including rejected batches and exceptions, so boundaries retain

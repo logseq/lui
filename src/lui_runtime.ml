@@ -67,12 +67,15 @@ type journal_table =
   | Segment_active | Segment_on_property | Pending_operation
   | Property_value of property | Extension_value of string
   | Child_position | Handler_member | Segment_member
+  | Echo_text | Echo_toggle | Echo_value
 
 type rollback_entry = {
   rollback_position : int;
   rollback_undo : unit -> unit;
   rollback_operation : patch_op option;
+  rollback_node_before : (int * bool) option;
   mutable rollback_committed : bool;
+  mutable rollback_anchor : int option;
 }
 
 type rollback_journal = {
@@ -127,6 +130,8 @@ type application = {
   runtime_generation : int ref;
   runtime_resync_required : bool ref;
   runtime_host_roots : Root_set.t ref;
+  runtime_host_children : (int, int Lui_sequence.t) Hashtbl.t;
+  runtime_reindex_children : bool ref;
   runtime_diagnostics : flush_diagnostics ref;
   next_handler_id : int ref;
   event_handlers : (int, event_handler list) Hashtbl.t;
@@ -254,6 +259,8 @@ let create_with_extensions ?virtual_rows ?(virtual_capabilities = []) scheduler 
     runtime_generation = ref 0;
     runtime_resync_required = ref false;
     runtime_host_roots = ref Root_set.empty;
+    runtime_host_children = Hashtbl.create 16;
+    runtime_reindex_children = ref false;
     runtime_diagnostics = ref (empty_diagnostics ());
     next_handler_id = ref 0;
     event_handlers = Hashtbl.create 16;
@@ -279,7 +286,7 @@ let journal_recording application =
   let journal = application.runtime_journal in
   journal.journal_enabled && not journal.journal_replaying
 
-let journal_record ?operation application location undo =
+let journal_record ?operation ?node_before application location undo =
   if journal_recording application then begin
     let journal = application.runtime_journal in
     let previous = Option.value ~default:0 (Hashtbl.find_opt journal.journal_versions location) in
@@ -296,13 +303,19 @@ let journal_record ?operation application location undo =
     journal.journal_entries <- {
       rollback_position = position; rollback_undo = undo;
       rollback_operation = operation; rollback_committed = false;
+      rollback_node_before = node_before; rollback_anchor = None;
     } :: journal.journal_entries
   end
 
 let journal_replace application slot table key value =
   if journal_recording application then begin
     let previous = Hashtbl.find_opt table key in
-    journal_record application (slot, key) (fun () ->
+    let node_before = match slot with
+      | Mounted_nodes | Extension_nodes ->
+          Some (key, Hashtbl.mem application.mounted_nodes key ||
+                     Hashtbl.mem application.runtime_extension_nodes key)
+      | _ -> None in
+    journal_record ?node_before application (slot, key) (fun () ->
       match previous with
       | None -> Hashtbl.remove table key
       | Some value -> Hashtbl.replace table key value)
@@ -312,7 +325,12 @@ let journal_replace application slot table key value =
 let journal_remove application slot table key =
   if journal_recording application then begin
     let previous = Hashtbl.find_opt table key in
-    journal_record application (slot, key) (fun () ->
+    let node_before = match slot with
+      | Mounted_nodes | Extension_nodes ->
+          Some (key, Hashtbl.mem application.mounted_nodes key ||
+                     Hashtbl.mem application.runtime_extension_nodes key)
+      | _ -> None in
+    journal_record ?node_before application (slot, key) (fun () ->
       match previous with
       | None -> Hashtbl.remove table key
       | Some value -> Hashtbl.replace table key value)
@@ -336,6 +354,30 @@ let journal_ref application slot key reference value =
     journal_record application (slot, key) (fun () -> reference := previous)
   end;
   reference := value
+
+let echo_state application node =
+  match Hashtbl.find_opt application.runtime_echo node with
+  | Some state -> state
+  | None -> { echo_text = None; echo_toggle = None; echo_value = None }
+
+let put_echo application node state =
+  let write state =
+    match state with
+    | { echo_text = None; echo_toggle = None; echo_value = None } ->
+        Hashtbl.remove application.runtime_echo node
+    | _ -> Hashtbl.replace application.runtime_echo node state in
+  let previous = echo_state application node in
+  let record slot before after restore =
+    if before <> after then
+      journal_record application (slot, node) (fun () ->
+        write (restore before (echo_state application node))) in
+  record Echo_text previous.echo_text state.echo_text
+    (fun value current -> { current with echo_text = value });
+  record Echo_toggle previous.echo_toggle state.echo_toggle
+    (fun value current -> { current with echo_toggle = value });
+  record Echo_value previous.echo_value state.echo_value
+    (fun value current -> { current with echo_value = value });
+  write state
 
 let journal_capture application slot key capture =
   if journal_recording application then
@@ -504,6 +546,12 @@ let replace_children_table ?nodes application source =
   List.iter (Hashtbl.remove application.runtime_children) keys;
   Hashtbl.iter (Hashtbl.replace application.runtime_children) source
 
+let replace_echo_table ?nodes application source =
+  replace_journal_table ?nodes application.runtime_echo source
+    (fun node -> put_echo application node
+      { echo_text = None; echo_toggle = None; echo_value = None })
+    (put_echo application)
+
 let boundary_savepoint application =
   let journal = application.runtime_journal in
   journal.journal_enabled <- true;
@@ -512,10 +560,11 @@ let boundary_savepoint application =
 let boundary_savepoint_valid application saved =
   saved.savepoint_epoch = application.runtime_journal.journal_epoch
 
-let commit_boundary_recovery application saved =
+let commit_boundary_recovery ?anchor application saved =
   let rec commit = function
     | entry :: rest when entry.rollback_position > saved.savepoint_position ->
         entry.rollback_committed <- true;
+        entry.rollback_anchor <- anchor;
         commit rest
     | _ -> () in
   commit application.runtime_journal.journal_entries
@@ -531,9 +580,28 @@ let rollback_boundary application saved =
   if not (boundary_savepoint_valid application saved) then
     invalid_arg "cannot restore a stale boundary savepoint";
   let removed = Operation_set.create 16 in
+  let discarded = Hashtbl.create 16 in
+  let changed = ref true in
+  while !changed do
+    changed := false;
+    let baseline = Hashtbl.create 16 in
+    List.iter (fun entry ->
+      if entry.rollback_position > saved.savepoint_position
+         && (not entry.rollback_committed ||
+             Option.fold ~none:false ~some:(Hashtbl.mem discarded) entry.rollback_anchor) then
+        Option.iter (fun (node, existed) -> Hashtbl.replace baseline node existed)
+          entry.rollback_node_before) journal.journal_entries;
+    Hashtbl.iter (fun node existed ->
+      if not existed && not (Hashtbl.mem discarded node) then begin
+        Hashtbl.replace discarded node ();
+        changed := true
+      end) baseline
+  done;
   let rec rollback kept = function
     | entry :: rest when entry.rollback_position > saved.savepoint_position ->
-        if entry.rollback_committed then rollback (entry :: kept) rest
+        if entry.rollback_committed &&
+           not (Option.fold ~none:false ~some:(Hashtbl.mem discarded) entry.rollback_anchor)
+        then rollback (entry :: kept) rest
         else begin
           entry.rollback_undo ();
           Option.iter (fun operation -> Operation_set.replace removed operation ())
@@ -565,6 +633,7 @@ let rollback_boundary application saved =
         then operation :: merge rest pending
         else current :: merge missing tail in
   application.pending_ops := merge missing pending;
+  application.runtime_reindex_children := true;
   application.runtime_handler_count := Hashtbl.fold (fun _ handlers count ->
     count + List.length handlers) application.event_handlers 0;
   application.runtime_dynamic_segment_count := Hashtbl.fold (fun _ segments count ->
@@ -805,7 +874,7 @@ let restore application saved =
   Hashtbl.iter
     (fun child parent -> journal_replace application Elision_edges application.elision_edges child parent)
     saved.checkpoint_elision_edges;
-  replace Echo application.runtime_echo saved.checkpoint_echo;
+  replace_echo_table ?nodes:affected application saved.checkpoint_echo;
   restore_identity application application.next_handler_id saved.checkpoint_next_handler_id;
   replace_list_table ?nodes:affected application Handler_member application.event_handlers
     saved.checkpoint_event_handlers (fun handler -> handler.handler_id);
@@ -1888,7 +1957,7 @@ let reconcile_forest ?range application saved parent old_roots candidate_roots =
   Hashtbl.iter (journal_replace application Virtual_sources application.runtime_virtual_sources) desired_virtual_sources;
   journal_clear application Virtual_owners application.runtime_virtual_owners;
   Hashtbl.iter (journal_replace application Virtual_owners application.runtime_virtual_owners) desired_virtual_owners;
-  replace Echo application.runtime_echo desired_echo;
+  replace_echo_table ?nodes:affected application desired_echo;
   replace_extension_property_table ?nodes:affected application desired_extension_properties;
   replace_children_table ?nodes:affected application desired_children;
   let new_parents = rebuild_parents desired_children in
@@ -2191,7 +2260,7 @@ and unmount_node application node =
   journal_remove application Children application.runtime_children node;
   journal_remove application Parents application.runtime_parents node;
   journal_remove application Reload_keys application.runtime_reload_keys node;
-  journal_remove application Echo application.runtime_echo node;
+  put_echo application node { echo_text = None; echo_toggle = None; echo_value = None };
   application.runtime_extension_dirty := true
 
 and drop_node application node =
@@ -2222,17 +2291,6 @@ and remove_child application parent child =
   require_node application child;
   unlink_child application parent child;
   enqueue application (remove_child_op parent child)
-
-let echo_state application node =
-  match Hashtbl.find_opt application.runtime_echo node with
-  | Some state -> state
-  | None -> { echo_text = None; echo_toggle = None; echo_value = None }
-
-let put_echo application node state =
-  match state with
-  | { echo_text = None; echo_toggle = None; echo_value = None } ->
-    journal_remove application Echo application.runtime_echo node
-  | _ -> journal_replace application Echo application.runtime_echo node state
 
 let note_sent_echo application node property value =
   let state = echo_state application node in
@@ -2899,7 +2957,54 @@ let record_diagnostics application status operation_count
 
 (* Exceptions consume the uncertain generation. Rejection instead schedules
    an authoritative snapshot under the generation the host still expects. *)
+let snapshot_host_children application operations =
+  let changes = Hashtbl.create 16 and visited = Hashtbl.create 16 in
+  let remember node =
+    Hashtbl.replace changes node (Hashtbl.find_opt application.runtime_children node) in
+  let rec subtree node =
+    if not (Hashtbl.mem visited node) then begin
+      Hashtbl.replace visited node ();
+      Option.iter (Lui_sequence.iter subtree)
+        (Hashtbl.find_opt application.runtime_host_children node);
+      remember node
+    end in
+  List.iter (function
+    | CreateNode (node, _) | CreateExtension (node, _, _) -> remember node
+    | InsertChild (parent, _, _) | RemoveChild (parent, _) | MoveChild (parent, _, _) ->
+        remember parent
+    | DropNode node | DetachSubtree node -> subtree node
+    | _ -> ()) operations;
+  changes
+
+let reindex_pending_children application =
+  if !(application.runtime_reindex_children) then begin
+    let operations = List.rev !(application.pending_ops) in
+    application.pending_ops := [];
+    let reparented = Hashtbl.create 16 in
+    Hashtbl.iter (fun parent children -> Lui_sequence.iter (fun child ->
+      if Hashtbl.find_opt application.runtime_parents child <> Some parent then begin
+        Hashtbl.replace reparented child ();
+        enqueue application (remove_child_op parent child)
+      end) children) application.runtime_host_children;
+    Hashtbl.iter (fun parent children ->
+      let old = Option.value ~default:Lui_sequence.empty
+        (Hashtbl.find_opt application.runtime_host_children parent) in
+      emit_child_diff application reparented parent
+        (List.filter (fun child -> not (Hashtbl.mem reparented child)) (Lui_sequence.to_list old))
+        (Lui_sequence.to_list children)) application.runtime_children;
+    let structural = List.rev !(application.pending_ops) in
+    let prefix, suffix = List.fold_right (fun operation (prefix, suffix) ->
+      match operation with
+      | InsertChild _ | RemoveChild _ | MoveChild _ -> prefix, suffix
+      | DropNode _ | DetachSubtree _ -> prefix, operation :: suffix
+      | _ -> operation :: prefix, suffix) operations ([], []) in
+    application.pending_ops := List.rev_append suffix
+      (List.rev_append structural (List.rev prefix));
+    application.runtime_reindex_children := false
+  end
+
 let apply_pending_batch application batch operation_count next_generation =
+  let host_children = snapshot_host_children application batch.ops in
   let roots = List.fold_left (fun roots -> function
     | CreateNode (node, _) | CreateExtension (node, _, _)
     | RemoveChild (_, node) -> Root_set.add node roots
@@ -2915,6 +3020,10 @@ let apply_pending_batch application batch operation_count next_generation =
       raise failure
   in
   if committed then begin
+    Hashtbl.iter (fun node children -> match children with
+      | None -> Hashtbl.remove application.runtime_host_children node
+      | Some children -> Hashtbl.replace application.runtime_host_children node children)
+      host_children;
     application.runtime_host_roots := roots;
     application.runtime_generation := next_generation;
     record_diagnostics application Applied operation_count 0
@@ -2982,6 +3091,7 @@ let rec flush application =
     let flushed =
       try
         stabilize application;
+        reindex_pending_children application;
         normalize_pending_sizes application;
         if !(application.runtime_extension_dirty) then begin
           validate_extension_nodes application;
