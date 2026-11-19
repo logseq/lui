@@ -358,8 +358,7 @@ enum LUIThemeColorResolver {
     static let foregroundTokens = [
         "background": "foreground", "surface": "foreground",
         "surface-raised": "foreground", "card": "card-foreground",
-        "primary": "primary-foreground", "secondary": "secondary-foreground",
-        "accent": "accent-foreground", "muted": "muted-foreground",
+        "secondary": "secondary-foreground", "muted": "muted-foreground",
         "destructive": "destructive-foreground", "success": "success-foreground",
         "warning": "warning-foreground", "info": "info-foreground",
         "glass": "foreground", "bar": "foreground",

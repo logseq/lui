@@ -14,6 +14,9 @@ test('canonical colors resolve as CSS values and container foregrounds resolve a
   assert.equal(Util.web_color_value(true, 'secondary'), 'var(--color-secondary-foreground)');
   assert.equal(Util.web_color_value(undefined, 'secondary'), 'var(--color-secondary)');
   assert.equal(Util.web_color_value(true, 'surface'), 'var(--color-surface-foreground)');
+  for (const color of ['primary', 'accent', 'primary-foreground', 'accent-foreground']) {
+    assert.equal(Util.web_color_value(true, color), `var(--color-${color})`);
+  }
   assert.equal(Util.web_color_value(true, '#123456'), '#123456');
   assert.equal(Util.web_color_value(undefined, ''), '');
   assert.equal(Util.web_color_value(undefined, 'custom-token'), 'custom-token');
