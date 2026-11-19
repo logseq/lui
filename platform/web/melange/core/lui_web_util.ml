@@ -517,9 +517,24 @@ let semantic_color_names =
     "accent-foreground"; "muted-foreground"; "destructive";
     "destructive-foreground"; "success"; "success-foreground"; "warning";
     "warning-foreground"; "error"; "error-foreground"; "input"; "ring";
-    "border" ]
+    "border"; "surface"; "surface-raised"; "surface-foreground";
+    "surface-raised-foreground"; "background-foreground"; "muted";
+    "info"; "info-foreground"; "glass-foreground"; "bar-foreground" ]
 
-let web_color_value color =
+let foreground_tokens =
+  [ "background", "foreground"; "surface", "surface-foreground";
+    "surface-raised", "surface-raised-foreground"; "card", "card-foreground";
+    "primary", "primary-foreground"; "secondary", "secondary-foreground";
+    "accent", "accent-foreground"; "muted", "muted-foreground";
+    "destructive", "destructive-foreground"; "warning", "warning-foreground";
+    "success", "success-foreground"; "info", "info-foreground";
+    "glass", "glass-foreground"; "bar", "bar-foreground" ]
+
+let space_tokens = [ "none", 0; "xs", 4; "sm", 8; "md", 12; "lg", 16; "xl", 24; "page", 24 ]
+let radius_tokens = [ "none", 0; "sm", 4; "md", 6; "lg", 8; "xl", 12; "full", 9999 ]
+
+let web_color_value ?(foreground = false) color =
+  let color = if foreground then Option.value ~default:color (List.assoc_opt color foreground_tokens) else color in
   if color = "transparent" then "transparent"
   (* Material names (Apple glass/bar surfaces) have no CSS equivalent;
      approximate with a translucent theme surface. *)

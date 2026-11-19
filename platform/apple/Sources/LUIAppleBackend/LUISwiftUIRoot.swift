@@ -1150,7 +1150,7 @@ private struct LUINodeView: View {
     private var foregroundTint: Color? {
         LUIThemeColorResolver.color(
             model.property(.foreground)?.stringValue,
-            semanticColors: semanticColors
+            semanticColors: semanticColors, foreground: true
         )
     }
 
@@ -3818,7 +3818,7 @@ private struct LUIAvatarView: View {
     private var avatarForeground: Color {
         LUIThemeColorResolver.color(
             model.property(.foreground)?.stringValue,
-            semanticColors: semanticColors
+            semanticColors: semanticColors, foreground: true
         ) ?? .primary
     }
 }
@@ -3853,7 +3853,7 @@ private struct LUILinkView: View {
     private var tint: Color? {
         LUIThemeColorResolver.color(
             model.property(.foreground)?.stringValue,
-            semanticColors: semanticColors
+            semanticColors: semanticColors, foreground: true
         )
     }
 
@@ -4944,7 +4944,7 @@ private struct LUIListItemView: View {
                     .foregroundStyle(
                         LUIThemeColorResolver.color(
                             model.property(.foreground)?.stringValue,
-                            semanticColors: semanticColors
+                            semanticColors: semanticColors, foreground: true
                         ) ?? (isNativeListRow ? Color.primary : Color.secondary)
                     )
             }
@@ -4959,7 +4959,7 @@ private struct LUIListItemView: View {
                     .foregroundStyle(
                         LUIThemeColorResolver.color(
                             model.property(.foreground)?.stringValue,
-                            semanticColors: semanticColors
+                            semanticColors: semanticColors, foreground: true
                         ) ?? .primary
                     )
                     .lineLimit(1)
@@ -6347,16 +6347,12 @@ private struct LUITextView: View {
 
     private var font: Font {
         let classes = model.derived.styleClassTokens
-        var style: Font.TextStyle = .body
-        if classes.contains("title2") { style = .title2 }
-        else if classes.contains("headline") { style = .headline }
-        else if classes.contains("subheadline") { style = .subheadline }
-        else if classes.contains("caption") { style = .caption }
-        else if isFootnote { style = .footnote }
+        let role = LUIDesignTokens.role(in: classes)
+        let style = LUIDesignTokens.textRoles[role] ?? .body
         let semibold = classes.contains("semibold") ||
             style == .subheadline ||
             style == .headline
-        let mono = classes.contains("mono")
+        let mono = classes.contains("mono") || classes.contains("code")
         var result = Font.system(style, design: mono ? .monospaced : .default)
         if semibold { result = result.weight(.semibold) }
         return typography.font(base: result)
@@ -6367,6 +6363,8 @@ private struct LUITextView: View {
     private var baseSize: CGFloat {
         if typography.fontSize != nil { return typography.fontSize ?? 17 }
         let classes = model.derived.styleClassTokens
+        if classes.contains("display") { return 34 }
+        if classes.contains("title") { return 22 }
         if classes.contains("title2") { return 22 }
         if classes.contains("headline") { return 17 }
         if classes.contains("subheadline") { return 15 }
@@ -8205,7 +8203,7 @@ private struct LUICheckboxView: View {
     @Environment(\.luiSemanticColors) private var semanticColors
 
     private var indicatorColor: Color {
-        LUIThemeColorResolver.color(model.property(.foreground)?.stringValue, semanticColors: semanticColors)
+        LUIThemeColorResolver.color(model.property(.foreground)?.stringValue, semanticColors: semanticColors, foreground: true)
             ?? (model.isChecked ? .accentColor : .secondary)
     }
 
@@ -8727,10 +8725,7 @@ private struct LUISurfaceModifier: ViewModifier {
     }
 
     private func foregroundColor(_ name: String?) -> Color? {
-        if LUIThemeColorPolicy.isSecondaryForeground(name) {
-            return .secondary
-        }
-        return color(name)
+        LUIThemeColorResolver.color(name, semanticColors: semanticColors, foreground: true)
     }
 
     private func color(_ name: String?) -> Color? {

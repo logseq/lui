@@ -266,7 +266,7 @@ struct LUICommittedTextContent: View {
             let typography = node === model ? inherited : inherited.merged(
                 with: node.derived.themeScope.typography.resolving(variables: styleVariables))
             let color = LUIThemeColorResolver.color(node.property(.foreground)?.stringValue,
-                                                   semanticColors: semanticColors) ?? foreground
+                                                   semanticColors: semanticColors, foreground: true) ?? foreground
             let start = result.length
             if node.kind == .text || node === model {
                 result.append(attributedText(for: node, typography: typography, foreground: color))
@@ -337,7 +337,8 @@ struct LUICommittedTextContent: View {
             case 5: .headline
             default: .subheadline
             }
-        } else if classes.contains("title2") { style = .title2 }
+        } else if classes.contains("display") { style = .largeTitle }
+        else if classes.contains("title") || classes.contains("title2") { style = .title2 }
         else if classes.contains("headline") { style = .headline }
         else if classes.contains("subheadline") { style = .subheadline }
         else if classes.contains("caption") { style = .caption1 }
@@ -366,7 +367,7 @@ struct LUICommittedTextContent: View {
             #else
             font = LUITextFont(descriptor: font.fontDescriptor, size: size)
             #endif
-            if classes.contains("mono") || family.map(LUITypographySpec.isMonospaced) == true {
+            if classes.contains("mono") || classes.contains("code") || family.map(LUITypographySpec.isMonospaced) == true {
                 font = LUITextFont.monospacedSystemFont(ofSize: size, weight: .regular)
             } else if family.map(LUITypographySpec.isSerif) == true,
                       let descriptor = font.fontDescriptor.withDesign(.serif) {

@@ -45,6 +45,11 @@ function validate(schema) {
   unique(schema.properties, 'wire', 'property wire name');
   unique(schema.properties, 'swift', 'property Swift name');
   unique(schema.events, 'lg', 'event LG name');
+  for (const category of ['colors', 'spaces', 'radii', 'textRoles', 'textModifiers']) {
+    const tokens = schema.designTokens?.[category];
+    if (!Array.isArray(tokens) || tokens.length === 0) fail(`missing design token vocabulary: ${category}`);
+    unique(tokens.map(name => ({ name })), 'name', `${category} token`);
+  }
   for (const property of schema.properties) {
     if (property.webOnly !== undefined && typeof property.webOnly !== 'boolean') {
       fail(`invalid webOnly annotation: ${property.wire}`);

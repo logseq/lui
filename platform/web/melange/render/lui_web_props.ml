@@ -828,7 +828,7 @@ let rec apply_property renderer queue_split node kind dom_node property
          ^ Util.web_color_value background ^ "))))" )
   | ForegroundValue, StringValue foreground ->
       set_style dom_node "color"
-        ("var(--lui-current-hover-fg, " ^ Util.web_color_value foreground ^ ")")
+        ("var(--lui-current-hover-fg, " ^ Util.web_color_value ~foreground:true foreground ^ ")")
   | BorderColorValue, StringValue border ->
       set_style dom_node "border-color"
         ("var(--lui-current-focus-within-border, var(--lui-current-hover-border, " ^ Util.web_color_value border ^ "))")
@@ -1182,7 +1182,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | HoverBackground, StringValue color ->
       set_style dom_node "--lui-hover-bg" (Util.web_color_value color)
   | HoverForeground, StringValue color ->
-      set_style dom_node "--lui-hover-fg" (Util.web_color_value color)
+      set_style dom_node "--lui-hover-fg" (Util.web_color_value ~foreground:true color)
   | HoverBorder, StringValue color ->
       set_style dom_node "--lui-hover-border" (Util.web_color_value color)
   | HoverOpacity, FloatValue opacity ->
@@ -1502,7 +1502,7 @@ let refresh_portal_property renderer node dom_node property css_name =
       when value <> "inherit"
            && (property <> ForegroundValue || value <> "currentColor") ->
         Some
-          (if property = ForegroundValue then Util.web_color_value value
+          (if property = ForegroundValue then Util.web_color_value ~foreground:true value
            else value)
     | _ -> None
   in

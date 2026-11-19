@@ -1,5 +1,55 @@
 # LUI API migration guide
 
+## Unreleased: Canonical design-token and typography parity
+
+`schema/components.json` now inventories the cross-backend vocabulary under
+`designTokens`. Colors use existing hyphenated wire spellings (the ADR's
+`surface_raised` and `muted_foreground` identifiers correspond to
+`surface-raised` and `muted-foreground`):
+
+| Category | Canonical names |
+| --- | --- |
+| Colors | background, surface, surface-raised, card, foreground, muted-foreground, primary, secondary, accent, muted, destructive, warning, success, info, border, input, ring, glass, bar, transparent |
+| Spacing | none, xs, sm, md, lg, xl, page |
+| Radius | none, sm, md, lg, xl, full |
+| Text roles | display, title, headline, subheadline, body, caption, footnote, code |
+| Text modifiers | semibold, single-line |
+
+Existing colors, custom colors, theme overrides, and legacy aliases such as
+`title2` and `mono` remain available. Newly admitted colors reuse existing
+platform surfaces and accents rather than introducing a new palette.
+Foreground slots resolve container tokens through their corresponding ink
+token: for example `~foreground:"secondary"` uses `secondary-foreground`, not
+the pale secondary background. Explicit `*-foreground` theme overrides win.
+Background and border slots retain existing values; literal colors are not
+remapped. Applications intentionally using a container fill as text ink can
+continue to supply its literal color instead.
+
+Use `text ~style_class:"headline semibold single-line" ~value:title []` for
+semantic type and one-line ellipsis. `.caption` and the other named roles now
+work on all four renderers; `.code` selects the platform monospace family.
+Explicit typography properties continue to override role defaults. Native
+class changes invalidate text measurement as well as painting. Apple uses
+Dynamic Type roles; Android retains Material typography rather than adopting
+Apple point sizes.
+
+Named metric lookup tables are available in each backend, with Web CSS
+variables `--lui-space-*` and `--lui-radius-*`. These are platform defaults, not
+new string-valued wire properties: shared constructors still accept numeric
+geometry. Typed `space`/`radius` arguments remain a later ADR phase.
+
+| Backend | Spacing none/xs/sm/md/lg/xl/page | Radius none/sm/md/lg/xl/full |
+| --- | --- | --- |
+| Web | 0/4/8/12/16/24/24 px | 0/4/6/8/12/9999 px (relative to existing `--lui-radius`) |
+| Apple | 0/4/8/12/16/24/16 pt | 0/6/8/12/16/9999 pt |
+| Android | 0/4/8/16/24/32/16 dp | 0/4/8/12/16/9999 dp |
+| Native | 0/4/8/12/16/24/16 logical px | 0/4/6/8/12/9999 logical px |
+
+`tooling/test/design-token-parity.test.mjs` parses the actual backend tables,
+including both Native palettes, foreground-slot counterparts, metric scales,
+and consumed typography roles. Missing canonical names fail the existing Node
+tooling test command; platform-specific extra tokens remain valid.
+
 ## Unreleased: Subtree error boundaries
 
 `Lui_elements.error_boundary ~fallback child` isolates exceptions raised while

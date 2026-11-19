@@ -71,7 +71,7 @@ let prop_coverage =
     ("placeholder", Painted_by_text);
     ("accessibility-label", Host);
     ("accessibility-identifier", Host);
-    ("style-class", Host);
+    ("style-class", Painted_by_text);
     ("heading-level", Painted_by_text);
     ("checked", Painted); (* checkbox/radio/switch/toggle chrome *)
     ("value", Painted);   (* progress fill, slider thumb fraction *)
@@ -575,10 +575,52 @@ let pbool store id name =
   | Some (Lui_protocol.StringValue s) -> s = "true"
   | _ -> false
 
+let foreground_tokens =
+  [ "background", "foreground"; "surface", "surface-foreground";
+    "surface-raised", "surface-raised-foreground"; "card", "card-foreground";
+    "primary", "primary-foreground"; "secondary", "secondary-foreground";
+    "accent", "accent-foreground"; "muted", "muted-foreground";
+    "destructive", "destructive-foreground"; "warning", "warning-foreground";
+    "success", "success-foreground"; "info", "info-foreground";
+    "glass", "foreground"; "bar", "foreground" ]
+
+let foreground_token name = Option.value ~default:name (List.assoc_opt name foreground_tokens)
+
+let text_roles =
+  [ "display", (36., 600); "title", (22., 600); "headline", (16., 600);
+    "subheadline", (14., 600); "body", (14., 400); "caption", (12., 400);
+    "footnote", (11., 400); "code", (14., 400) ]
+
+let text_classes store id =
+  String.split_on_char ' ' (Option.value ~default:"" (Lui_store.string_prop store id "style-class"))
+
+let text_role_of_classes classes =
+  let classes = if List.mem "title2" classes then "title" :: classes else classes in
+  List.find_map (fun (name, role) -> if List.mem name classes then Some role else None) text_roles
+
+let text_class_number store id name =
+  let classes = text_classes store id in
+  if name = "font-weight" && List.mem "semibold" classes then Some 600.
+  else match text_role_of_classes classes with
+    | Some (size, _) when name = "font-size" -> Some size
+    | Some (_, weight) when name = "font-weight" -> Some (float weight)
+    | _ -> None
+
+let text_class_string store id name =
+  let classes = text_classes store id in
+  if name = "font-family" && (List.mem "code" classes || List.mem "mono" classes) then Some "monospace"
+  else if List.mem "single-line" classes then
+    match name with "white-space" -> Some "nowrap" | "text-overflow" -> Some "ellipsis" | _ -> None
+  else None
+
 let pcolor hooks store id name =
   match pstr store id name with
   | None -> None
-  | Some s -> color_of_value hooks.color_of s
+  | Some s ->
+      let token = if name = "foreground" || name = "hover-foreground" then foreground_token s else s in
+      (match color_of_value hooks.color_of token with
+       | Some _ as color -> color
+       | None -> color_of_value hooks.color_of s)
 
 (* A length-list prop: numbers or a whitespace-separated shorthand. *)
 let pnums store id name =
@@ -690,6 +732,21 @@ let default_palette : (string * color) list =
     ("primary", color 37 99 235 255);
     ("primary-foreground", color 255 255 255 255);
     ("secondary", color 244 244 245 255);
+    ("secondary-foreground", color 24 24 27 255);
+    ("background-foreground", color 24 24 27 255);
+    ("surface-raised", color 255 255 255 255);
+    ("surface-foreground", color 24 24 27 255);
+    ("surface-raised-foreground", color 24 24 27 255);
+    ("card-foreground", color 24 24 27 255);
+    ("accent-foreground", color 255 255 255 255);
+    ("destructive-foreground", color 255 255 255 255);
+    ("warning-foreground", color 24 24 27 255);
+    ("success-foreground", color 24 24 27 255);
+    ("info", color 37 99 235 255);
+    ("info-foreground", color 255 255 255 255);
+    ("glass", color 244 244 245 204);
+    ("bar", color 244 244 245 255);
+    ("transparent", color 0 0 0 0);
     ("danger", color 220 38 38 255);
     ("destructive", color 220 38 38 255);
     ("warning", color 217 119 6 255);
