@@ -446,6 +446,28 @@ let boundary_resync_selection () =
       | _ -> false) !emitted);
   Signal.dispose_scope scope
 
+let boundary_resync_sizes () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let node = Lui_ui.box context in
+  ignore (Lui_runtime.flush app);
+  Lui_runtime.set_prop app node WidthValue (IntValue 10);
+  Lui_runtime.set_prop app node MinWidth (IntValue 100);
+  let saved = Lui_runtime.boundary_savepoint app in
+  Lui_ui.string_property context node BackgroundValue "#334455";
+  Lui_runtime.rollback_boundary app saved;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "surviving sizes normalize before resync" true
+    (Property_map.find_opt WidthValue (Hashtbl.find app.runtime_properties node)
+      = Some (IntValue 100));
+  Lui_runtime.remove_prop app node MinWidth;
+  ignore (Lui_runtime.flush app);
+  Lui_runtime.set_prop app node WidthValue (IntValue 10);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "later authored width is not skipped" true
+    (List.exists (function SetProp (owner, WidthValue, IntValue 10) ->
+      owner = node | _ -> false) !emitted);
+  Signal.dispose_scope scope
+
 let boundary_reactive_update () =
   let app, scope, context, emitted = boundary_fixture () in
   let source = Signal.state context.ui_scheduler 0 in
@@ -1018,6 +1040,7 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "boundary host detach unlink", boundary_host_detach_unlink;
    "boundary host tweak order", boundary_host_tweak_order;
    "boundary resync selection", boundary_resync_selection;
+   "boundary resync sizes", boundary_resync_sizes;
    "boundary reactive failure and latched fallback", boundary_reactive_update;
    "nested boundaries and fallback failures", boundary_nested;
    "boundary owned property projection", boundary_property_projection;
