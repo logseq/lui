@@ -328,10 +328,14 @@ let rollback_host_fixture () =
     List.iter detach (children node);
     Option.iter (fun parent -> unlink parent node) (Hashtbl.find_opt parents node);
     Hashtbl.remove host node in
-  let insert parent child index =
+  let rec validate child =
     ignore (children child);
-    if Hashtbl.mem tweaks child && List.length (children child) <> 1 then
-      Alcotest.fail "host attaches an incomplete tweak";
+    if Hashtbl.mem tweaks child then
+      match children child with
+      | [child] -> validate child
+      | _ -> Alcotest.fail "host attaches an incomplete tweak" in
+  let insert parent child index =
+    validate child;
     let current = children parent in
     if index < 0 || index > List.length current then Alcotest.fail "host insert index";
     Hashtbl.replace host parent (Lui_runtime.insert_list index child current);
@@ -414,6 +418,48 @@ let boundary_host_tweak_order () =
     verify ();
     Signal.dispose_scope scope
   done
+
+let anchorless_host_tweak_order () =
+  List.iter (fun shape -> List.iter (fun initially_visible ->
+    let app, scope, context, verify = rollback_host_fixture () in
+    let visible = Signal.state context.ui_scheduler initially_visible in
+    let wrap child context parent =
+      let tweak = Lui_ui.platform_tweak context "boundary-tweak" in
+      ignore (child context (Some tweak));
+      Lui_elements.attach context parent tweak;
+      tweak in
+    let content = match shape with
+      | `Main -> wrap (Lui_elements.column [
+          wrap (Lui_elements.text ~value:"content" [])])
+      | `Settings -> Lui_elements.sheet ~title:"Settings" [
+          Lui_elements.column [wrap (wrap (Lui_elements.text ~value:"control" []))]]
+      | `Editor -> wrap (Lui_elements.column [
+          Lui_elements.text ~value:"Hide keyboard" []])
+      | `Selection -> Lui_elements.column [
+          wrap (Lui_elements.text ~value:"Delete" []);
+          wrap (Lui_elements.text ~value:"Cancel" [])] in
+    let view = Lui_elements.column [
+      Lui_elements.if_ ~test:(Signal.value visible)
+        content
+    ] in
+    let parent = Lui_ui.column context in
+    let language = Signal.state context.ui_scheduler 0 in
+    ignore (Lui_dynamic.switch_range context parent (Signal.value language) Int.equal
+      (fun context _ -> wrap view context (Some parent)));
+    Signal.mount scope;
+    ignore (Lui_runtime.flush app);
+    verify ();
+    List.iter (fun next ->
+      Signal.set visible next;
+      ignore (Lui_runtime.flush app);
+      verify ()) [false; true; false; true];
+    Signal.set language 1;
+    ignore (Lui_runtime.flush app);
+    verify ();
+    Signal.set visible false;
+    ignore (Lui_runtime.flush app);
+    verify ();
+    Signal.dispose_scope scope) [false; true]) [`Main; `Settings; `Editor; `Selection]
 
 let boundary_resync_selection () =
   let app, scope, context, emitted = boundary_fixture () in
@@ -1246,6 +1292,7 @@ let anchorless_state_lifetime () =
 
 let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f)
   ["anchorless restricted ranges", anchorless_restricted_ranges;
+   "anchorless host tweak order", anchorless_host_tweak_order;
    "anchorless boundary rollback", anchorless_boundary_rollback;
    "anchorless registration allocation", anchorless_registration_allocation;
    "anchorless static sibling", anchorless_static_sibling;
