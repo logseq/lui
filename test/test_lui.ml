@@ -1216,7 +1216,7 @@ let test_glass_buttons_require_an_action () =
 let test_styled_accordion_mounts () =
   let view _context _model _send =
     Lui_elements.column
-      [ Lui_elements.accordion ~text:"Thinking" ~style_class:"thought"
+      [ Lui_elements.accordion ~title:"Thinking" ~style_class:"thought"
           [ Lui_elements.text ~value:"Inspect the repository." [] ] ]
   in
   let app =
@@ -1650,7 +1650,7 @@ let test_value_return_to_default_is_delivered () =
                ~on_input:(fun _event -> incr inputs) [];
              Lui_elements.checkbox ~checked:true
                ~on_toggle:(fun _event -> incr toggles) [];
-             Lui_elements.slider ~value:0.5
+             Lui_elements.slider ~label:"Event value" ~value:0.5
                ~on_change:(fun _event -> incr slides) [];
            ])
       ()
@@ -3217,7 +3217,7 @@ let test_sheet_presentation_props () =
       ~reducer:(fun model _action -> model)
       ~view:(fun _context _model_source _send ->
          Lui_elements.column
-           [ Lui_elements.sheet ~text:"Settings"
+           [ Lui_elements.sheet ~title:"Settings"
                ~detents:"medium,large" ~sizing:"form" [] ])
       ()
   in
@@ -3248,14 +3248,14 @@ let json_view_json =
   {|{"kind":"column","children":[
       {"kind":"card","children":[{"kind":"text","value":"hi"}]},
       {"kind":"switch","id":"sw","checked":true},
-      {"kind":"slider","id":"sl","value":0.5},
+      {"kind":"slider","id":"sl","label":"Volume","value":0.5},
       {"kind":"icon","name":"plus"},
       {"kind":"toggle-button","id":"b1","text":"Go"},
       {"kind":"table","children":[{"kind":"table-row","children":[
          {"kind":"table-cell","text":"c"}]}]},
-      {"kind":"radio-group","children":[{"kind":"radio","label":"r"}]},
-      {"kind":"stepper","children":[{"kind":"step","text":"s"}]},
-      {"kind":"bottom-tabs","children":[{"kind":"bottom-tab","title":"t"}]},
+      {"kind":"radio-group","label":"Options","children":[{"kind":"radio","label":"r"}]},
+      {"kind":"stepper","active":0,"children":[{"kind":"step","text":"s"}]},
+      {"kind":"bottom-tabs","label":"Navigation","children":[{"kind":"bottom-tab","id":"home","title":"Home"}]},
       {"kind":"input-group","children":[
         {"kind":"textarea","id":"tf"},
         {"kind":"input-group-actions","children":[{"kind":"button","text":"a"}]}]},

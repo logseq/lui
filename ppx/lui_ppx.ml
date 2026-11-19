@@ -185,6 +185,11 @@ let structural_constructor expression = match expression.pexp_desc with
       | Ldot (Lident "Lui_elements", ("if_" | "keyed" | "virtual_rows")); _ } -> true
   | _ -> false
 
+let rec constructor_name expression = match expression.pexp_desc with
+  | Pexp_ident { txt = Lident name | Ldot (_, name); _ } -> name
+  | Pexp_apply (fn, _) -> constructor_name fn
+  | _ -> ""
+
 class mapper =
   object
     inherit Ast_traverse.map as super
@@ -216,8 +221,9 @@ class mapper =
               List.rev reversed, [Nolabel, context; Nolabel, parent]
             | _ -> args, [] in
           let transform arguments owner =
+          let bindings = ref [] in
           let args =
-            List.map
+            List.concat_map
               (fun ((label : arg_label), arg) ->
                  match label, arg.pexp_desc with
                  | ( Labelled name,
@@ -241,26 +247,37 @@ class mapper =
                          needs_scope := true;
                          owner#expression expression
                        end else expression in
-                     (match rest with
+                     let signal = match rest with
                       | [ (Nolabel, source) ] ->
                           (* reactive f src *)
-                          ( Labelled target,
-                            own (apply ~loc:arg.pexp_loc
-                              (signal_map arg.pexp_loc) [ first; source ]) )
+                          own (apply ~loc:arg.pexp_loc
+                            (signal_map arg.pexp_loc) [ first; source ])
                       | [] ->
                           (* reactive src: the arg itself is the signal *)
-                          (Labelled target, first)
+                          first
                       | _ ->
                           (* reactive f s1 s2 .. sn *)
                           let sources =
                             List.map snd rest
                           in
-                          ( Labelled target,
-                            own (expand ~loc:arg.pexp_loc first sources) ))
-                 | _ -> (label, arg))
+                          own (expand ~loc:arg.pexp_loc first sources)
+                     in
+                     if List.mem name (Lui_nesting_schema.mandatory_labels (constructor_name fn)) then begin
+                       needs_scope := true;
+                       let loc = arg.pexp_loc in
+                       let binding = gen_symbol ~prefix:"__lui_initial_" () in
+                       bindings := B.value_binding ~loc ~pat:(pvar ~loc binding) ~expr:signal :: !bindings;
+                       let source = evar ~loc binding in
+                       let current = B.pexp_ident ~loc { txt = Ldot (Lident "Signal", "sample"); loc } in
+                       [Labelled name, apply ~loc current [source]; Labelled target, source]
+                     end else [Labelled target, signal]
+                 | _ -> [label, arg])
               arguments
           in
-          super#expression { expr with pexp_desc = Pexp_apply (fn, args) } in
+          let result = { expr with pexp_desc = Pexp_apply (fn, args) } in
+          let result = List.fold_left (fun result binding ->
+            B.pexp_let ~loc:expr.pexp_loc Nonrecursive [binding] result) result !bindings in
+          super#expression result in
           let plain = transform args (new Ast_traverse.map) in
           if !needs_scope then
             let scoped = scoped_expression ~loc:expr.pexp_loc (transform constructor_args) in

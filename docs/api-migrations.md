@@ -1,5 +1,54 @@
 # LUI API migration guide
 
+## Unreleased: Mandatory element values (ADR 0007 Phase 3a, step 2)
+
+The following constructor labels are now required:
+
+| Constructor | Required labels |
+| --- | --- |
+| icon | name |
+| slider | label, value |
+| progress | value |
+| sheet, accordion | title (renamed from text) |
+| toolbar, radio_group, tree, bottom_tabs | label |
+| stepper | active |
+| step | text |
+| timeline_item | title |
+| bottom_tab | title, on_press |
+
+Supply a meaningful accessible label/title rather than an empty placeholder.
+For `sheet` and `accordion`, rename `text`/`text_signal` to `title`/`title_signal`.
+Their wire property remains `text`; other constructors' text parameters are
+unchanged. `form_sheet` already takes `title` and needs no caller change.
+
+Existing signal twins remain optional. The required static value initializes
+the property; a supplied signal wins on mount and subsequent publications.
+For example:
+
+```ocaml
+slider ~label:"Volume" ~value:0.5 []
+sheet ~title:"Settings" [text ~value:"Preferences" []]
+accordion ~title:"Details" [text ~value:"More information" []]
+
+(* Both required initial value and signal binding are supplied by the PPX. *)
+slider ~label:"Volume" ~value:(reactive volume) []
+progress ~value:(reactive (fun completed total -> completed /. total)
+                   completed total) []
+```
+
+For mandatory reactive labels, `lui_ppx` evaluates the signal expression once,
+reads its current value with `Signal.sample`, and supplies both `~x` and
+`~x_signal`. Mapped signals retain their existing mount-owned lifetime. The
+mandatory labels live in `schema/components.json`; generated PPX metadata and
+the interface contract test consume that declaration. Optional reactive labels
+still lower to the signal argument alone.
+
+The JSON-view renderer also requires these data values (sheet/accordion titles
+continue to use the wire key `text`). A bottom-tab JSON node requires an `id`
+to route its required press callback. Missing required JSON data now raises
+`Invalid_argument` naming the missing constructor parameter instead of mounting
+an incomplete node. Data-only typed view contracts mark required properties too.
+
 ## Unreleased: Admission-safe element parameters (ADR 0007 Phase 3a, step 1)
 
 `Lui_elements` constructors now expose only properties and events admitted by

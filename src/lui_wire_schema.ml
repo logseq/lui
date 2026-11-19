@@ -633,7 +633,7 @@ let view_contract = function
   | RadioGroup -> Some {
       view_result = "t";
       view_children = ViewList "radio_el";
-      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (AccessibilityLabel, ViewString, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (AccessibilityLabel, ViewString, true); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
@@ -647,7 +647,7 @@ let view_contract = function
   | Slider -> Some {
       view_result = "t";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (ProgressValue, ViewFloat, false); (AccessibilityLabel, ViewString, false); (Enabled, ViewBool, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (ProgressValue, ViewFloat, true); (AccessibilityLabel, ViewString, true); (Enabled, ViewBool, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "change"; "context-menu"];
       view_slots = [];
     }
@@ -710,7 +710,7 @@ let view_contract = function
   | Progress -> Some {
       view_result = "t";
       view_children = ViewList "nothing";
-      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (ProgressValue, ViewFloat, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (ProgressValue, ViewFloat, true); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
@@ -752,14 +752,14 @@ let view_contract = function
   | BottomTabs -> Some {
       view_result = "t";
       view_children = ViewList "bottom_tab_el";
-      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (AccessibilityLabel, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (AccessibilityLabel, ViewString, true); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
   | BottomTab -> Some {
       view_result = "bottom_tab_el";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (TitleValue, ViewString, false); (InlineIconName, view_icon, false); (Selected, ViewBool, false); (Enabled, ViewBool, false)];
+      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (TitleValue, ViewString, true); (InlineIconName, view_icon, false); (Selected, ViewBool, false); (Enabled, ViewBool, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "press"; "press-modifiers"; "press-detail"; "pointer-down"; "pointer-up"];
       view_slots = [];
     }
@@ -794,7 +794,7 @@ let view_contract = function
   | Icon -> Some {
       view_result = "t";
       view_children = ViewList "nothing";
-      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (IconName, view_icon, false); (SizeValue, view_control_size, false); (TooltipText, ViewString, false); (TooltipKeys, ViewString, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (IconName, view_icon, true); (SizeValue, view_control_size, false); (TooltipText, ViewString, false); (TooltipKeys, ViewString, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
@@ -871,14 +871,14 @@ let view_contract = function
   | Stepper -> Some {
       view_result = "t";
       view_children = ViewList "step_el";
-      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (ActiveIndex, ViewInt, false); (AccessibilityLabel, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (ActiveIndex, ViewInt, true); (AccessibilityLabel, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
   | Step -> Some {
       view_result = "step_el";
       view_children = ViewList "nothing";
-      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (TextValue, ViewString, false)];
+      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (TextValue, ViewString, true)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
@@ -892,7 +892,7 @@ let view_contract = function
   | TimelineItem -> Some {
       view_result = "timeline_item_el";
       view_children = ViewList "nothing";
-      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (TitleValue, ViewString, false); (DescriptionValue, ViewString, false); (MetaValue, ViewString, false); (IndicatorValue, ViewString, false); (InlineIconName, view_icon, false); (VariantValue, view_variant, false); (Connector, ViewBool, false); (Selected, ViewBool, false)];
+      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (TitleValue, ViewString, true); (DescriptionValue, ViewString, false); (MetaValue, ViewString, false); (IndicatorValue, ViewString, false); (InlineIconName, view_icon, false); (VariantValue, view_variant, false); (Connector, ViewBool, false); (Selected, ViewBool, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "press"; "press-modifiers"; "press-detail"; "pointer-down"; "pointer-up"];
       view_slots = [];
     }
@@ -927,7 +927,7 @@ let view_contract = function
   | Accordion -> Some {
       view_result = "t";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (HeightValue, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (TextValue, ViewString, false); (Selected, ViewBool, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (HeightValue, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (TextValue, ViewString, true); (Selected, ViewBool, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "toggle"; "context-menu"];
       view_slots = [];
     }
@@ -955,7 +955,7 @@ let view_contract = function
   | Tree -> Some {
       view_result = "t";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (AccessibilityLabel, ViewString, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (GrowValue, ViewFloat, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (AccessibilityLabel, ViewString, true); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
@@ -990,7 +990,7 @@ let view_contract = function
   | Sheet -> Some {
       view_result = "t";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (TextValue, ViewString, false); (Detents, ViewString, false); (Sizing, ViewString, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (TextValue, ViewString, true); (Detents, ViewString, false); (Sizing, ViewString, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"; "dismiss"];
       view_slots = [];
     }
@@ -1011,7 +1011,7 @@ let view_contract = function
   | Toolbar -> Some {
       view_result = "t";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (PaddingValue, ViewInt, false); (BackgroundValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (HeightValue, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (OrientationValue, view_orientation, false); (AccessibilityLabel, ViewString, false); (PlacementValue, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (PaddingValue, ViewInt, false); (BackgroundValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (HeightValue, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (OrientationValue, view_orientation, false); (AccessibilityLabel, ViewString, true); (PlacementValue, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }

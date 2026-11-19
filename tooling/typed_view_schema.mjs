@@ -175,7 +175,9 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         slots.push(`(${quote(wireName(label))}, ${quote(structural[1])}, ${!!structural[2]})`);
         continue;
       }
-      const names = extension ? [wireName(label)] : label === 'value' && type === 'string' ? ['text'] : aliases[label] ?? [wireName(label)];
+      const names = extension ? [wireName(label)]
+        : label === 'title' && ['sheet', 'accordion'].includes(wire) ? ['text']
+        : label === 'value' && type === 'string' ? ['text'] : aliases[label] ?? [wireName(label)];
       for (const propName of names) {
         const property = extension ? quote(propName) : properties.get(propName);
         if (!property) throw new Error(`no wire property for typed argument: ${wire}.${label}`);

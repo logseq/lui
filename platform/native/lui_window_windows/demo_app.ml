@@ -344,7 +344,7 @@ let section_controls model_s send =
         model_s;
       caption "values — slider, progress, stepper";
       row ~gap:12 ~cross:`center
-        [ slider ~value:(reactive (fun m -> m.volume) model_s) ~width:200
+        [ slider ~label:"Volume" ~value:(reactive (fun m -> m.volume) model_s) ~width:200
             ~on_change:(on_value send (fun v -> Volume v)) [];
           progress ~value:(reactive (fun m -> m.volume) model_s)
             ~width:120 [];
@@ -686,7 +686,7 @@ let popups model_s send =
            menu_item ~text:"dismiss" ~foreground:"#989eb2"
              ~on_press:(press send (Close P_ctx)) [] ]);
     open_ ~test:(fun m -> m.sheet_open)
-      (sheet ~detents:"medium" ~padding:16
+      (sheet ~title:"Sheet controls" ~detents:"medium" ~padding:16
          ~on_dismiss:(press send (Close P_sheet))
          [ text ~value:"sheet — drag detents live on the platform host"
              ~foreground:"#e4e6ee" ~font_size:"12" [];

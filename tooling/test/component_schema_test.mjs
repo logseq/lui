@@ -35,6 +35,12 @@ test('element constructors expose only admitted properties and events', () => {
     context_menu: 'ContextMenuPress', focus_within: 'FocusWithinChanged',
   };
   assert.equal(functions.has('apply_universal'), false, 'apply_universal must stay internal');
+  for (const [constructor, parameters] of Object.entries(schema.mandatoryParameters)) {
+    for (const parameter of parameters) {
+      assert.ok(functions.get(constructor)?.some(argument => argument.startsWith(`${parameter}:`)),
+        `${constructor}.${parameter} must be mandatory`);
+    }
+  }
   assert.deepEqual(Object.keys(admission.events).sort(), schema.events.map(({ lg }) => lg).sort());
   const violations = [];
   for (const [constructor, kind, childKind] of constructors) {
@@ -64,6 +70,7 @@ test('element constructors expose only admitted properties and events', () => {
         : aliases[base] ?? [base.replaceAll('_', '-')];
       if (base === 'checked' && ['toggle_button', 'menu_item'].includes(constructor)) properties = ['selected'];
       if (base === 'selected' && constructor === 'radio') properties = ['checked'];
+      if (base === 'title' && ['sheet', 'accordion'].includes(constructor)) properties = ['text'];
       if (constructor === 'virtual_list' && ['overscan', 'item_extent'].includes(base)) properties = ['data-attrs'];
       for (const property of properties) {
         assert.ok(schema.properties.some(({ wire }) => wire === property), `unknown property ${constructor}.${parameter}`);

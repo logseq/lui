@@ -135,7 +135,7 @@ let think_body cfg (item_s : item Signal.signal) : t =
       Lui_ui.child_context context ("lui-ai-think:" ^ item.id)
     in
     let open_ = scoped_state context think_open_slot item.streaming in
-    accordion ~text:"Thought process"
+    accordion ~title:"Thought process"
       ~selected_signal:(Signal.value open_)
       ~on_toggle:(fun _ -> Signal.set open_ (not (Signal.get_state open_)))
       [ text ~value:(reactive (fun (i : item) -> i.text) item_s)
@@ -220,7 +220,7 @@ let tool_card cfg (item_s : item Signal.signal) : t =
       Signal.set open_ (Some (not current))
     in
     accordion
-      ~text:(reactive
+      ~title:(reactive
                (fun (i : item) ->
                   match i.tool with
                   | Some call -> tool_headline call
@@ -285,7 +285,7 @@ let tool_group cfg (row_s : row Signal.signal) : t =
       Signal.set open_ (Some (not current))
     in
     content_row cfg (accordion
-      ~text:(reactive
+      ~title:(reactive
                (fun (items : item list) (active : bool) ->
                   let n = List.length items in
                   let plural = if n = 1 then "" else "s" in

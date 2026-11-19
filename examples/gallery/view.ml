@@ -656,7 +656,7 @@ let sheet_section model_source send : t =
     ; paragraph
         ~value:"Sheet uses the host platform's native modal presentation." []
     ; if_ ~test:open_
-        (sheet ~text:"Share" ~height:320 ~padding:24
+        (sheet ~title:"Share" ~height:320 ~padding:24
            ~on_dismiss:(press send Model.CloseSheet)
            [ column ~gap:12
                [ box ~height:24 []
@@ -1065,7 +1065,7 @@ let toolbar_section model_source send : t =
 let accordion_section model_source send : t =
   let open_ = model_source >|= Model.accordion_open in
   section "Accordion"
-    [ accordion ~text:"Do collapsed children stay retained?"
+    [ accordion ~title:"Do collapsed children stay retained?"
         ~selected:(reactive open_)
         ~on_toggle:(on_toggle send (fun v -> Model.SetAccordionOpen v))
         [ paragraph

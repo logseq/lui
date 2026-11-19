@@ -514,6 +514,10 @@ let constructor = function
 ${constructors.join('\n')}
   | _ -> None
 
+let mandatory_labels = function
+${Object.entries(schema.mandatoryParameters ?? {}).map(([name, labels]) => `  | ${JSON.stringify(name)} -> [${labels.map(JSON.stringify).join('; ')}]`).join('\n')}
+  | _ -> []
+
 let exports = function
   | ${[...functions.keys()].map(JSON.stringify).join(' | ')} -> true
   | _ -> false

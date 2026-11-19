@@ -434,7 +434,7 @@ let form_sheet
   sheet
     ?key
     ?accessibility_identifier
-    ~text:title
+    ~title
     ~style_class:"navigation-form"
     ?on_dismiss
     ([ column ~style_class:"form" content ] @ actions)

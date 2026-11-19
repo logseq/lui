@@ -1124,7 +1124,7 @@ val bottom_tabs :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?label:string -> bottom_tab_el list -> t
+  label:string -> bottom_tab_el list -> t
 val bottom_tab :
   ?key:string ->
   ?accessibility_identifier:string ->
@@ -1132,14 +1132,14 @@ val bottom_tab :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?title:string ->
+  title:string ->
   ?icon:icon ->
   ?icon_signal:icon Signal.signal ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->
   ?enabled:bool ->
   ?enabled_signal:bool Signal.signal ->
-  ?on_press:(Lui_protocol.event -> unit) ->
+  on_press:(Lui_protocol.event -> unit) ->
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) -> t list -> bottom_tab_el
@@ -1451,7 +1451,7 @@ val tree :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?label:string ->
+  label:string ->
   ?transition:string -> t list -> t
 val resizable :
   ?key:string ->
@@ -1729,7 +1729,7 @@ val icon :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?name:icon ->
+  name:icon ->
   ?name_signal:icon Signal.signal -> ?size:control_size ->
   ?point_size:int ->
   ?tooltip:string ->
@@ -2269,7 +2269,7 @@ val radio_group :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?on_pointer_leave:(Lui_protocol.event -> unit) -> label:string ->
   ?transition:string -> radio_el list -> t
 val radio :
   ?key:string ->
@@ -2362,9 +2362,9 @@ val slider :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?value:float ->
+  value:float ->
   ?value_signal:float Signal.signal ->
-  ?label:string ->
+  label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_change:(Lui_protocol.event -> unit) ->
@@ -2453,7 +2453,7 @@ val progress :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?value:float -> ?value_signal:float Signal.signal ->
+  value:float -> ?value_signal:float Signal.signal ->
   ?transition:string -> nothing list -> t
 val divider :
   ?key:string ->
@@ -3076,8 +3076,8 @@ val sheet :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?text:string ->
-  ?text_signal:string Signal.signal ->
+  title:string ->
+  ?title_signal:string Signal.signal ->
   ?detents:string ->
   ?detents_signal:string Signal.signal ->
   ?sizing:string ->
@@ -3264,7 +3264,7 @@ val toolbar :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?orientation:orientation ->
-  ?label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:string -> t list -> t
+  label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:string -> t list -> t
 val accordion :
   ?key:string ->
   ?height:int ->
@@ -3274,8 +3274,8 @@ val accordion :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?text:string ->
-  ?text_signal:string Signal.signal ->
+  title:string ->
+  ?title_signal:string Signal.signal ->
   ?selected:bool ->
   ?selected_signal:bool Signal.signal ->
   ?accordion_height:int ->
@@ -3666,7 +3666,7 @@ val stepper :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?active:int ->
+  active:int ->
   ?active_signal:int Signal.signal -> ?label:string -> step_el list -> t
 val step :
   ?key:string ->
@@ -3675,7 +3675,7 @@ val step :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?text:string -> ?text_signal:string Signal.signal -> nothing list -> step_el
+  text:string -> ?text_signal:string Signal.signal -> nothing list -> step_el
 val timeline :
   ?key:string ->
   ?gap:int ->
@@ -3692,7 +3692,7 @@ val timeline_item :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?title:string ->
+  title:string ->
   ?title_signal:string Signal.signal ->
   ?description:string ->
   ?meta:string ->

@@ -48,8 +48,8 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["context_menu [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]", "context-menu", "virtual-rows"],
       ["context_menu [menu_item []; divider []]"],
       ["dropdown_menu [menu_trigger [dropdown_menu [menu_item []]]]"],
-      ['toolbar [button []; text ~value:"ok" []; spacer []]'],
-      ['tree [row [text ~value:"ok" []]; virtual_list []]'],
+      ['toolbar ~label:"Actions" [button []; text ~value:"ok" []; spacer []]'],
+      ['tree ~label:"Files" [row [text ~value:"ok" []]; virtual_list []]'],
       ["input [context_menu [menu_item []]]"],
       ["context_menu [reactive (fun _ -> menu_item []) source]"],
       ['list [list_section ~header:(text ~value:"Title" []) [list_item []]]'],
@@ -417,6 +417,51 @@ let () =
       "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
       join(dir, "layout.ml"), "-o", join(dir, "layout")])
     assert.equal(run([join(dir, "layout")]).trim(), "retained")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
+test("mandatory reactive values provide one owned signal and its current value", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-mandatory-signal-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "mandatory.ml"), `
+let () =
+  let batches = ref [] and conversions = ref 0 and evaluations = ref 0 in
+  let backend = { Lui_protocol.backend_profile = Lui_protocol.generic_profile ();
+    apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+  let project value = incr conversions; value *. 2. in
+  let source value = incr evaluations; value in
+  let view _context model _send =
+    Lui_elements.progress ~value:(reactive project (source model)) [] in
+  let app = Lui_app.create backend 0.25 (fun _ next -> next) view in
+  let check expected =
+    let ops = List.concat_map (fun (batch : Lui_protocol.patch_batch) -> batch.ops) !batches in
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.ProgressValue, Lui_protocol.FloatValue value) -> value = expected
+      | _ -> false) ops) in
+  ignore (Lui_app.start app); ignore (Lui_app.flush app);
+  check 0.5;
+  assert (!evaluations = 1 && !conversions = 1);
+  batches := [];
+  ignore (Lui_app.send app 0.375); ignore (Lui_app.flush app);
+  check 0.75;
+  assert (!evaluations = 1 && !conversions = 2);
+  ignore (Lui_app.dispose app);
+  print_endline "mandatory"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "mandatory.ml"), "-o", join(dir, "mandatory")])
+    assert.equal(run([join(dir, "mandatory")]).trim(), "mandatory")
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })
 
