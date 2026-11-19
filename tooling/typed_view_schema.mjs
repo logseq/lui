@@ -175,13 +175,26 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         slots.push(`(${quote(wireName(label))}, ${quote(structural[1])}, ${!!structural[2]})`);
         continue;
       }
+      const grouped = !extension && {
+        popover_target: () => [['x', 'ViewFloat'], ['y', 'ViewFloat'], ['anchor', domain('anchor')],
+          ['anchor-target', 'ViewString'], ['anchor-rect', '(ViewFloatTuple 4)'],
+          ['anchor-alignment', domain('anchor_alignment')], ['anchor-offset', 'ViewFloat'],
+          ['anchor-alignment-offset', 'ViewFloat']],
+        split_sizing: () => [['value', 'ViewFloat'], ['first-pane-width', 'ViewFloat']],
+        split_motion: () => [['resize-duration', 'ViewInt'], ['resize-easing', domain('resize_easing')],
+          ['resize-origin', 'ViewFloat']],
+      }[type]?.();
+      if (grouped) {
+        for (const [name, value] of grouped) props.set(properties.get(name), {value, required: false});
+        continue;
+      }
       const names = extension ? [wireName(label)]
         : label === 'title' && ['sheet', 'accordion'].includes(wire) ? ['text']
         : label === 'value' && type === 'string' ? ['text'] : aliases[label] ?? [wireName(label)];
       for (const propName of names) {
         const property = extension ? quote(propName) : properties.get(propName);
         if (!property) throw new Error(`no wire property for typed argument: ${wire}.${label}`);
-        const value = domain(label === 'at' ? 'float' : type);
+        const value = type === 'heading_level' ? 'ViewInt' : domain(label === 'at' ? 'float' : type);
         const previous = props.get(property);
         if (previous && previous.value !== value) throw new Error(`conflicting typed property ${wire}.${propName}`);
         props.set(property, {value, required: !optional || previous?.required === true});

@@ -1410,7 +1410,7 @@ let test_split_pixel_echoes () =
   let received = ref [] in
   let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
     ~view:(fun _ _ _ -> Lui_elements.split
-      ~first_width:246.
+      ~sizing:(Lui_elements.First_width 246.)
       ~on_resize:(fun event -> received := event :: !received)
       (Lui_elements.column []) (Lui_elements.column [])) () in
   let id = (drive_node s (Drive.Model.Kind "split")).Drive.Model.id in
@@ -2452,7 +2452,7 @@ let data_attrs_view context _model _send =
           (Signal.constant context.Lui_ui.ui_scheduler
              [ ("data-mood", "ok") ])
         [];
-      Lui_elements.heading ~level:2 ~as_:`H2 ~text_alignment:`center ~value:"Title" [];
+      Lui_elements.heading ~level:`h2 ~as_:`H2 ~text_alignment:`center ~value:"Title" [];
       Lui_elements.paragraph ~as_:`P ~text_alignment:`end_ ~value:"para" [];
       Lui_elements.label ~as_:`Span ~value:"lbl" [];
       Lui_elements.kbd ~data_attrs:[ ("aria-label", "key") ] ~value:"esc" [];
@@ -2672,11 +2672,11 @@ let test_vocab_batch2 () =
       (fun _context _model_source _send ->
          Lui_elements.column
            [ capture_node popover_node
-               (Lui_elements.popover ~at:(10.0, 20.0)
+               (Lui_elements.popover ~target:(Lui_elements.At (10.0, 20.0))
                   ~available_height:200.0 ~role:`menu ~gap:8 [])
            ; Lui_elements.button ~accessibility_identifier:"filter-trigger" ~text:"Filter" []
            ; capture_node target_node
-               (Lui_elements.popover ~anchor:`below ~anchor_target:"filter-trigger" []) ])
+               (Lui_elements.popover ~target:(Lui_elements.Anchor {side = `below; source = Target "filter-trigger"; align = `start; offset = 0.; align_offset = 0.}) []) ])
   in
   ignore (Lui_app.start app);
   flush_app app;
@@ -2992,8 +2992,8 @@ let test_visual_appearance_props () =
            [ capture_node text_node
                (Lui_elements.text ~font_size:"0.75rem" ~font_weight:500
                   ~line_height:"1.4" ~letter_spacing:(-0.5)
-                  ~white_space:"nowrap" ~text_overflow:"ellipsis"
-                  ~overflow:"hidden" []);
+                  ~white_space:`nowrap ~text_overflow:`ellipsis
+                  ~overflow:`hidden []);
              capture_node row_node (fun context parent ->
                 let node = Lui_elements.row ~grow:1.0 [] context parent in
                 Lui_ui.string_property context node Position "absolute";
@@ -3218,7 +3218,7 @@ let test_sheet_presentation_props () =
       ~view:(fun _context _model_source _send ->
          Lui_elements.column
            [ Lui_elements.sheet ~title:"Settings"
-               ~detents:"medium,large" ~sizing:"form" [] ])
+               ~detents:"medium,large" ~sizing:`form [] ])
       ()
   in
   let sheet = drive_node s (Drive.Model.Kind "sheet") in

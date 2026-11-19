@@ -68,6 +68,10 @@ test('element constructors expose only admitted properties and events', () => {
       }
       let properties = base === 'value' && type.startsWith('string') ? ['text']
         : aliases[base] ?? [base.replaceAll('_', '-')];
+      if (constructor === 'popover' && base === 'target') properties =
+        ['x', 'y', 'anchor', 'anchor-target', 'anchor-rect', 'anchor-alignment', 'anchor-offset', 'anchor-alignment-offset'];
+      if (constructor === 'split' && base === 'sizing') properties = ['value', 'first-pane-width'];
+      if (constructor === 'split' && base === 'motion') properties = ['resize-duration', 'resize-easing', 'resize-origin'];
       if (base === 'checked' && ['toggle_button', 'menu_item'].includes(constructor)) properties = ['selected'];
       if (base === 'selected' && constructor === 'radio') properties = ['checked'];
       if (base === 'title' && ['sheet', 'accordion'].includes(constructor)) properties = ['text'];
@@ -81,6 +85,23 @@ test('element constructors expose only admitted properties and events', () => {
     }
   }
   assert.deepEqual(violations, []);
+});
+
+test('semantic tag families exactly match emit-time validation', () => {
+  const signature = readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8');
+  const protocol = readFileSync(join(repository, 'src/lui_protocol.ml'), 'utf8');
+  const functions = typedViewFunctions(signature);
+  for (const [constructor, kind, type] of [
+    ['text', 'Text', 'phrasing_tag'], ['heading', 'Heading', 'heading_tag'],
+    ['paragraph', 'Paragraph', 'paragraph_tag'], ['label', 'Label', 'label_tag'],
+    ['column', 'Column', 'list_container_tag'], ['row', 'Row', 'row_tag'],
+  ]) {
+    assert.ok(functions.get(constructor).includes(`?as_:${type}`));
+    const body = signature.match(new RegExp(`type ${type} = \\[([^\\]]+)\\]`))[1];
+    const tags = [...body.matchAll(/`(\w+)/g)].map(([, tag]) => tag.toLowerCase()).sort();
+    const accepted = protocol.match(new RegExp(`\\| ${kind} ->\\s*List.mem tag\\s*\\[([^\\]]+)\\]`))[1];
+    assert.deepEqual(tags, [...accepted.matchAll(/"([^"]+)"/g)].map(([, tag]) => tag).sort());
+  }
 });
 
 test('Android kind predicates derive from the canonical admission export', () => {

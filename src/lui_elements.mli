@@ -91,36 +91,45 @@ type swipe_edge = [ `leading | `trailing ]
 (** [~as_] semantic element-tag overrides on web. Textual kinds admit
     phrasing-appropriate tags; columns admit [div], [ul], [ol], and rows
     admit [div], [li]. Layout and child contracts remain unchanged. See
-    {!Lui_protocol.element_tag_supported}; a mismatch fails validation at
-    emit, and native hosts ignore the prop. *)
-type element_tag =
-  [ `Span
-  | `Em
-  | `Strong
-  | `B
-  | `I
-  | `U
-  | `S
-  | `Del
-  | `Mark
-  | `Small
-  | `Code
-  | `Kbd
-  | `Sub
-  | `Sup
-  | `Pre
-  | `H1
-  | `H2
-  | `H3
-  | `H4
-  | `H5
-  | `H6
-  | `P
-  | `Div
-  | `Ul
-  | `Ol
-  | `Li
-  | `Label ]
+    {!Lui_protocol.element_tag_supported}; the per-family types match that predicate, and native hosts ignore the prop. *)
+type heading_level = [ `h1 | `h2 | `h3 | `h4 | `h5 | `h6 ]
+type toolbar_placement = [ `automatic | `bottom | `navigation | `principal | `primary_action | `secondary_action | `status | `confirmation_action | `cancellation_action | `destructive_action | `top_bar_leading | `top_bar_trailing ]
+type sheet_sizing = [ `form | `fitted | `page ]
+type font_style = [ `normal | `italic | `oblique ]
+type white_space = [ `normal | `nowrap | `pre_wrap | `pre_line ]
+type text_overflow = [ `clip | `ellipsis ]
+type overflow = [ `visible | `hidden | `auto ]
+type phrasing_tag = [ `Span | `Em | `Strong | `B | `I | `U | `S | `Del | `Mark | `Small | `Code | `Kbd | `Sub | `Sup | `Pre ]
+type heading_tag = [ `H1 | `H2 | `H3 | `H4 | `H5 | `H6 ]
+type paragraph_tag = [ `P | `Span | `Div | `Pre ]
+type label_tag = [ `Label | `Span | `Div ]
+type list_container_tag = [ `Div | `Ul | `Ol ]
+type row_tag = [ `Div | `Li ]
+
+type anchor_source =
+  | Parent
+  | Target of string
+  | Rect of { x : float; y : float; width : float; height : float }
+
+type popover_target =
+  | Cover
+  | At of float * float
+  | Anchor of {
+      side : anchor;
+      source : anchor_source;
+      align : anchor_alignment;
+      offset : float;
+      align_offset : float;
+    }
+
+type split_sizing = Fraction of float | First_width of float
+
+type split_motion = {
+  duration_ms : int;
+  easing : resize_easing;
+  origin : float option;
+}
+
 
 (** [~source] of {!file_picker}: [`files] presents a document importer,
     [`photos] the photo library, [`camera] live capture (iOS only —
@@ -344,7 +353,7 @@ val register_resize :
     a web DOM contract for delegated-event readers, CSS attribute
     selectors and e2e locators; native hosts parse-ignore the prop. *)
 val row :
-  ?as_:element_tag ->
+  ?as_:row_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -399,7 +408,7 @@ val row :
   ?flex_wrap:flex_wrap ->
   ?transition:string -> t list -> t
 val column :
-  ?as_:element_tag ->
+  ?as_:list_container_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -1541,17 +1550,13 @@ val split :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?value:float ->
-  ?value_signal:float Signal.signal ->
-  ?first_width:float ->
-  ?first_width_signal:float Signal.signal ->
+  ?sizing:split_sizing ->
+  ?sizing_signal:split_sizing Signal.signal ->
   ?resize_handle_width:int ->
   ?resize_handle_width_signal:int Signal.signal ->
   ?resize_handle_offset:float ->
   ?resize_handle_offset_signal:float Signal.signal ->
-  ?resize_duration:int ->
-  ?resize_easing:resize_easing ->
-  ?resize_origin:float ->
+  ?motion:split_motion ->
   ?label:string -> ?on_resize:(Lui_protocol.event -> unit) ->
   ?transition:string -> t -> t -> t
 val drawer :
@@ -1770,7 +1775,7 @@ val text :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:phrasing_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -1782,11 +1787,11 @@ val text :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
-  ?font_style:string ->
+  ?font_style:font_style ->
   ?text_decoration:string ->
-  ?white_space:string -> ?line_clamp:int ->
-  ?text_overflow:string ->
-  ?overflow:string ->
+  ?white_space:white_space -> ?line_clamp:int ->
+  ?text_overflow:text_overflow ->
+  ?overflow:overflow ->
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
@@ -1826,11 +1831,11 @@ val heading :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:heading_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?level:int ->
+  ?level:heading_level ->
   ?value:string -> ?value_signal:string Signal.signal ->
   ?text_alignment:text_alignment ->
   ?font_size:string ->
@@ -1838,11 +1843,11 @@ val heading :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
-  ?font_style:string ->
+  ?font_style:font_style ->
   ?text_decoration:string ->
-  ?white_space:string -> ?line_clamp:int ->
-  ?text_overflow:string ->
-  ?overflow:string ->
+  ?white_space:white_space -> ?line_clamp:int ->
+  ?text_overflow:text_overflow ->
+  ?overflow:overflow ->
   ?transition:string -> t list -> t
 val paragraph :
   ?key:string ->
@@ -1877,7 +1882,7 @@ val paragraph :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:paragraph_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -1888,11 +1893,11 @@ val paragraph :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
-  ?font_style:string ->
+  ?font_style:font_style ->
   ?text_decoration:string ->
-  ?white_space:string -> ?line_clamp:int ->
-  ?text_overflow:string ->
-  ?overflow:string ->
+  ?white_space:white_space -> ?line_clamp:int ->
+  ?text_overflow:text_overflow ->
+  ?overflow:overflow ->
   ?transition:string -> t list -> t
 val label :
   ?key:string ->
@@ -1927,7 +1932,7 @@ val label :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:label_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -1937,11 +1942,11 @@ val label :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
-  ?font_style:string ->
+  ?font_style:font_style ->
   ?text_decoration:string ->
-  ?white_space:string -> ?line_clamp:int ->
-  ?text_overflow:string ->
-  ?overflow:string ->
+  ?white_space:white_space -> ?line_clamp:int ->
+  ?text_overflow:text_overflow ->
+  ?overflow:overflow ->
   ?transition:string -> t list -> t
 val kbd :
   ?key:string ->
@@ -3080,8 +3085,8 @@ val sheet :
   ?title_signal:string Signal.signal ->
   ?detents:string ->
   ?detents_signal:string Signal.signal ->
-  ?sizing:string ->
-  ?sizing_signal:string Signal.signal ->
+  ?sizing:sheet_sizing ->
+  ?sizing_signal:sheet_sizing Signal.signal ->
   ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val tooltip :
@@ -3233,14 +3238,8 @@ val popover :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  ?at:float * float ->
-  ?at_signal:(float * float) Signal.signal ->
-  ?anchor:anchor ->
-  ?anchor_target:string ->
-  ?anchor_rect:(float * float * float * float) ->
-  ?anchor_alignment:anchor_alignment ->
-  ?anchor_offset:float ->
-  ?anchor_alignment_offset:float ->
+  ?target:popover_target ->
+  ?target_signal:popover_target Signal.signal ->
   ?available_height:float ->
   ?available_height_signal:float Signal.signal ->
   ?role:popover_role ->
@@ -3264,7 +3263,7 @@ val toolbar :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?orientation:orientation ->
-  label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:string -> t list -> t
+  label:string -> ?toolbar_gap:int -> ?toolbar_class:string -> ?placement:toolbar_placement -> t list -> t
 val accordion :
   ?key:string ->
   ?height:int ->

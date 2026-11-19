@@ -1,5 +1,81 @@
 # LUI API migration guide
 
+## Unreleased: Closed vocabularies and exclusive modes (ADR 0007 Phase 3a, step 3)
+
+The typed element API replaces the following open strings/integers with closed
+polymorphic variants. Existing valid wire values are unchanged:
+
+| Parameter | Type and values |
+| --- | --- |
+| heading level | `heading_level`: `` `h1 `` through `` `h6 `` (still encoded as integers 1–6) |
+| toolbar placement | `toolbar_placement`: `` `automatic `bottom `navigation `principal `primary_action `secondary_action `status `confirmation_action `cancellation_action `destructive_action `top_bar_leading `top_bar_trailing `` |
+| sheet sizing | `sheet_sizing`: `` `form `fitted `page `` |
+| font_style | `` `normal `italic `oblique `` |
+| white_space | `` `normal `nowrap `pre_wrap `pre_line `` |
+| text_overflow | `` `clip `ellipsis `` |
+| overflow | `` `visible `hidden `auto `` |
+
+Signal twins use the same types. Underscores still encode as hyphens, e.g.
+`` `pre_wrap `` becomes `"pre-wrap"`. Replace `~level:2` with ``~level:`h2``,
+`~sizing:"form"` with ``~sizing:`form``, and `~white_space:"pre-wrap"` with
+``~white_space:`pre_wrap``.
+
+The shared `element_tag` type is replaced by exact per-kind `as_` types:
+`phrasing_tag` on text (Span, Em, Strong, B, I, U, S, Del, Mark, Small, Code,
+Kbd, Sub, Sup, Pre); `heading_tag` on heading (H1–H6); `paragraph_tag` on
+paragraph (P, Span, Div, Pre); `label_tag` on label (Label, Span, Div);
+`list_container_tag` on column (Div, Ul, Ol); and `row_tag` on row (Div, Li).
+Tag names remain polymorphic variants, so valid literal calls are unchanged.
+Annotations using `element_tag` must adopt the appropriate family type.
+
+### Popover positioning
+
+Replace `at`/`at_signal`, `anchor`, `anchor_target`, `anchor_rect`,
+`anchor_alignment`, `anchor_offset`, and `anchor_alignment_offset` with one
+`target` (or reactive `target` / low-level `target_signal`):
+
+```ocaml
+popover ~target:(At (10., 20.)) []
+popover ~target:(Anchor {
+  side = `below; source = Target "filter-trigger";
+  align = `start; offset = 8.; align_offset = 0.
+}) []
+popover ~target:(reactive (fun (x, y) -> At (x, y)) position) []
+```
+
+`Cover` is the unchanged no-anchor default. `Anchor.source` is `Parent`,
+`Target identifier`, or `Rect {x; y; width; height}`. A rectangle keeps the
+existing space-separated float encoding. Choose the alignment and offsets
+explicitly in an Anchor record. Mode/source changes remove stale properties,
+including when switching back to Cover. Native demos previously specified an
+invalid point-plus-anchor combination; they now use the intended below-parent
+anchor. `dropdown_menu` and tooltip positioning APIs are unchanged.
+
+### Split sizing and motion
+
+Replace `value`/`value_signal` and `first_width`/`first_width_signal` with
+`sizing`/`sizing_signal`. Use `Fraction value` or `First_width pixels`:
+
+```ocaml
+split ~sizing:(First_width 246.) (column []) (column [])
+split ~sizing:(reactive (fun value -> Fraction value) fraction)
+  ~motion:{duration_ms = 180; easing = `standard; origin = None}
+  (column []) (column [])
+```
+
+Omitting sizing now emits **Fraction 0.5**, including on Apple, which requires
+exactly one sizing mode. Reactive mode changes remove the previous sizing
+property. `motion` groups the former `resize_duration`, `resize_easing`, and
+`resize_origin`. Omitted motion retains instant resizing (duration 0, implicit
+standard easing, no origin). Positive duration emits the chosen easing and
+optional origin. Non-positive duration means instant resizing: duration is
+clamped to zero and easing/origin are omitted to keep the batch valid.
+
+Language-neutral view contracts retain flattened wire fields for positioning,
+sizing, and motion. The JSON renderer translates its existing flat inputs to
+the new sum types and rejects conflicting modes/sources instead of forwarding
+an invalid combination. Newly closed JSON enum inputs reject unknown values.
+
 ## Unreleased: Mandatory element values (ADR 0007 Phase 3a, step 2)
 
 The following constructor labels are now required:

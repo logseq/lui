@@ -465,6 +465,92 @@ let () =
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })
 
+test("exclusive popover and split modes encode and clear their wire properties", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-exclusive-modes-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "modes.ml"), `
+open Lui_protocol
+open Lui_elements
+let () =
+  let kinds = Hashtbl.create 8 and props = Hashtbl.create 8 in
+  let properties id = Option.value (Hashtbl.find_opt props id) ~default:Property_map.empty in
+  let backend = { backend_profile = generic_profile (); apply_batch = (fun batch ->
+    List.iter (function
+      | CreateNode (id, kind) -> Hashtbl.replace kinds id kind
+      | SetProp (id, key, value) -> Hashtbl.replace props id (Property_map.add key value (properties id))
+      | RemoveProp (id, key) -> Hashtbl.replace props id (Property_map.remove key (properties id))
+      | _ -> ()) batch.ops;
+    Hashtbl.iter (fun id kind -> match kind with
+      | Popover | Split -> assert (node_properties_supported kind (properties id))
+      | _ -> ()) kinds; true) } in
+  let view _context model _send = column [
+    popover ~accessibility_identifier:"popup" ~target:(reactive fst model) [];
+    split ~accessibility_identifier:"split" ~sizing:(reactive snd model)
+      ~motion:{duration_ms = 180; easing = \`spring; origin = Some 0.2}
+      (column []) (column []);
+    split ~accessibility_identifier:"default"
+      ~motion:{duration_ms = 0; easing = \`linear; origin = Some 0.8}
+      (column []) (column []);
+    split ~accessibility_identifier:"no-motion" (column []) (column []) ] in
+  let app = Lui_app.create backend (Cover, Fraction 0.25) (fun _ next -> next) view in
+  let check name key expected =
+    let found = Hashtbl.fold (fun _ values result ->
+      if Property_map.find_opt AccessibilityIdentifier values = Some (StringValue name)
+      then Some values else result) props None in
+    assert (Property_map.find_opt key (Option.get found) = expected) in
+  let send target sizing = ignore (Lui_app.send app (target, sizing)); ignore (Lui_app.flush app) in
+  ignore (Lui_app.start app); ignore (Lui_app.flush app);
+  check "popup" AnchorValue None; check "popup" PopupX None;
+  check "split" ProgressValue (Some (FloatValue 0.25));
+  check "split" ResizeDuration (Some (IntValue 180));
+  check "split" ResizeEasing (Some (StringValue "spring"));
+  check "split" ResizeOrigin (Some (FloatValue 0.2));
+  check "default" ProgressValue (Some (FloatValue 0.5));
+  check "default" FirstPaneWidth None; check "default" ResizeDuration (Some (IntValue 0));
+  check "default" ResizeEasing None; check "default" ResizeOrigin None;
+  check "no-motion" ProgressValue (Some (FloatValue 0.5));
+  List.iter (fun key -> check "no-motion" key None) [ResizeDuration; ResizeEasing; ResizeOrigin];
+  send (At (10., 20.)) (First_width 246.);
+  check "popup" PopupX (Some (FloatValue 10.)); check "popup" PopupY (Some (FloatValue 20.));
+  check "split" FirstPaneWidth (Some (FloatValue 246.)); check "split" ProgressValue None;
+  let anchored source = Anchor {side = \`below; source; align = \`end_; offset = 8.; align_offset = 3.} in
+  send (anchored Parent) (Fraction 0.6);
+  check "popup" PopupX None; check "popup" PopupY None;
+  check "popup" AnchorValue (Some (StringValue "below"));
+  check "popup" AnchorAlignmentValue (Some (StringValue "end"));
+  check "popup" AnchorOffset (Some (FloatValue 8.));
+  check "popup" AnchorAlignmentOffset (Some (FloatValue 3.));
+  check "popup" AnchorTarget None; check "popup" AnchorRect None;
+  check "split" ProgressValue (Some (FloatValue 0.6)); check "split" FirstPaneWidth None;
+  send (anchored (Target "trigger")) (Fraction 0.6);
+  check "popup" AnchorTarget (Some (StringValue "trigger"));
+  send (anchored (Rect {x = 1.; y = 2.; width = 30.; height = 40.})) (Fraction 0.6);
+  check "popup" AnchorTarget None;
+  check "popup" AnchorRect (Some (StringValue "1. 2. 30. 40."));
+  send Cover (Fraction 0.6);
+  List.iter (fun key -> check "popup" key None)
+    [PopupX; PopupY; AnchorValue; AnchorTarget; AnchorRect; AnchorAlignmentValue;
+     AnchorOffset; AnchorAlignmentOffset];
+  ignore (Lui_app.dispose app);
+  print_endline "exclusive"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "modes.ml"), "-o", join(dir, "modes")])
+    assert.equal(run([join(dir, "modes")]).trim(), "exclusive")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
 test("virtual_rows owns reactive sources for each mount and borrows caller signals", () => {
   const dir = mkdtempSync(join(tmpdir(), "lui-virtual-source-test-"))
   const run = args => {
