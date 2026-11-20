@@ -91,6 +91,15 @@ let parse_args argv =
   in
   loop default_config argv
 
+let fold_wait_ms ~ui_deadline_ms ~clock_delay_ms ~host_wants_frame ~now_ms =
+  let wait = ui_deadline_ms -. now_ms in
+  let wait =
+    match clock_delay_ms with
+    | None -> wait
+    | Some delay -> Float.min wait delay
+  in
+  if host_wants_frame then Float.min wait 0. else wait
+
 module Input = struct
   type key =
     | Return
@@ -562,6 +571,8 @@ module Ui = struct
     mutable scroll : Lui_scroll.state;
     mutable scroll_clock_ms : float;
     scrollbar_deadlines : (int, float) Hashtbl.t;
+    toast_deadlines : (int, float) Hashtbl.t;
+    mutable toast_rev : int;
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
     mutable menu_scope : int;
@@ -616,6 +627,8 @@ module Ui = struct
       scroll = Lui_scroll.initial;
       scroll_clock_ms = 0.;
       scrollbar_deadlines = Hashtbl.create 8;
+      toast_deadlines = Hashtbl.create 8;
+      toast_rev = -1;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
       menu_scope = 0; menu_typeahead_deadline = 0.; menu_reveal = 0; menu_picker = 0; pending_picker = None;
@@ -712,8 +725,11 @@ module Ui = struct
     let initial =
       if t.menu_typeahead_deadline > 0. then t.menu_typeahead_deadline
       else Float.infinity in
+    let initial =
+      Hashtbl.fold (fun _ deadline next -> Float.min deadline next)
+        t.scrollbar_deadlines initial in
     Hashtbl.fold (fun _ deadline next -> Float.min deadline next)
-      t.scrollbar_deadlines initial
+      t.toast_deadlines initial
 
   (* Install the next scroll state, recording which containers'
      offsets moved (a moved offset shifts every descendant rect, so
@@ -1077,7 +1093,48 @@ module Ui = struct
     t.sync_rects_epoch <- t.rects_epoch;
     take_blur_actions t store @ List.rev !acts
 
-  let store_changed t store = sync t store
+  let schedule_toasts t store =
+    let live = Hashtbl.create 8 in
+    Lui_store.iter_preorder store (fun id ->
+      if Lui_store.kind store id = "toast" then begin
+        Hashtbl.replace live id ();
+        if not (Hashtbl.mem t.toast_deadlines id) then
+          match Lui_store.int_prop store id "duration" with
+          | Some ms when ms > 0 ->
+            Hashtbl.replace t.toast_deadlines id
+              (t.scroll_clock_ms +. float ms)
+          | _ -> ()
+      end);
+    Hashtbl.filter_map_inplace
+      (fun id deadline -> if Hashtbl.mem live id then Some deadline else None)
+      t.toast_deadlines
+
+  let toast_actions t store =
+    let now = t.scroll_clock_ms in
+    let acts = ref [] in
+    Hashtbl.filter_map_inplace
+      (fun id deadline ->
+        if deadline > now then Some deadline
+        else if
+          Lui_store.mem store id
+          && event_supported store id (Dismiss id)
+        then begin
+          acts := Dispatch (Dismiss id) :: !acts;
+          None
+        end
+        else None)
+      t.toast_deadlines;
+    List.rev !acts
+
+  let store_changed t store =
+    let acts = sync t store in
+    let rev = Lui_store.revision store in
+    if rev <> t.toast_rev then begin
+      schedule_toasts t store;
+      t.toast_rev <- rev
+    end;
+    if Hashtbl.length t.toast_deadlines = 0 then acts
+    else acts @ toast_actions t store
 
   let resizing_split t = Lui_pointer.resizing t.pointer
 

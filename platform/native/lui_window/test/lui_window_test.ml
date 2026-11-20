@@ -2839,6 +2839,50 @@ let test_file_drop () =
      | Some (3, "text:hello", 3) -> true
      | _ -> false)
 
+let test_fold_wait_ms () =
+  Alcotest.(check (float 0.001)) "ui deadline"
+    40.
+    (fold_wait_ms ~ui_deadline_ms:140. ~clock_delay_ms:None
+       ~host_wants_frame:false ~now_ms:100.);
+  Alcotest.(check (float 0.001)) "clock sooner than ui"
+    10.
+    (fold_wait_ms ~ui_deadline_ms:140. ~clock_delay_ms:(Some 10.)
+       ~host_wants_frame:false ~now_ms:100.);
+  Alcotest.(check (float 0.001)) "frame due wakes immediately"
+    0.
+    (fold_wait_ms ~ui_deadline_ms:140. ~clock_delay_ms:(Some 10.)
+       ~host_wants_frame:true ~now_ms:100.);
+  Alcotest.(check bool) "idle with no timers waits forever" true
+    (Float.is_infinite
+       (fold_wait_ms ~ui_deadline_ms:Float.infinity ~clock_delay_ms:None
+          ~host_wants_frame:false ~now_ms:100.))
+
+let test_toast_duration_dismiss () =
+  let s =
+    store_of
+      [ CreateNode (1, Root);
+        CreateNode (2, Toast);
+        InsertChild (1, 2, 0);
+        SetProp (2, DurationValue, IntValue 2500) ]
+  in
+  let ui = Ui.create () in
+  Ui.tick_scrollbars ui ~now_ms:1000.;
+  let dismiss acts =
+    List.filter_map
+      (function Dispatch (Dismiss id) -> Some id | _ -> None)
+      acts
+  in
+  Alcotest.(check (list int)) "no dismiss before duration"
+    [] (dismiss (Ui.store_changed ui s));
+  Alcotest.(check (float 0.001)) "deadline is now + duration"
+    3500. (Ui.next_input_deadline ui);
+  Ui.tick_scrollbars ui ~now_ms:3499.;
+  Alcotest.(check (list int)) "still open at deadline-1"
+    [] (dismiss (Ui.store_changed ui s));
+  Ui.tick_scrollbars ui ~now_ms:3500.;
+  Alcotest.(check (list int)) "dismisses when duration elapses"
+    [ 2 ] (dismiss (Ui.store_changed ui s))
+
 let test_overlay_close () =
   let s =
     store_of
@@ -4941,7 +4985,9 @@ let test_nested_split_pointer_resize () =
 
 let () =
   Alcotest.run "lui_window"
-    [ ("config", [ Alcotest.test_case "parse_args" `Quick test_parse_args ]);
+    [ ("config",
+        [ Alcotest.test_case "parse_args" `Quick test_parse_args;
+          Alcotest.test_case "fold_wait_ms" `Quick test_fold_wait_ms ]);
       ( "input",
         [ Alcotest.test_case "tables" `Quick test_input_tables ] );
       ( "admission",
@@ -5055,6 +5101,8 @@ let () =
           Alcotest.test_case "picker input ownership" `Quick test_picker_menu_input_ownership;
           Alcotest.test_case "menu row focus chrome" `Quick test_menu_row_focus_chrome;
           Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
+          Alcotest.test_case "toast duration dismiss" `Quick
+            test_toast_duration_dismiss;
           Alcotest.test_case "modal+esc" `Quick test_overlay_close;
           Alcotest.test_case "retained anchor scroll shift" `Quick test_retained_anchor_scroll_shift;
           Alcotest.test_case "retained popover input" `Quick test_retained_popover_input;

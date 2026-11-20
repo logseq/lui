@@ -30,6 +30,17 @@ val default_config : config
     [--drop-file PATH], [--windows N]. *)
 val parse_args : string list -> (config, string) result
 
+val fold_wait_ms :
+  ui_deadline_ms:float ->
+  clock_delay_ms:float option ->
+  host_wants_frame:bool ->
+  now_ms:float ->
+  float
+(** Milliseconds the host should block for the next event: the soonest of
+    the UI deadline, the application-clock delay from {!Lui_clock.next_delay},
+    and zero when a frame is due. [clock_delay_ms] of [None] means the clock
+    has nothing pending. *)
+
 (** Backend-neutral input events. [main.ml] translates SDL events into
     these; [Ui.handle] maps them to LUI protocol events. Coordinates
     are in logical (window) pixels. *)
@@ -463,7 +474,9 @@ module Ui : sig
 
   val scrollbar_visible : t -> int -> bool
   val next_input_deadline : t -> float
-  (** True while a container's overlay scrollbar is active. Hidden at rest. *)
+  (** Soonest of the scrollbar-hide, menu-typeahead and toast-duration
+      deadlines, or [infinity] when none are pending. Hosts fold this
+      into their event-wait timeout. *)
 
   val set_scroll_cap_x : t -> int -> float -> unit
 
