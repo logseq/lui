@@ -113,6 +113,8 @@ let () =
     else Lui_linux.ladder ~env
   in
   sdl_ok (Sdl.init Sdl.Init.(video + events));
+  Lui_resource.set_completion_wake (fun () ->
+    try Sdl.run_on_main_thread ignore with _ -> ());
   (* GL context requirements from lui_gl.mli: OpenGL 3.3 core,
      double-buffered. Attributes are hints — SDL may refuse or
      substitute, in which case Lui_gl.init fails and the ladder walks
@@ -218,13 +220,14 @@ let () =
           (Lui_vulkan.driver v) (Lui_vulkan.dual v);
         vk_cell := Some v;
         let b = mk_blit () in
+        let last_pix = ref Bytes.empty in
         attempt
           { Lui_host.name = "lui_vulkan+blit";
             render =
               (fun s ->
-                 (* The offscreen frame image is sized at init; a
-                    resized scene forces a re-init. On failure the
-                    rung degrades to a zeroed frame — no crash. *)
+                 (* Offscreen render + readback; only damaged rows are
+                    uploaded through Lui_blit. Window swapchain present
+                    is a follow-up (the renderer has no surface). *)
                  let v =
                    match !vk_cell with
                    | Some v -> Some v
@@ -238,27 +241,33 @@ let () =
                  in
                  match v with
                  | None ->
-                   Bytes.create (s.Lui_scene.width * s.Lui_scene.height * 4)
+                   Bytes.make (s.Lui_scene.width * s.Lui_scene.height * 4) '\000'
                  | Some v -> (
                    try
                      Lui_vulkan.render v s;
-                     let pix =
-                       Lui_vulkan.read_frame v ~w:s.Lui_scene.width
-                         ~h:s.Lui_scene.height
-                     in
+                     let w, h = s.Lui_scene.width, s.Lui_scene.height in
+                     let pix = Lui_vulkan.read_frame v ~w ~h in
                      (match b with
                       | Some b ->
-                        ignore
-                          (Lui_blit.update b ~pix
-                             ~stride:s.Lui_scene.width);
+                        (match
+                           Lui_vulkan.changed_rows ~prev:!last_pix pix ~w ~h
+                         with
+                         | None -> ()
+                         | Some (0, rh) when rh = h ->
+                           ignore (Lui_blit.update b ~pix ~stride:w)
+                         | Some (y0, y1) ->
+                           ignore
+                             (Lui_blit.update_region b ~x0:0 ~y0 ~x1:w ~y1
+                                ~pix ~stride:w));
+                        last_pix := pix;
                         Lui_blit.present b
                       | None -> ());
                      pix
                    with
                    | Lui_vulkan.Error m ->
                      warn "lui_vulkan.render: %s" m;
-                     Bytes.create
-                       (s.Lui_scene.width * s.Lui_scene.height * 4))) }
+                     Bytes.make
+                       (s.Lui_scene.width * s.Lui_scene.height * 4) '\000')) }
           false)
     | Lui_linux.Gl ->
       if headless then begin
@@ -291,8 +300,9 @@ let () =
                        with
                        | Lui_gl.Error m ->
                          warn "lui_gl.render: %s" m;
-                         Bytes.create
-                           (s.Lui_scene.width * s.Lui_scene.height * 4)) }
+                         Bytes.make
+                           (s.Lui_scene.width * s.Lui_scene.height * 4)
+                           '\000') }
                 true
             | Error m ->
               warn "lui_gl.init failed: %s" m;
@@ -461,16 +471,22 @@ let () =
       let dw, dh = drawable () in
       (match !blit_cell with
        | Some b ->
-         if
-           (match Lui_blit.resize b ~w:dw ~h:dh with
-            | Ok () -> false
-            | Error m -> warn "blit resize: %s" m; true)
-         then ();
+         (match Lui_blit.resize b ~w:dw ~h:dh with
+          | Ok () -> ()
+          | Error m ->
+            warn "blit resize: %s" m;
+            blit_cell := None)
        | None -> ());
-      (* The Vulkan rung's frame image is sized at init: drop it so
-         the next render re-inits at the new extent. *)
+      (* Recreate only the offscreen frame image; keep the Vulkan
+         instance, device and pipelines. *)
       (match !vk_state with
-       | Some v -> Lui_vulkan.release v; vk_state := None
+       | Some v ->
+         (match Lui_vulkan.resize v ~w:dw ~h:dh with
+          | Ok () -> ()
+          | Error m ->
+            warn "lui_vulkan.resize: %s" m;
+            Lui_vulkan.release v;
+            vk_state := None)
        | None -> ());
       scale_cell := float dw /. float (max 1 !win_w);
       Ui.set_scale ui !scale_cell;
@@ -563,6 +579,28 @@ let () =
      | Lui_shell_linux.Session_bus -> "session-bus"
      | Lui_shell_linux.Indicator -> "indicator")
     (Lui_shell_linux.gui_available ());
+  let dbus_connected =
+    Lui_shell_linux.transport () <> Lui_shell_linux.Offline
+    || ax_transport <> Lui_ax_linux.Offline
+  in
+  let dbus_fds =
+    List.filter_map
+      (fun fd -> Option.map Lui_linux.fd_of_int fd)
+      [ Lui_shell_linux.unix_fd (); Lui_ax_linux.unix_fd ax ]
+  in
+  let dbus_watching = dbus_fds <> [] in
+  if dbus_watching && not headless then
+    ignore
+      (Domain.spawn (fun () ->
+         let rec loop () =
+           match Unix.select dbus_fds [] [] (-1.) with
+           | [], _, _ -> loop ()
+           | _ ->
+             (try Sdl.run_on_main_thread ignore with _ -> ());
+             Unix.sleepf 0.01;
+             loop ()
+         in
+         loop ()));
   let e = Sdl.Event.create () in
   let handle_sdl_event () =
     Ui.tick_scrollbars ui ~now_ms:(perf_s () *. 1000.);
@@ -612,7 +650,13 @@ let () =
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
+    let now_s = t0 in
+    let now_ms = now_s *. 1000. in
     drain_events ();
+    ignore (Lui_app.tick_clock app ~now:now_ms);
+    Lui_host.tick host ~now:now_s;
+    ignore (Lui_resource.drain_all ());
+    Ui.tick_scrollbars ui ~now_ms;
     (* Patches queued by dispatched events land in the store here;
        layout must see them before the next paint or hit test.
        Store-driven effects: Appear lifecycle events, scroll-target
@@ -639,7 +683,6 @@ let () =
         (Assembly.handle asm (Input.Caret (caret_rect ())));
     (* Headless proves the loop: force a repaint every iteration so
        the frame counter and checksum actually run. *)
-    Ui.tick_scrollbars ui ~now_ms:(perf_s () *. 1000.);
     let dirty = headless || Ui.want_frame ui host in
     if dirty then begin
       (* populate's anchor-drift corrections surface as VisibleRange
@@ -659,7 +702,13 @@ let () =
     if not headless && continue () then begin
       ignore (Lui_app.flush app);
       let now = perf_s () *. 1000. in
-      let next = Ui.next_input_deadline ui -. now in
+      let next =
+        fold_wait_ms
+          ~ui_deadline_ms:(Ui.next_input_deadline ui)
+          ~clock_delay_ms:(Lui_clock.next_delay (Lui_app.clock app))
+          ~host_wants_frame:false
+          ~now_ms:now
+      in
       let next =
         if Lui_store.revision store <> lifecycle_revision then 0.
         else if Ui.want_frame ui host then begin
@@ -673,9 +722,9 @@ let () =
             Float.min next (t0 *. 1000. +. 1000. /. hz -. now)
         end else next in
       let next =
-        if Lui_shell_linux.transport () <> Lui_shell_linux.Offline
-           || ax_transport <> Lui_ax_linux.Offline then Float.min next 50.
-        else next in
+        Lui_linux.dbus_wait_cap_ms ~connected:dbus_connected
+          ~watching:dbus_watching next
+      in
       if (if next = Float.infinity then Sdl.wait_event (Some e)
           else Sdl.wait_event_timeout (Some e)
             (int_of_float (Float.ceil (Float.max 0. next))))

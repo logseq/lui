@@ -129,7 +129,6 @@ type drv = {
   app : (Demo_app.model, Demo_app.action) Lui_app.reducer_app;
   a11y : Lui_a11y.t;
   mutable drop_seen : int;
-  mutable toast_since : float option;
   reqs_seen : (string, int) Hashtbl.t;
   checksum : Checksum.t;
   mutable frame : int;
@@ -355,16 +354,7 @@ let poll_driver (s : surf) =
     Lui_shell.set_dock_badge
       (match m.Demo_app.items with
        | [] -> None
-       | l -> Some (string_of_int (List.length l)));
-    (* The toast's [duration] prop is informational on this backend;
-       the driver owns the clock and dismisses after 2.5 s. *)
-    (match m.Demo_app.toast_open, d.toast_since with
-     | true, None -> d.toast_since <- Some (perf_s ())
-     | true, Some t0 when perf_s () -. t0 >= 2.5 ->
-       ignore (Lui_app.send d.app (Demo_app.Close Demo_app.P_toast));
-       d.toast_since <- None
-     | false, _ -> d.toast_since <- None
-     | _ -> ())
+       | l -> Some (string_of_int (List.length l)))
   end
 
 (* One frame-callback for one window: flush queued patches, run
@@ -376,6 +366,11 @@ let poll_driver (s : surf) =
    until the nearest deadline. *)
 let tick ?(live_resize = false) (s : surf) ~t0 =
   let d = s.driver in
+  let now_s = perf_s () in
+  let now_ms = now_s *. 1000. in
+  ignore (Lui_app.tick_clock d.app ~now:now_ms);
+  Lui_host.tick s.host ~now:now_s;
+  ignore (Lui_resource.drain_all ());
   (match d.metal, d.presentations with
    | Some metal, Some meter when not !headless ->
      let displayed_frames = Lui_metal.presented_frames metal in
@@ -394,6 +389,7 @@ let tick ?(live_resize = false) (s : surf) ~t0 =
   let allocation_before = if frame_stats then
     Some (Gc.allocated_bytes (), (Gc.quick_stat ()).minor_collections) else None in
   let store = Lui_host.store s.host in
+  Ui.tick_scrollbars s.ui ~now_ms;
   ignore (Lui_app.flush d.app);
   apply_actions s (Ui.store_changed s.ui store);
   (* Effects can dispatch back into the app — flush once more so the
@@ -410,7 +406,6 @@ let tick ?(live_resize = false) (s : surf) ~t0 =
     apply_actions s (Multi.dispatch s (Input.Caret (d.caret_rect ())));
   (* Headless proves the loop: force a repaint every iteration so
      the frame counter and checksum actually run. *)
-  Ui.tick_scrollbars s.ui ~now_ms:(perf_s () *. 1000.);
   if !headless || Ui.want_frame s.ui s.host then
     Frame.request_frame d.sched;
   let decision =
@@ -771,7 +766,7 @@ let open_window ~title ~idx =
     { sdl = !win; gctx_cell; gl_live_cell; vsync; blit_cell; metal;
       display_link = false;
       popups = Lui_blit.Popups.create ();
-      renderer_cell; app; a11y; drop_seen = 0; toast_since = None;
+      renderer_cell; app; a11y; drop_seen = 0;
       reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
       frame = 0;
       stats = { frames = 0; acc_ms = 0.; min_ms = 1e9; max_ms = 0. };
@@ -955,6 +950,8 @@ let () =
   prefer_metal :=
     not !headless && not !use_cpu && env <> "gl" && env <> "opengl";
   sdl_ok (Sdl.init Sdl.Init.(video + events));
+  Lui_resource.set_completion_wake (fun () ->
+    try Sdl.run_on_main_thread ignore with _ -> ());
   (* GL context requirements from lui_gl.mli: OpenGL 3.3 core,
      double-buffered. Attributes are hints — SDL may refuse or
      substitute, in which case Lui_gl.init fails and the no-op
@@ -1016,11 +1013,14 @@ let () =
          | Frame.Wait_ms ms -> wait_ms := Float.min !wait_ms ms
          | Frame.Present when Ui.want_frame s.ui s.host -> wait_ms := 0.
          | Frame.Present | Frame.Idle -> ());
-        let deadline = Ui.next_input_deadline s.ui in
-        let deadline = match s.driver.toast_since with
-          | None -> deadline
-          | Some at -> Float.min deadline ((at +. 2.5) *. 1000.) in
-        wait_ms := Float.min !wait_ms (deadline -. perf_s () *. 1000.));
+        let now_ms = perf_s () *. 1000. in
+        wait_ms :=
+          Float.min !wait_ms
+            (fold_wait_ms
+               ~ui_deadline_ms:(Ui.next_input_deadline s.ui)
+               ~clock_delay_ms:(Lui_clock.next_delay (Lui_app.clock s.driver.app))
+               ~host_wants_frame:(Ui.want_frame s.ui s.host)
+               ~now_ms));
     incr iter_no;
     if not !headless && continue () then begin
       Lui_metal.set_sdl_waiting true;
