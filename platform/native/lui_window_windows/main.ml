@@ -502,10 +502,11 @@ let () =
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
-    let now_ms = t0 *. 1000. in
     drain_events ();
+    let now_s = perf_s () in
+    let now_ms = now_s *. 1000. in
     ignore (Lui_app.tick_clock app ~now:now_ms);
-    Lui_host.tick host ~now:t0;
+    Lui_host.tick host ~now:now_s;
     ignore (Lui_resource.drain_all ());
     Ui.tick_scrollbars ui ~now_ms;
     (* Patches queued by dispatched events land in the store here;
@@ -578,9 +579,13 @@ let () =
         if remaining > 0.5 then
           Lui_win32.delay_ms (int_of_float remaining)
       end
-      else if wait = Float.infinity then Lui_win32.delay_ms 4
-      else if wait > 0.5 then
-        Lui_win32.delay_ms (int_of_float (Float.ceil wait))
+      else begin
+        (* delay_ms is Sleep: cap idle so window messages still drain
+           while folding timer deadlines down to an immediate wake. *)
+        let cap = if wait = Float.infinity then 4. else Float.min wait 4. in
+        if cap > 0.5 then
+          Lui_win32.delay_ms (int_of_float (Float.ceil cap))
+      end
     end
   done;
   stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name;

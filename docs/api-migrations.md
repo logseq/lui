@@ -4120,4 +4120,5 @@ still reads the frame back and uploads damaged rows through
 `Lui_blit`.
 
 Terminal `pump` retries short PTY writes; `flush_pending` is the
-testable helper. `Terminal_pty.close` is idempotent.
+testable helper. Incoming chunks enqueue in O(1). `Terminal_pty.close`
+is idempotent.

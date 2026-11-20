@@ -17,7 +17,10 @@ type t = {
   render : Lui_text.font R.t;
   mutable pty : P.t option;
   write_buf : bytes;
-  mutable pending : string list;  (* oldest-first bytes queued for the pty *)
+  (* Two-list queue: [pending_out] next-to-write, [pending_in] reversed
+     incoming. Enqueue is O(1); flush never copies the whole backlog. *)
+  mutable pending_out : string list;
+  mutable pending_in : string list;
 }
 
 let create ?(cols = 80) ?(rows = 24) ?(max_scrollback = 10_000)
@@ -29,14 +32,28 @@ let create ?(cols = 80) ?(rows = 24) ?(max_scrollback = 10_000)
       ~theme ()
   in
   { vt; render; pty = None; write_buf = Bytes.create 65536;
-    pending = [] }
+    pending_out = []; pending_in = [] }
 
 let grid t = Vt.grid t.vt
 let renderer t = t.render
 
+let enqueue_pending t s =
+  if s <> "" then t.pending_in <- s :: t.pending_in
+
+let rec take_pending t =
+  match t.pending_out with
+  | s :: rest -> t.pending_out <- rest; Some s
+  | [] ->
+    match t.pending_in with
+    | [] -> None
+    | inn ->
+      t.pending_out <- List.rev inn;
+      t.pending_in <- [];
+      take_pending t
+
 (* Apply an action the parser raised. *)
 let act t = function
-  | Vt.Reply s -> t.pending <- t.pending @ [s]
+  | Vt.Reply s -> enqueue_pending t s
   | _ -> ()
 
 let feed t s =
@@ -79,7 +96,15 @@ let pump t =
   match t.pty with
   | None -> []
   | Some p ->
-    t.pending <- flush_pending ~write:(P.write_string p) t.pending;
+    let rec flush_self () =
+      match take_pending t with
+      | None -> ()
+      | Some s ->
+        let left = unwritten ~wrote:(P.write_string p s) s in
+        if left = "" then flush_self ()
+        else t.pending_out <- left :: t.pending_out
+    in
+    flush_self ();
     let acts = ref [] in
     (try
        while true do
@@ -92,7 +117,7 @@ let pump t =
     List.iter (act t) !acts;
     !acts
 
-let write t s = if s <> "" then t.pending <- t.pending @ [s]
+let write t s = enqueue_pending t s
 
 let resize t ~cols ~rows =
   G.resize (Vt.grid t.vt) ~cols ~rows;

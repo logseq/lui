@@ -147,6 +147,7 @@ let () =
      [Lui_window.Renderer_ladder]; this supplies the per-rung init and
      the window re-fit the demote path needs. *)
   let blit_cell = ref None in
+  let last_pix = ref Bytes.empty in
   let vk_cell = ref None in
   let gctx_cell = ref None in
   let mk_blit () =
@@ -220,7 +221,7 @@ let () =
           (Lui_vulkan.driver v) (Lui_vulkan.dual v);
         vk_cell := Some v;
         let b = mk_blit () in
-        let last_pix = ref Bytes.empty in
+        last_pix := Bytes.empty;
         attempt
           { Lui_host.name = "lui_vulkan+blit";
             render =
@@ -327,7 +328,8 @@ let () =
         (match !vk_cell with
          | Some v -> Lui_vulkan.release v; vk_cell := None
          | None -> ());
-        blit_cell := None)
+        blit_cell := None;
+        last_pix := Bytes.empty)
       ~before_walk:(fun rest ->
         (* Re-flag the window for the rung about to be tried. *)
         Lui_blit.Popups.clear popups;
@@ -473,9 +475,11 @@ let () =
        | Some b ->
          (match Lui_blit.resize b ~w:dw ~h:dh with
           | Ok () -> ()
-          | Error m ->
-            warn "blit resize: %s" m;
-            blit_cell := None)
+          | Error m -> warn "blit resize: %s" m);
+         (* Same-size moves still replace the SDL texture; drop the
+            damage baseline so the next present re-uploads. Keep the
+            cell so a later resize can retry. *)
+         last_pix := Bytes.empty
        | None -> ());
       (* Recreate only the offscreen frame image; keep the Vulkan
          instance, device and pipelines. *)
@@ -584,21 +588,19 @@ let () =
     || ax_transport <> Lui_ax_linux.Offline
   in
   let dbus_fds =
-    List.filter_map
-      (fun fd -> Option.map Lui_linux.fd_of_int fd)
+    List.filter_map Fun.id
       [ Lui_shell_linux.unix_fd (); Lui_ax_linux.unix_fd ax ]
   in
   let dbus_watching = dbus_fds <> [] in
+  let gtk_pump = Lui_shell_linux.gui_available () in
   if dbus_watching && not headless then
     ignore
       (Domain.spawn (fun () ->
          let rec loop () =
-           match Unix.select dbus_fds [] [] (-1.) with
-           | [], _, _ -> loop ()
-           | _ ->
+           if Lui_linux.select_readable dbus_fds (-1.) > 0 then
              (try Sdl.run_on_main_thread ignore with _ -> ());
-             Unix.sleepf 0.01;
-             loop ()
+           Unix.sleepf 0.01;
+           loop ()
          in
          loop ()));
   let e = Sdl.Event.create () in
@@ -650,9 +652,9 @@ let () =
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
-    let now_s = t0 in
-    let now_ms = now_s *. 1000. in
     drain_events ();
+    let now_s = perf_s () in
+    let now_ms = now_s *. 1000. in
     ignore (Lui_app.tick_clock app ~now:now_ms);
     Lui_host.tick host ~now:now_s;
     ignore (Lui_resource.drain_all ());
@@ -723,7 +725,7 @@ let () =
         end else next in
       let next =
         Lui_linux.dbus_wait_cap_ms ~connected:dbus_connected
-          ~watching:dbus_watching next
+          ~watching:dbus_watching ~gtk:gtk_pump next
       in
       if (if next = Float.infinity then Sdl.wait_event (Some e)
           else Sdl.wait_event_timeout (Some e)

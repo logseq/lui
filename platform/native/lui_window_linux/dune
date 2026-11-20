@@ -21,6 +21,9 @@
   lui_sdl3
   ocaml-signal
   unix)
+ (foreign_stubs
+  (language c)
+  (names lui_linux_stubs))
  (preprocess (pps lui_ppx))
  (wrapped false))
 

@@ -1019,7 +1019,7 @@ let () =
             (fold_wait_ms
                ~ui_deadline_ms:(Ui.next_input_deadline s.ui)
                ~clock_delay_ms:(Lui_clock.next_delay (Lui_app.clock s.driver.app))
-               ~host_wants_frame:(Ui.want_frame s.ui s.host)
+               ~host_wants_frame:false
                ~now_ms));
     incr iter_no;
     if not !headless && continue () then begin
