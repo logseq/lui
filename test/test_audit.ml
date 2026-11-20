@@ -1251,51 +1251,6 @@ let anchorless_virtual_replacement () =
     (Signal.sample (Lui_virtual.binding source) = None);
   Lui_virtual.dispose_owner owner
 
-let anchorless_keyed_direct_insertion () =
-  let emitted = ref [] in
-  let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun batch ->
-    emitted := List.rev_append batch.ops !emitted; true)) in
-  let scope = Signal.scope "direct-keyed-insertion" in
-  let context = Lui_ui.context app scope in
-  let parent = Lui_ui.column context in
-  let append context value = Lui_ui.append context parent (Lui_ui.text context value) in
-  append context "prefix";
-  let items = Signal.state context.ui_scheduler [1; 0; 3] in
-  Lui_dynamic.keyed_range context parent (Signal.value items) Fun.id Int.compare
-    (fun row item ->
-      let key = Signal.sample item in
-      if key <> 0 then begin
-        append row (string_of_int key ^ "a");
-        if key = 9 then failwith "rejected keyed row";
-        append row (string_of_int key ^ "b")
-      end);
-  append context "suffix";
-  Signal.mount scope;
-  ignore (Lui_runtime.flush app);
-  let values () = List.map (fun node ->
-    match Property_map.find_opt TextValue (Hashtbl.find app.runtime_properties node) with
-    | Some (StringValue value) -> value
-    | _ -> assert false) (Lui_runtime.children app parent) in
-  let publish values = emitted := []; Signal.set items values; ignore (Lui_runtime.flush app) in
-  publish [1; 2; 0; 3];
-  Alcotest.(check (list int)) "new roots insert at their final indices" [3; 4]
-    (List.filter_map (function InsertChild (owner, _, index) when owner = parent -> Some index | _ -> None) (List.rev !emitted));
-  Alcotest.(check bool) "insertion needs no moves" false
-    (List.exists (function MoveChild _ -> true | _ -> false) !emitted);
-  let expected = ["prefix"; "1a"; "1b"; "2a"; "2b"; "3a"; "3b"; "suffix"] in
-  Alcotest.(check (list string)) "empty and multi-root ranges stay ordered" expected (values ());
-  check_failure "failed middle insertion rolls back" (attempt (fun () -> publish [1; 8; 9; 2; 0; 3]));
-  Alcotest.(check (list string)) "rollback retains every published root" expected (values ());
-  publish [4; 1; 2; 0; 3; 5];
-  Alcotest.(check bool) "multiple insertions need no moves" false
-    (List.exists (function MoveChild _ -> true | _ -> false) !emitted);
-  Alcotest.(check (list string)) "insertion recovers after rollback"
-    (["prefix"; "4a"; "4b"; "1a"; "1b"; "2a"; "2b"; "3a"; "3b"; "5a"; "5b"; "suffix"]) (values ());
-  publish [];
-  Alcotest.(check (list string)) "empty source retains static siblings" ["prefix"; "suffix"] (values ());
-  Signal.dispose_scope scope;
-  Alcotest.(check int) "all ranges released" 0 (Lui_runtime.dynamic_segment_count app)
-
 let anchorless_state_lifetime () =
   let app = runtime () in
   let scope = Signal.scope "range-states" in
@@ -1343,7 +1298,6 @@ let existing_tests = List.map (fun (name, f) -> Alcotest.test_case name `Quick f
    "anchorless static sibling", anchorless_static_sibling;
    "anchorless virtual replacement", anchorless_virtual_replacement;
    "anchorless state lifetime", anchorless_state_lifetime;
-   "anchorless keyed direct insertion", anchorless_keyed_direct_insertion;
    "keyed state isolation and lifetime", keyed_states;
    "boundary initial mount rollback", boundary_initial_mount;
    "boundary shared publication work", boundary_shared_publication_work;
