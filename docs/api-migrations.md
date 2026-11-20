@@ -30,6 +30,25 @@ The language-neutral menu-item view contract includes these properties too.
 This exposes existing wire properties only; the wire vocabulary, admission
 tables, backend defaults and event behavior are unchanged.
 
+These are wire-level properties, not a promise of identical native menu
+styling on every renderer:
+
+- Web applies the typography and interaction properties to menu-item DOM
+  nodes through its text styles and appearance channels.
+- SDL/native applies them through its common text and appearance renderer
+  (`platform/native/lui_paint`), independently of OS-native menus.
+- Apple SwiftUI native menus keep platform menu-label typography.
+  `LUINativeMenuActions.itemLabel(for:)` builds a native `Label`/`Text` without applying
+  the item's typography or hover/focus overrides.
+- Android Material menu rows keep their native typography and state chrome.
+  `LuiMenuItem` derives text style from Material/style classes rather than
+  the item's typography properties, and neither it nor `luiChrome` consumes
+  the hover/focus overrides.
+
+The new menu-label typography and interaction overrides are currently drawn
+by Web and SDL/native only. Apple and Android still receive the properties;
+applications must not rely on them changing native menu labels there.
+
 ### Apple row intrinsic text priority
 
 Non-growing `text`, `heading`, and `paragraph` children in Apple rows now
