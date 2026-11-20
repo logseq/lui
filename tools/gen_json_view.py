@@ -91,6 +91,7 @@ REQUIRED_ARG = {
 }
 
 ENUM_DECODER = {
+    'cursor': 'cursor_opt', 'user_select': 'user_select_opt',
     'variant': 'variant_opt', 'control_size': 'control_size_opt',
     'cell_size': 'cell_size_opt', 'main_alignment': 'main_opt',
     'cross_alignment': 'cross_opt', 'text_alignment': 'text_align_opt',
@@ -414,6 +415,17 @@ let props_of fields =
   List.filter (fun (n, _) -> n <> "kind" && n <> "children") fields
 
 (* ---------- enum decoders (unknown -> None, never raise) ---------- *)
+
+let cursor_opt = function
+  | Some "default" -> Some `default
+  | Some "pointer" -> Some `pointer
+  | Some "text" -> Some `text
+  | None -> None | Some _ -> invalid_arg "Invalid cursor"
+
+let user_select_opt = function
+  | Some "none" -> Some `none
+  | Some "text" -> Some `text
+  | None -> None | Some _ -> invalid_arg "Invalid user_select"
 
 let variant_opt = function
   | Some "primary" -> Some `primary

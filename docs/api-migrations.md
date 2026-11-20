@@ -1,5 +1,38 @@
 # LUI API migration guide
 
+### Typed dropdown surfaces and toolbar appearance
+
+Dropdown surfaces now expose their existing wire-level typography, overflow,
+`shadow`, `collision_padding` and `max_height_viewport` properties directly.
+Use `menu_trigger` with a styled `dropdown_menu` to customize a trigger's surface.
+Toolbar controls and text expose the typography and interaction properties
+admitted by their existing wire kinds, matching their ordinary constructors.
+These include hover/focus colors, shadows, cursor, user selection and interaction
+opacity. Every added argument has a `_signal` twin; current signal values win
+over static values, update retained nodes and borrow their source lifetime.
+Omitted arguments leave existing defaults unchanged.
+
+```ocaml
+menu_trigger ~label:"Actions"
+  (dropdown_menu ~shadow:"0 4px 6px black" ~collision_padding:5.
+     ~font_size:"14px" ~line_height:"20px" ~overflow:`auto
+     [dropdown_menu_item ~text:"Open" []])
+
+toolbar ~label:"Actions"
+  [toolbar_button ~text:"Copy" ~font_size:"12px" ~line_height:"16px"
+     ~hover_foreground:(reactive (fun active ->
+         if active then "primary" else "foreground") selected) []]
+```
+
+Restricted slot capabilities are unchanged: ordinary views cannot become toolbar
+or dropdown slots through post-mount decorators. Use the typed constructors and
+their existing reactive/scoped adapters instead. JSON adapters and view-contract
+metadata expose the same static properties. No wire properties or admission
+rules were added: in particular, controls without wire typography support do
+not gain typography arguments. Web and SDL/native draw these existing appearance
+channels; Apple and Android retain native control/menu styling where their
+renderers do not consume them, as described below for menu items.
+
 ### Typed menu-item typography and interaction styling
 
 `menu_item`, `dropdown_menu_item` and `toolbar_menu_item` now accept the same
