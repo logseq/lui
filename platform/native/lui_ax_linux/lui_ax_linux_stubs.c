@@ -25,6 +25,7 @@
 #include <caml/callback.h>
 #include <caml/fail.h>
 #include <caml/custom.h>
+#include <caml/threads.h>
 
 /* ---- Minimal libdbus declarations (no headers required) ---- */
 
@@ -119,6 +120,8 @@ static DBusMessage *(*p_dbus_connection_pop_message)(
     DBusConnection *) = 0;
 static DBusMessage *(*p_dbus_connection_send_with_reply_and_block)(
     DBusConnection *, DBusMessage *, int, DBusError *) = 0;
+static dbus_bool_t (*p_dbus_connection_get_unix_fd)(
+    DBusConnection *, int *) = 0;
 static DBusMessage *(*p_dbus_message_new_method_call)(const char *,
                                                     const char *,
                                                     const char *,
@@ -196,6 +199,8 @@ CAMLprim value lui_ax_dbus_probe(value unit)
                 (void **) &p_dbus_connection_pop_message);
       ok &= sym(h, "dbus_connection_send_with_reply_and_block",
                 (void **) &p_dbus_connection_send_with_reply_and_block);
+      ok &= sym(h, "dbus_connection_get_unix_fd",
+                (void **) &p_dbus_connection_get_unix_fd);
       ok &= sym(h, "dbus_message_new_method_call",
                 (void **) &p_dbus_message_new_method_call);
       ok &= sym(h, "dbus_message_new_signal",
@@ -386,8 +391,10 @@ CAMLprim value lui_ax_dbus_a11y_address(value vc)
     CAMLreturn(vs);
   }
   p_dbus_error_init(&err);
+  caml_release_runtime_system();
   rep = p_dbus_connection_send_with_reply_and_block(c->conn, call, 5000,
                                                     &err);
+  caml_acquire_runtime_system();
   p_dbus_message_unref(call);
   if (rep && p_dbus_message_iter_init(rep, &it)
       && p_dbus_message_iter_get_arg_type(&it) == DBUS_TYPE_STRING)
@@ -428,8 +435,10 @@ CAMLprim value lui_ax_dbus_embed(value vc, value vpath)
   }
   p_dbus_message_iter_close_container(&it, &sub);
   p_dbus_error_init(&err);
+  caml_release_runtime_system();
   rep = p_dbus_connection_send_with_reply_and_block(c->conn, call, 5000,
                                                     &err);
+  caml_acquire_runtime_system();
   if (rep && p_dbus_message_iter_init(rep, &it)
       && p_dbus_message_iter_get_arg_type(&it) == DBUS_TYPE_STRUCT) {
     p_dbus_message_iter_recurse(&it, &sub);
@@ -451,6 +460,17 @@ done:
   vs = caml_copy_string(dpath);
   Store_field(vt, 1, vs);
   CAMLreturn(vt);
+}
+
+CAMLprim value lui_ax_dbus_unix_fd(value vc)
+{
+  CAMLparam1(vc);
+  conn_t *c = conn_of(vc);
+  int fd = -1;
+  if (p_dbus_connection_get_unix_fd == 0 || c->conn == 0
+      || !p_dbus_connection_get_unix_fd(c->conn, &fd))
+    CAMLreturn(Val_int(-1));
+  CAMLreturn(Val_int(fd));
 }
 
 /* ---- Argument decoding ----
@@ -1040,6 +1060,12 @@ CAMLprim value lui_ax_dbus_embed(value a, value b)
   (void) a;
   (void) b;
   return ax_fail();
+}
+
+CAMLprim value lui_ax_dbus_unix_fd(value a)
+{
+  (void) a;
+  return Val_int(-1);
 }
 
 CAMLprim value lui_ax_dbus_poll(value a, value b)

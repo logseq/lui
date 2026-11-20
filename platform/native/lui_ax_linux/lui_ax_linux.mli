@@ -292,6 +292,11 @@ val connect : t -> transport
     emission APIs keep queueing.  Requires Linux. *)
 
 val transport : t -> transport
+
+val unix_fd : t -> int option
+(** Session or a11y-bus connection fd for the host wait loop, or
+    [None] when offline. *)
+
 val disconnect : t -> unit
 val flush : t -> int
 (** [flush t] sends every queued event over the bus; returns how many

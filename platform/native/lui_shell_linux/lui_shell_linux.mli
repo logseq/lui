@@ -39,6 +39,10 @@ val transport : unit -> transport
 (** Best session tier the transport could bind. Probing is lazy: it
     runs on the first call that needs it (or on [pump]) and is cached. *)
 
+val unix_fd : unit -> int option
+(** Unix fd of the session-bus connection, for folding into the host
+    wait, or [None] when offline. *)
+
 val gui_available : unit -> bool
 (** Whether GTK bound and opened a display — clipboard, dialogs and
     tray menus are possible regardless of the indicator library. *)

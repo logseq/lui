@@ -31,7 +31,13 @@ let noop_renderer : Lui_host.renderer =
   { Lui_host.name = "noop";
     render =
       (fun (s : Lui_scene.t) ->
-         Bytes.create (s.Lui_scene.width * s.Lui_scene.height * 4)) }
+         Bytes.make (s.Lui_scene.width * s.Lui_scene.height * 4) '\000') }
+
+let dbus_wait_cap_ms ~connected ~watching next =
+  if connected && not watching then Float.min next 50. else next
+
+(* Unix.file_descr is the raw fd on this platform. *)
+external fd_of_int : int -> Unix.file_descr = "%identity"
 
 (* AT-triggered action -> protocol event, mirroring the pointer path:
    a screen reader's "press" lands exactly where a click's [Press]

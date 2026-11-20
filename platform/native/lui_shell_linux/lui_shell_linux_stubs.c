@@ -44,6 +44,7 @@
 #include <caml/custom.h>
 #include <caml/callback.h>
 #include <caml/misc.h>
+#include <caml/threads.h>
 
 /* ---- Minimal libdbus declarations (no headers required) ---- */
 
@@ -141,6 +142,8 @@ static DBusMessage *(*p_dbus_connection_pop_message)(
     DBusConnection *) = 0;
 static DBusMessage *(*p_dbus_connection_send_with_reply_and_block)(
     DBusConnection *, DBusMessage *, int, DBusError *) = 0;
+static dbus_bool_t (*p_dbus_connection_get_unix_fd)(
+    DBusConnection *, int *) = 0;
 static dbus_bool_t (*p_dbus_connection_register_object_path)(
     DBusConnection *, const char *, const DBusObjectPathVTable *,
     void *) = 0;
@@ -348,8 +351,10 @@ static DBusMessage *bus_call(DBusMessage *call, DBusError *err)
   DBusMessage *rep;
   if (session == 0 || call == 0) return 0;
   p_dbus_error_init(err);
+  caml_release_runtime_system();
   rep = p_dbus_connection_send_with_reply_and_block(session, call,
                                                     3000, err);
+  caml_acquire_runtime_system();
   p_dbus_message_unref(call);
   return rep;
 }
@@ -614,6 +619,8 @@ static int probe_dbus(void)
             (void **) &p_dbus_connection_pop_message);
   ok &= sym(h, "dbus_connection_send_with_reply_and_block",
             (void **) &p_dbus_connection_send_with_reply_and_block);
+  ok &= sym(h, "dbus_connection_get_unix_fd",
+            (void **) &p_dbus_connection_get_unix_fd);
   ok &= sym(h, "dbus_connection_register_object_path",
             (void **) &p_dbus_connection_register_object_path);
   ok &= sym(h, "dbus_connection_unregister_object_path",
@@ -1338,6 +1345,16 @@ CAMLprim value lui_shx_openurl_bus(value vname, value vpath)
 
 /* ---- Pump ---- */
 
+CAMLprim value lui_shx_unix_fd(value unit)
+{
+  CAMLparam1(unit);
+  int fd = -1;
+  if (session == 0 || p_dbus_connection_get_unix_fd == 0
+      || !p_dbus_connection_get_unix_fd(session, &fd))
+    CAMLreturn(Val_int(-1));
+  CAMLreturn(Val_int(fd));
+}
+
 CAMLprim value lui_shx_pump(value vtimeout)
 {
   CAMLparam1(vtimeout);
@@ -1434,6 +1451,8 @@ CAMLprim value lui_shx_open_url(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_shx_openurl_bus(value a, value b) {
   (void)a; (void)b; return unsupported(); }
+CAMLprim value lui_shx_unix_fd(value a) {
+  (void)a; return Val_int(-1); }
 CAMLprim value lui_shx_pump(value a) {
   (void)a; return unsupported(); }
 

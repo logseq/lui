@@ -13,6 +13,7 @@ external c_probe : string -> int = "lui_shx_probe"
 external c_gui : unit -> bool = "lui_shx_gui"
 external c_indicator : unit -> bool = "lui_shx_indicator"
 external c_pump : int -> (int * int * string) array = "lui_shx_pump"
+external c_unix_fd : unit -> int = "lui_shx_unix_fd"
 
 (* Well-known session-bus addresses, most specific first: the
    environment, the systemd per-user socket, then the X11 autolaunch
@@ -39,6 +40,11 @@ let transport () =
   if !caps land 4 <> 0 && !caps land 2 <> 0 then Indicator
   else if !caps land 1 <> 0 then Session_bus
   else Offline
+
+let unix_fd () =
+  probe ();
+  let fd = c_unix_fd () in
+  if fd < 0 then None else Some fd
 
 let gui_available () =
   probe ();
