@@ -52,7 +52,10 @@ applications must not rely on them changing native menu labels there.
 Web's default menu highlight honors each authored appearance channel
 independently. A foreground-only hover override preserves the default
 highlight background; a focus-background-only override wins on keyboard
-focus without requiring a hover background:
+focus without requiring a hover background. An authored focus background
+keeps the item's normal foreground unless an
+active foreground channel overrides it, rather than assuming an inverted
+highlight background:
 
 ```ocaml
 dropdown_menu_item ~text:"Open" ~hover_foreground:"red" []

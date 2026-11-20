@@ -239,6 +239,29 @@ test("menu focus channels override their defaults independently", async () => {
   }
 })
 
+for (const theme of ["light", "dark"]) {
+  test(`authored menu focus backgrounds keep normal label ink in ${theme}`, async () => {
+    await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
+    await page.evaluate(theme => { document.documentElement.dataset.kbTheme = theme }, theme)
+    await page.mouse.move(1250, 850)
+    await page.keyboard.press("Tab")
+    const variants = await page.evaluate(() => window.probe.menuItems)
+    for (const items of Object.values(variants)) {
+      const item = page.locator(`#lui-node-${items.focusBg}`)
+      const label = item.locator(".lui-menu-item-label")
+      const normalInk = await label.evaluate(el => getComputedStyle(el).color)
+      await page.evaluate(id => {
+        window.probe.set(id, "focus-within-background", "muted")
+        window.probe.flush()
+      }, items.focusBg)
+      await item.focus()
+      assert.equal(await item.evaluate(el => el.matches(":focus-visible")), true)
+      assert.equal(await label.evaluate(el => getComputedStyle(el).color), normalInk)
+      assert.notEqual(await item.evaluate(el => getComputedStyle(el).backgroundColor), normalInk)
+    }
+  })
+}
+
 test("disabled menu items ignore authored hover channels", async () => {
   await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
   await page.mouse.move(1250, 850)
