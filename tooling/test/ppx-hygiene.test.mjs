@@ -555,8 +555,10 @@ open Lui_protocol
 open Lui_elements
 let () =
   let kinds = Hashtbl.create 8 and props = Hashtbl.create 8 in
+  let operations = ref 0 in
   let properties id = Option.value (Hashtbl.find_opt props id) ~default:Property_map.empty in
   let backend = { backend_profile = generic_profile (); apply_batch = (fun batch ->
+    operations := !operations + List.length batch.ops;
     List.iter (function
       | CreateNode (id, kind) -> Hashtbl.replace kinds id kind
       | SetProp (id, key, value) -> Hashtbl.replace props id (Property_map.add key value (properties id))
@@ -592,6 +594,13 @@ let () =
   check "default" ResizeEasing None; check "default" ResizeOrigin None;
   check "no-motion" ProgressValue (Some (FloatValue 0.5));
   List.iter (fun key -> check "no-motion" key None) [ResizeDuration; ResizeEasing; ResizeOrigin];
+  let unchanged sizing =
+    send Cover sizing;
+    let before = !operations in
+    send Cover sizing;
+    assert (!operations = before) in
+  unchanged (Fraction 0.25);
+  unchanged (First_width 246.);
   send (At (10., 20.)) (First_width 246.);
   check "popup" PopupX (Some (FloatValue 10.)); check "popup" PopupY (Some (FloatValue 20.));
   check "split" FirstPaneWidth (Some (FloatValue 246.)); check "split" ProgressValue None;
