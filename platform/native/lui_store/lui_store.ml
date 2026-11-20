@@ -51,9 +51,10 @@ let layout_prop_names =
     "icon"; "inset"; "inset-top"; "inset-right"; "inset-bottom";
     "inset-left"; "label"; "margin"; "margin-top"; "margin-right";
     "margin-bottom"; "margin-left"; "margin-horizontal"; "margin-vertical";
-    "orientation"; "overflow"; "padding"; "padding-horizontal";
+    "orientation"; "overflow"; "overscan"; "padding"; "padding-horizontal";
     "padding-vertical"; "padding-top"; "padding-right"; "padding-bottom"; "padding-left"; "placeholder"; "position"; "selected"; "size";
-    "text"; "title"; "value"; "first-pane-width"; "style-class" ]
+    "text"; "title"; "value"; "first-pane-width"; "item-extent"; "style-class";
+    "shrink" ]
 
 let layout_props =
   let t = Hashtbl.create 64 in
@@ -120,7 +121,8 @@ let semantics_props =
 (* Focus/selection/input-channel props. *)
 let input_prop_names =
   [ "enabled"; "disabled"; "focus"; "focused"; "selection";
-    "selection-start"; "selection-end"; "input-mode"; "readonly" ]
+    "selection-start"; "selection-end"; "input-mode"; "read-only";
+    "pointer-capture"; "toggle-detail-enabled"; "focus-within-enabled" ]
 
 let input_props =
   let t = Hashtbl.create 16 in

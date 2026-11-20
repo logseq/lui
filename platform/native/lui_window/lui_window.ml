@@ -904,9 +904,8 @@ module Ui = struct
 
   let ime_surrounding t store =
     let id = focused t in
-    if not (Lui_text_input.editable store id && node_enabled store id)
-       || kind_name store id = "secure-field"
-       || bool_prop store id "read-only" then None
+    if not (Lui_text_input.accepts_edits store id && node_enabled store id)
+       || kind_name store id = "secure-field" then None
     else
       let text = shadow t and caret = caret t and anchor = sel_anchor t in
       Some { Lui_ime.text; caret;
@@ -1455,7 +1454,7 @@ module Ui = struct
        run m
      | Input.Paste s ->
        (* clipboard text the driver pulled after Paste_request *)
-       if s <> "" && Lui_text_input.editable store (focused t)
+       if s <> "" && Lui_text_input.accepts_edits store (focused t)
        then begin
          let s', m = Lui_text_input.insert t.session s in
          t.session <- s';
@@ -1588,19 +1587,23 @@ module Ui = struct
              | Some s -> acts := Clipboard_write s :: !acts
              | None -> ())
           | Input.Other 27 when prim ->
+            (* Cut: copy always when editable; delete only when edits
+               are admitted (read-only keeps the selection intact). *)
             if Lui_text_input.editable store (focused t) then
               (match active_sel_text t store with
                | Some s ->
                  acts := Clipboard_write s :: !acts;
-                 let s', m = Lui_text_input.splice t.session "" in
-                 t.session <- s';
-                 run m
+                 if Lui_text_input.accepts_edits store (focused t) then begin
+                   let s', m = Lui_text_input.splice t.session "" in
+                   t.session <- s';
+                   run m
+                 end
                | None -> ())
           | Input.Other 25 when prim ->
-            if Lui_text_input.editable store (focused t)
+            if Lui_text_input.accepts_edits store (focused t)
             then acts := Paste_request :: !acts
           | Input.Other 29 when prim ->
-            if Lui_text_input.editable store (focused t) then begin
+            if Lui_text_input.accepts_edits store (focused t) then begin
               let s', m =
                 Lui_text_input.undo t.session ~shift:mods.Input.shift
               in

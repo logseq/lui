@@ -135,4 +135,4 @@ let initialize _platform host_code =
 let () =
   Printexc.record_backtrace true;
   Callback.register "lui_ocaml_init" initialize;
-  Lui_native_bridge.register ~register_named:Callback.register "lui_ocaml" bridge
+  Lui_native_bridge.register ~register_named:{ register_named = Callback.register } "lui_ocaml" bridge

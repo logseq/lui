@@ -132,12 +132,13 @@ val sync :
     content extent, so frame extent, scroll caps and hit clips behave
     exactly as if all rows were laid out.
 
-    Config rides [data-attrs] on the node (no schema change):
-    [data-item-extent] — estimated row main extent in logical px (per-
-    child [height] or a 28px default otherwise); [data-overscan] —
-    extra rows mounted past each view edge (4 default). Rows are
-    measured once mounted, so a mixed-height list converges to real
-    positions; [data-scroll-target]/[data-scroll-token]/
+    Typed wire props [item-extent] (positive finite logical px) and
+    [overscan] (nonnegative row count) configure the estimate and mount
+    window. Legacy [data-item-extent]/[data-overscan] remain readable
+    when the typed props are absent; typed values take precedence.
+    Defaults are the first child's [height] or 28px, and overscan 4.
+    Rows are measured once mounted, so a mixed-height list converges
+    to real positions. [data-scroll-target]/[data-scroll-token]/
     [data-scroll-anchor] name a scroll request the host resolves
     through {!virtual_index_of_key}, and [data-track-visible-range]
     opts the list into visible-range reports through {!virtual_view}. *)
