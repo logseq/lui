@@ -2194,6 +2194,60 @@ let adr0008_protocol_numeric_and_json_enums () =
     (Lui_runtime.node_live app root && Lui_runtime.flush app);
   Alcotest.(check int) "all JSON children mounted despite unknown enums" 4
     (List.length (Lui_runtime.children app root));
+  (* Nested JSON menu surfaces forward Slot_style onto the inner dropdown_menu. *)
+  let surface_collision root =
+    match Lui_runtime.children app root with
+    | [ trigger ] -> (
+        match Lui_runtime.children app trigger with
+        | [ surface ] -> property_value app surface CollisionPadding
+        | _ -> Alcotest.fail "expected nested dropdown-menu surface")
+    | _ -> Alcotest.fail "expected one menu trigger child"
+  in
+  let surface_menu =
+    render ~on_event
+      (Obj
+         [
+           "kind", Str "dropdown-menu";
+           "children",
+           Arr
+             [
+               Obj
+                 [
+                   "kind", Str "submenu";
+                   "text", Str "More";
+                   "collision-padding", Num 9.;
+                   "children", Arr [];
+                 ];
+             ];
+         ])
+  in
+  let menu_root = Lui_elements.mount context surface_menu in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "JSON dropdown_menu_submenu applies collision-padding" true
+    (surface_collision menu_root = FloatValue 9.);
+  let toolbar_surface =
+    render ~on_event
+      (Obj
+         [
+           "kind", Str "toolbar";
+           "label", Str "Actions";
+           "children",
+           Arr
+             [
+               Obj
+                 [
+                   "kind", Str "menu";
+                   "text", Str "File";
+                   "collision-padding", Num 11.;
+                   "children", Arr [];
+                 ];
+             ];
+         ])
+  in
+  let toolbar_root = Lui_elements.mount context toolbar_surface in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "JSON toolbar_menu applies collision-padding" true
+    (surface_collision toolbar_root = FloatValue 11.);
   Signal.dispose_scope scope
 
 let adr0008_keyed_range_optimizations () =

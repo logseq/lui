@@ -1080,7 +1080,7 @@ E.toolbar_text
 and build_toolbar_menu ~emit props child_nodes : E.toolbar_el =
   let s = sty_of props in
 E.toolbar_menu
-      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
+      ~style:(slot_style_surface props) ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
 
 and build_toolbar_separator ~emit props _child_nodes : E.toolbar_el =
   let s = sty_of props in
@@ -1100,7 +1100,7 @@ E.dropdown_menu_trigger
 and build_dropdown_menu_submenu ~emit props child_nodes : E.dropdown_menu_item_el =
   let s = sty_of props in
 E.dropdown_menu_submenu
-      ?key:s.s_key ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
+      ~style:(slot_style_surface props) ?key:s.s_key ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (list_dropdown_menu_item_el ~emit child_nodes)
 
 and build_dropdown_menu_separator ~emit props _child_nodes : E.dropdown_menu_item_el =
   let s = sty_of props in
