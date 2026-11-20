@@ -654,6 +654,7 @@ external c_dbus_open : string -> int = "lui_ax_dbus_open"
 external c_dbus_close : int -> unit = "lui_ax_dbus_close"
 external c_dbus_name : int -> string = "lui_ax_dbus_name"
 external c_dbus_a11y_address : int -> string = "lui_ax_dbus_a11y_address"
+external c_dbus_unix_fd : int -> int = "lui_ax_dbus_unix_fd"
 external c_dbus_embed : int -> string -> string * string
   = "lui_ax_dbus_embed"
 external c_dbus_poll : int -> int ->
@@ -1884,6 +1885,12 @@ let desktop_ref t = t.desktop
 let set_desktop_ref t r = t.desktop <- Some r
 let app_id t = t.app_id
 let transport t = t.trans
+
+let unix_fd t =
+  if !(t.conn) = 0 then None
+  else
+    let fd = c_dbus_unix_fd !(t.conn) in
+    if fd < 0 then None else Some fd
 
 let session_bus_address () =
   match Sys.getenv_opt "DBUS_SESSION_BUS_ADDRESS" with
