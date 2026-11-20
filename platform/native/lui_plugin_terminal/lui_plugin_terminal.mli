@@ -38,6 +38,11 @@ val write : t -> string -> unit
 (** Queue bytes for the child; flushed by [pump] (or the host's own
     write loop). *)
 
+val flush_pending : write:(string -> int) -> string list -> string list
+(** Write [chunks] oldest-first through [write], keeping the unwritten
+    tail. [write s] is bytes accepted, 0 for back-pressure, negative
+    for error (kept unwritten). *)
+
 val resize : t -> cols:int -> rows:int -> unit
 val resize_pixels : t -> w:int -> h:int -> unit
 val cols_for : t -> int -> int

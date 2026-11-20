@@ -17,7 +17,7 @@ type t = {
   render : Lui_text.font R.t;
   mutable pty : P.t option;
   write_buf : bytes;
-  mutable pending : string list;  (* bytes queued for the pty *)
+  mutable pending : string list;  (* oldest-first bytes queued for the pty *)
 }
 
 let create ?(cols = 80) ?(rows = 24) ?(max_scrollback = 10_000)
@@ -36,7 +36,7 @@ let renderer t = t.render
 
 (* Apply an action the parser raised. *)
 let act t = function
-  | Vt.Reply s -> t.pending <- s :: t.pending
+  | Vt.Reply s -> t.pending <- t.pending @ [s]
   | _ -> ()
 
 let feed t s =
@@ -61,15 +61,25 @@ let pty_alive t =
 let pty_poll t =
   match t.pty with Some p -> P.poll p | None -> Some (-1)
 
+let unwritten ~wrote s =
+  if wrote <= 0 then s
+  else
+    let n = String.length s in
+    if wrote >= n then "" else String.sub s wrote (n - wrote)
+
+let rec flush_pending ~write = function
+  | [] -> []
+  | s :: rest ->
+    let left = unwritten ~wrote:(write s) s in
+    if left = "" then flush_pending ~write rest else left :: rest
+
 (* Drain queued input + read available output; call once per frame.
    Returns the actions raised by newly-fed output. *)
 let pump t =
   match t.pty with
   | None -> []
   | Some p ->
-    List.iter (fun s -> ignore (P.write_string p s))
-      (List.rev t.pending);
-    t.pending <- [];
+    t.pending <- flush_pending ~write:(P.write_string p) t.pending;
     let acts = ref [] in
     (try
        while true do
@@ -82,7 +92,7 @@ let pump t =
     List.iter (act t) !acts;
     !acts
 
-let write t s = t.pending <- s :: t.pending
+let write t s = if s <> "" then t.pending <- t.pending @ [s]
 
 let resize t ~cols ~rows =
   G.resize (Vt.grid t.vt) ~cols ~rows;
@@ -105,7 +115,7 @@ let resize_pixels t ~w ~h = resize t ~cols:(cols_for t w) ~rows:(rows_for t h)
 
 (* ---- input -------------------------------------------------------- *)
 
-let enqueue t s = if s <> "" then t.pending <- s :: t.pending
+let enqueue t s = write t s
 
 (* Pixel position -> (viewport row, col). *)
 let cell_of t ~x ~y =
@@ -204,15 +214,17 @@ let has_selection t = G.has_selection (Vt.grid t.vt)
 module Service = struct
   open Yojson.Safe.Util
 
+  let lock = Mutex.create ()
   let terms : (int, t) Hashtbl.t = Hashtbl.create 4
   let next = ref 0
 
   let find j =
     match member "id" j with
-    | `Int n -> (
-      match Hashtbl.find_opt terms n with
-      | Some t -> Ok t
-      | None -> Error (Printf.sprintf "terminal: no terminal %d" n))
+    | `Int n ->
+      Mutex.protect lock (fun () ->
+        match Hashtbl.find_opt terms n with
+        | Some t -> Ok t
+        | None -> Error (Printf.sprintf "terminal: no terminal %d" n))
     | _ -> Error "terminal: \"id\" must be an integer"
 
   let member_str j k =
@@ -324,9 +336,13 @@ module Service = struct
              with Failure e -> Error e) with
       | Error e -> Error e
       | Ok () ->
-        let id = !next in
-        incr next;
-        Hashtbl.replace terms id t;
+        let id =
+          Mutex.protect lock (fun () ->
+            let id = !next in
+            incr next;
+            Hashtbl.replace terms id t;
+            id)
+        in
         ok (`Assoc [ ("id", `Int id) ])
 
   let svc_write =
@@ -381,13 +397,15 @@ module Service = struct
       | Error _ as e -> e
       | Ok t ->
         close_pty t;
-        Hashtbl.remove terms
-          (match member "id" j with `Int n -> n | _ -> -1);
+        Mutex.protect lock (fun () ->
+          Hashtbl.remove terms
+            (match member "id" j with `Int n -> n | _ -> -1));
         ok (obj ())
 
   let reset () =
-    Hashtbl.iter (fun _ t -> close_pty t) terms;
-    Hashtbl.clear terms
+    Mutex.protect lock (fun () ->
+      Hashtbl.iter (fun _ t -> close_pty t) terms;
+      Hashtbl.clear terms)
 end
 
 let plugin : Lui_plugin.t =
