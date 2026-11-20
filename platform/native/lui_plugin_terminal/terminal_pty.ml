@@ -2,7 +2,7 @@
    propagation and exit detection.  Unix uses forkpty; Windows a real
    ConPTY; elsewhere spawning raises [Failure]. *)
 
-type t = { h : nativeint; mutable alive : bool }
+type t = { mutable h : nativeint; mutable alive : bool }
 
 external c_spawn : string array -> string array -> string -> int -> int
   -> nativeint = "lui_term_pty_spawn"
@@ -48,4 +48,6 @@ let kill t =
 
 let close t =
   if t.alive then kill t;
-  c_close t.h
+  let h = t.h in
+  t.h <- 0n;
+  if h <> 0n then c_close h
