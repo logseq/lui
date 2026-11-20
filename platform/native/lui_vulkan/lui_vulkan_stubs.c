@@ -24,10 +24,14 @@
 #include <caml/fail.h>
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
+#include <caml/threads.h>
 #include <string.h>
 
 #if defined(__linux__)
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <dlfcn.h>
@@ -1439,6 +1443,54 @@ static int create_ctx(Ctx *c, int w, int h)
 	return 0;
 }
 
+static void destroy_frame(Ctx *c)
+{
+	if (!c->dev)
+		return;
+	c->vk.DeviceWaitIdle(c->dev);
+	if (c->frame_fb)
+		c->vk.DestroyFramebuffer(c->dev, c->frame_fb, NULL);
+	if (c->frame_view)
+		c->vk.DestroyImageView(c->dev, c->frame_view, NULL);
+	if (c->frame_img)
+		c->vk.DestroyImage(c->dev, c->frame_img, NULL);
+	if (c->frame_mem)
+		c->vk.FreeMemory(c->dev, c->frame_mem, NULL);
+	c->frame_fb = VK_NULL_HANDLE;
+	c->frame_view = VK_NULL_HANDLE;
+	c->frame_img = VK_NULL_HANDLE;
+	c->frame_mem = VK_NULL_HANDLE;
+}
+
+static int create_frame(Ctx *c, int w, int h)
+{
+	VkCommandBufferBeginInfo bi;
+	c->frame_img = make_image(c, w, h, FMT_B8G8R8A8_UNORM,
+	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+	if (!c->frame_img || image_mem(c, c->frame_img, &c->frame_mem))
+		return fail(c, "frame image", -1);
+	c->frame_view = make_view(c, c->frame_img, FMT_B8G8R8A8_UNORM);
+	if (!c->frame_view)
+		return fail(c, "frame view", -1);
+	c->frame_fb = make_fb(c, c->frame_view, w, h);
+	if (!c->frame_fb)
+		return fail(c, "frame framebuffer", -1);
+	memset(&bi, 0, sizeof bi);
+	bi.sType = ST_COMMAND_BUFFER_BEGIN_INFO;
+	c->vk.ResetCommandBuffer(c->cmd, 0);
+	if (c->vk.BeginCommandBuffer(c->cmd, &bi))
+		return fail(c, "vkBeginCommandBuffer", -1);
+	to_general(c, c->frame_img);
+	if (c->vk.EndCommandBuffer(c->cmd))
+		return fail(c, "vkEndCommandBuffer", -1);
+	if (submit_and_wait(c, c->cmd))
+		return -1;
+	c->w = w;
+	c->h = h;
+	return 0;
+}
+
 /* {2 Pipelines} */
 
 static VkHandle make_shader(Ctx *c, const uint32_t *code, size_t len)
@@ -1695,59 +1747,77 @@ static int compile_glsl(Ctx *c, const char *src, size_t slen,
 			}
 		}
 	  } }
-	/* a glslangValidator executable */
+	/* a glslangValidator executable, in a private mkdtemp directory */
 	{ const char *exe = getenv("LUI_VK_GLSLANG");
-	  char tmp_src[] = "/tmp/lui_vk_fxXXXXXX";
-	  char tmp_out[] = "/tmp/lui_vk_fxXXXXXX.spv";
+	  char dir[] = "/tmp/lui_vk_fxXXXXXX";
+	  char srcp[80], outp[80];
 	  int fd = -1;
-	  pid_t pid;
+	  pid_t pid = -1;
 	  int st = 0;
+	  int ok = 0;
+	  srcp[0] = outp[0] = 0;
 	  if (!exe || !*exe)
 		exe = "glslangValidator";
-	  fd = mkstemp(tmp_src);
-	  if (fd < 0)
+	  if (!mkdtemp(dir))
 		goto no;
+	  snprintf(srcp, sizeof srcp, "%s/fx.frag", dir);
+	  snprintf(outp, sizeof outp, "%s/fx.spv", dir);
+	  fd = open(srcp, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+	  if (fd < 0)
+		goto cleanup;
 	  if (write(fd, src, slen) != (ssize_t)slen) {
 		close(fd);
-		goto no;
+		fd = -1;
+		goto cleanup;
 	  }
 	  close(fd);
-	  memcpy(tmp_out, tmp_src, sizeof tmp_src);
-	  strcat(tmp_out, ".spv");
+	  fd = -1;
+	  caml_release_runtime_system();
 	  pid = fork();
 	  if (pid == 0) {
-		int devnull = open("/dev/null", 2);
+		int devnull = open("/dev/null", O_RDWR | O_CLOEXEC);
 		if (devnull >= 0) {
 			dup2(devnull, 1);
 			dup2(devnull, 2);
 		}
-		execlp(exe, exe, "-V", "-S", "frag", tmp_src, "-o",
-		    tmp_out, (char *)NULL);
+		execlp(exe, exe, "-V", "-S", "frag", srcp, "-o",
+		    outp, (char *)NULL);
 		_exit(127);
 	  }
 	  if (pid < 0 || waitpid(pid, &st, 0) < 0 || !WIFEXITED(st) ||
-	      WEXITSTATUS(st) != 0)
-		goto no;
-	  { FILE *f = fopen(tmp_out, "rb");
+	      WEXITSTATUS(st) != 0) {
+		caml_acquire_runtime_system();
+		goto cleanup;
+	  }
+	  caml_acquire_runtime_system();
+	  { FILE *f = fopen(outp, "rb");
 	    long n;
 	    unsigned char *res;
 	    if (!f)
-		goto no;
+		goto cleanup;
 	    fseek(f, 0, SEEK_END);
 	    n = ftell(f);
 	    fseek(f, 0, SEEK_SET);
 	    res = malloc((size_t)n);
-	    if (!res || fread(res, 1, (size_t)n, f) != (size_t)n) {
+	    if (!res || n <= 0 || fread(res, 1, (size_t)n, f) != (size_t)n) {
 		fclose(f);
 		free(res);
-		goto no;
+		goto cleanup;
 	    }
 	    fclose(f);
 	    *out = res;
-	    *olen = (size_t)n; }
-	  unlink(tmp_src);
-	  unlink(tmp_out);
-	  return 0;
+	    *olen = (size_t)n;
+	    ok = 1; }
+	cleanup:
+	  if (fd >= 0)
+		close(fd);
+	  if (srcp[0])
+		unlink(srcp);
+	  if (outp[0])
+		unlink(outp);
+	  rmdir(dir);
+	  if (ok)
+		return 0;
 	no:
 	  snprintf(c->err, sizeof c->err,
 	      "cannot compile effect GLSL: no libshaderc and no "
@@ -1812,6 +1882,23 @@ CAMLprim value lui_vk_destroy(value ctx)
 		destroy_ctx(c);
 		*(Ctx **)Data_custom_val(ctx) = NULL;
 	}
+	CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_vk_resize(value ctx, value w, value h)
+{
+	CAMLparam3(ctx, w, h);
+	Ctx *c = Ctx_val(ctx);
+	int nw = Int_val(w), nh = Int_val(h);
+	if (!c)
+		caml_failwith("lui_vk_resize: destroyed context");
+	if (nw <= 0 || nh <= 0)
+		caml_failwith("lui_vk_resize: a size of 0 is not drawable");
+	if (c->w == nw && c->h == nh)
+		CAMLreturn(Val_unit);
+	destroy_frame(c);
+	if (create_frame(c, nw, nh) < 0)
+		caml_failwith(c->err[0] ? c->err : "lui_vk_resize failed");
 	CAMLreturn(Val_unit);
 }
 
@@ -2307,6 +2394,7 @@ CAMLprim value lui_vk_compile(value ctx, value src)
 
 VK_STUB2(lui_vk_create)
 VK_STUB(lui_vk_destroy)
+VK_STUB3(lui_vk_resize)
 VK_STUB(lui_vk_driver)
 VK_STUB(lui_vk_dual)
 VK_STUB(lui_vk_max_size)
