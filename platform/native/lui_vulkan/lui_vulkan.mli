@@ -45,6 +45,19 @@ val render : t -> Lui_scene.t -> unit
 val release : t -> unit
 (** [release r] destroys the renderer's Vulkan objects. *)
 
+val resize : t -> w:int -> h:int -> (unit, string) result
+(** [resize r ~w ~h] recreates the offscreen frame image and
+    framebuffer at [w]×[h], keeping the instance, device and pipelines.
+    Window swapchain presentation is not implemented: the host still
+    reads the frame back and uploads it through {!Lui_blit}. *)
+
+val changed_rows :
+  prev:bytes -> bytes -> w:int -> h:int -> (int * int) option
+(** [changed_rows ~prev pix ~w ~h] is [Some (y0, y1)] covering the
+    inclusive-exclusive rows of [pix] that differ from [prev], or
+    [None] when the frames match. A size mismatch treats the whole
+    frame as damaged. *)
+
 val read_frame : t -> w:int -> h:int -> bytes
 (** [read_frame r ~w ~h] is the frame image's pixels: premultiplied
     BGRA rows, top row first. For tests and pixel-parity checks. *)

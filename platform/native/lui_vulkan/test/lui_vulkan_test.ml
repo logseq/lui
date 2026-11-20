@@ -239,6 +239,39 @@ let test_atlas_plan () =
    | Vk.Nothing -> ()
    | _ -> Alcotest.fail "a caught-up texture does nothing")
 
+let test_changed_rows () =
+  let w, h = 4, 3 in
+  let stride = w * 4 in
+  let a = Bytes.make (stride * h) '\x11' in
+  Alcotest.(check (option (pair int int))) "size mismatch is whole frame"
+    (Some (0, h))
+    (Vk.changed_rows ~prev:Bytes.empty a ~w ~h);
+  Alcotest.(check (option (pair int int))) "identical is none"
+    None
+    (Vk.changed_rows ~prev:a a ~w ~h);
+  let b = Bytes.copy a in
+  Bytes.set b (stride + 1) '\x22';
+  Alcotest.(check (option (pair int int))) "middle row"
+    (Some (1, 2))
+    (Vk.changed_rows ~prev:a b ~w ~h);
+  Bytes.set b (stride * 2) '\x33';
+  Alcotest.(check (option (pair int int))) "span of changed rows"
+    (Some (1, 3))
+    (Vk.changed_rows ~prev:a b ~w ~h)
+
+let test_resize_keeps_device () =
+  with_vk 16 16 (fun r ->
+      let name = Vk.driver r in
+      (match Vk.resize r ~w:24 ~h:20 with
+       | Ok () -> ()
+       | Error e -> Alcotest.failf "resize: %s" e);
+      Alcotest.(check string) "device kept" name (Vk.driver r);
+      (match Vk.resize r ~w:24 ~h:20 with
+       | Ok () -> ()
+       | Error e -> Alcotest.failf "idempotent resize: %s" e);
+      Hashtbl.remove renderers (16, 16);
+      Hashtbl.replace renderers (24, 20) r)
+
 let test_effect_source () =
   let has_sub sub s =
     let n = String.length s and m = String.length sub in
@@ -270,6 +303,8 @@ let () =
         [ Alcotest.test_case "instance packing" `Quick test_pack;
           Alcotest.test_case "scissor clamp" `Quick test_scissor;
           Alcotest.test_case "atlas plan" `Quick test_atlas_plan;
+          Alcotest.test_case "changed rows" `Quick test_changed_rows;
+          Alcotest.test_case "resize keeps device" `Quick test_resize_keeps_device;
           Alcotest.test_case "effect source" `Quick test_effect_source;
           Alcotest.test_case "driver" `Quick
             (fun () ->

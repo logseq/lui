@@ -18,6 +18,7 @@ type ctx
 
 external c_create : int -> int -> ctx = "lui_vk_create"
 external c_destroy : ctx -> unit = "lui_vk_destroy"
+external c_resize : ctx -> int -> int -> unit = "lui_vk_resize"
 external c_driver : ctx -> string = "lui_vk_driver"
 external c_dual : ctx -> bool = "lui_vk_dual"
 external c_max_size : ctx -> int = "lui_vk_max_size"
@@ -67,8 +68,8 @@ let texture () = { tex = -1; w = 0; h = 0; gen = 0; ver = -1; last_frame = 0 }
 
 type t = {
   ctx : ctx;
-  fw : int; (* the frame image's size, which scenes must match *)
-  fh : int;
+  mutable fw : int; (* the frame image's size, which scenes must match *)
+  mutable fh : int;
   dual : bool;
   compiler : bool; (* runtime GLSL compile is reachable *)
   max_size : int;
@@ -469,6 +470,46 @@ let can_compile r = r.compiler
 let read_frame r ~w ~h =
   if w <= 0 || h <= 0 then Bytes.empty
   else c_read r.ctx
+
+let resize r ~w ~h =
+  if w <= 0 || h <= 0 then Stdlib.Error "a size of 0 is not drawable"
+  else if w = r.fw && h = r.fh then Stdlib.Ok ()
+  else
+    try
+      c_resize r.ctx w h;
+      r.fw <- w;
+      r.fh <- h;
+      Stdlib.Ok ()
+    with Failure m -> Stdlib.Error m
+
+(* First/last changed row of a BGRA frame versus [prev], for uploading
+   only damaged rows through Lui_blit. [None] means the pixels match. *)
+let changed_rows ~prev pix ~w ~h =
+  let stride = w * 4 in
+  let expect = stride * h in
+  if w <= 0 || h <= 0 || Bytes.length pix < expect then None
+  else if Bytes.length prev <> expect then Some (0, h)
+  else
+    let y0 = ref (-1) in
+    let y1 = ref (-1) in
+    for y = 0 to h - 1 do
+      let off = y * stride in
+      let changed =
+        let i = ref 0 in
+        let diff = ref false in
+        while not !diff && !i < stride do
+          if Bytes.unsafe_get prev (off + !i) <> Bytes.unsafe_get pix (off + !i)
+          then diff := true
+          else incr i
+        done;
+        !diff
+      in
+      if changed then begin
+        if !y0 < 0 then y0 := y;
+        y1 := y + 1
+      end
+    done;
+    if !y0 < 0 then None else Some (!y0, !y1)
 
 let release r =
   c_destroy r.ctx;
