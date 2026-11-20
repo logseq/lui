@@ -301,6 +301,33 @@ let test_executor_raise_marks_failed () =
   Signal.dispose_scope sc;
   R.unregister c
 
+let test_executor_raise_retry_keeps_task () =
+  let n = ref 0 in
+  let exec job =
+    incr n;
+    if !n = 1 then failwith "domain cap" else job ()
+  in
+  let c = R.create ~executor:exec () in
+  let sc = scope () in
+  let rec on_state e =
+    match R.state e with
+    | R.Failed _ when !n = 1 ->
+      ignore (R.reload c ~scope:sc ~on_state "k" ~load:(fun _ -> Ok "retry"))
+    | _ -> ()
+  in
+  let e = R.request c ~scope:sc ~on_state "k" ~load:(fun _ -> Ok "v") in
+  check' bool "retry has a task" true (Option.is_some (R.task e));
+  (match R.state e with
+   | R.Failed _ -> fail "retry should not stay Failed"
+   | R.Loading | R.Ready _ -> ());
+  let cancelled = ref false in
+  (match R.task e with
+   | Some t -> R.task_set_on_cancel t (fun () -> cancelled := true)
+   | None -> fail "missing retry task");
+  Signal.dispose_scope sc;
+  check' bool "dispose cancelled the retry" true !cancelled;
+  R.unregister c
+
 let test_pool_executor () =
   let exec = R.executor_pool ~workers:2 () in
   let c = R.create ~executor:exec () in
@@ -445,5 +472,7 @@ let () =
         [ test_case "domain" `Quick test_domain_executor;
           test_case "spawn raise marks failed" `Quick
             test_executor_raise_marks_failed;
+          test_case "spawn raise retry keeps task" `Quick
+            test_executor_raise_retry_keeps_task;
           test_case "bounded pool" `Quick test_pool_executor ] );
     ]
