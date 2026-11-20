@@ -564,13 +564,6 @@ including when switching back to Cover. Native demos previously specified an
 invalid point-plus-anchor combination; they now use the intended below-parent
 anchor. `dropdown_menu` and tooltip positioning APIs are unchanged.
 
-### Keyed range insertion
-
-Keyed ranges now establish their final order before mounting new rows. New
-roots are inserted at their final sibling indices instead of appended and
-then moved. Empty and multi-root rows retain the same ordering and rollback
-semantics; no application migration or wire-schema change is required.
-
 ### Split sizing and motion
 
 Replace `value`/`value_signal` and `first_width`/`first_width_signal` with

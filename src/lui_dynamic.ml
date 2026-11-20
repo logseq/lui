@@ -784,7 +784,7 @@ let range_segment context parent =
   Lui_runtime.register_dynamic_segment ?owner:(range_owner context parent)
     context.Lui_ui.ui_application parent
 
-let create_range ?name ?(persistent = true) context parent owner =
+let mount_range ?name ?(persistent = true) context parent owner mount =
   let name = match name with Some name -> name | None -> Lui_ui.owner_name context "dynamic-range" in
   let context = if persistent then Lui_ui.child_context context name else
     { (Lui_ui.context context.Lui_ui.ui_application (Signal.child_scope name context.Lui_ui.ui_scope))
@@ -793,16 +793,11 @@ let create_range ?name ?(persistent = true) context parent owner =
   let context = { context with Lui_ui.ui_dynamic_owner = Some segment } in
   Signal.on_unmount context.Lui_ui.ui_scope (fun () ->
     retire_range context.Lui_ui.ui_application segment);
-  { range_segment = segment; range_context = context }
-
-let mount_range ?name ?persistent context parent owner mount =
-  let range = create_range ?name ?persistent context parent owner in
-  let context = range.range_context and segment = range.range_segment in
   (try mount context with failure ->
     (try Signal.dispose_scope context.Lui_ui.ui_scope with _ -> ());
     retire_range context.Lui_ui.ui_application segment;
     raise failure);
-  range
+  { range_segment = segment; range_context = context }
 
 let dispose_range range = Signal.dispose_scope range.range_context.Lui_ui.ui_scope
 
@@ -930,10 +925,12 @@ let keyed_range (type key) context parent source key compare mount =
               entry
             | None ->
               let state = Signal.state context.Lui_ui.ui_scheduler item in
-              let range = try create_range ~persistent:false context parent owner with failure ->
+              let range = try mount_range ~persistent:false context parent owner (fun context ->
+                ignore (mount context (Signal.value state))) with failure ->
                   Signal.dispose_signal (Signal.value state); raise failure in
               let entry = {entry_range = range; entry_state = state} in
               fresh := entry :: !fresh;
+              Signal.mount range.range_context.Lui_ui.ui_scope;
               entry in
           next := Keys.add identity entry !next;
           entry) items in
@@ -942,10 +939,6 @@ let keyed_range (type key) context parent source key compare mount =
         List.iter (fun entry -> retire_range application entry.entry_range.range_segment) removed;
         reorder_ranges application owner
           (Array.to_list (Array.map (fun entry -> entry.entry_range.range_segment) ordered));
-        List.iter (fun entry ->
-          let context = entry.entry_range.range_context in
-          ignore (mount context (Signal.value entry.entry_state));
-          Signal.mount context.Lui_ui.ui_scope) (List.rev !fresh);
         entries := !next;
         committed := true;
         List.iter (fun (entry, item) -> Signal.set entry.entry_state item) (List.rev !updates);
