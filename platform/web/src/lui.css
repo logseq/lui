@@ -2599,30 +2599,29 @@ body {
     border-color: var(--lui-focus-within-border, var(--lui-current-hover-border, revert-layer));
   }
 
-  /* Default menu highlight is the Base UI inverted row. An authored
-     hover-background stays in the inline style and keeps the ordinary
-     fallback text color, so a custom light highlight does not turn white. */
+  /* Default menu highlight is the Base UI inverted row. Each authored
+     appearance channel overrides its own fallback independently. */
   .lui-menu-item:is([data-highlighted], :focus-visible):not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
-    background-color: var(--lui-foreground);
-    color: var(--lui-background);
+    background-color: var(--lui-current-focus-within-bg, var(--lui-foreground));
+    color: var(--lui-current-hover-fg, var(--lui-background));
   }
 
   @media (hover: hover) {
     .lui-menu-item:hover:not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
-      background-color: var(--lui-foreground);
-      color: var(--lui-background);
+      background-color: var(--lui-current-focus-within-bg, var(--lui-foreground));
+      color: var(--lui-current-hover-fg, var(--lui-background));
     }
   }
 
   .lui-menu-item[data-variant="destructive"]:is([data-highlighted], :focus-visible):not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
-    background-color: var(--color-destructive);
-    color: var(--color-destructive-foreground);
+    background-color: var(--lui-current-focus-within-bg, var(--color-destructive));
+    color: var(--lui-current-hover-fg, var(--color-destructive-foreground));
   }
 
   @media (hover: hover) {
     .lui-menu-item[data-variant="destructive"]:hover:not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
-      background-color: var(--color-destructive);
-      color: var(--color-destructive-foreground);
+      background-color: var(--lui-current-focus-within-bg, var(--color-destructive));
+      color: var(--lui-current-hover-fg, var(--color-destructive-foreground));
     }
   }
 

@@ -183,6 +183,74 @@ test("explicit base appearance composes with hover, press, selection and disable
   assert.equal((await read()).opacity, '0.9')
 })
 
+test("menu hover channels override their defaults independently", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
+  await page.mouse.move(1250, 850)
+  const variants = await page.evaluate(() => window.probe.menuItems)
+  for (const items of Object.values(variants)) {
+    const baseline = page.locator(`#lui-node-${items.baseline}`)
+    const ordinaryInk = await baseline.evaluate(el => getComputedStyle(el).color)
+    await baseline.hover()
+    const defaultHighlight = await baseline.evaluate(el => getComputedStyle(el).backgroundColor)
+    const background = page.locator(`#lui-node-${items.hoverBg}`)
+    await background.hover()
+    assert.deepEqual(await background.evaluate(el => ({
+      background: getComputedStyle(el).backgroundColor,
+      color: getComputedStyle(el).color,
+    })), { background: "rgb(18, 52, 86)", color: ordinaryInk })
+    const foreground = page.locator(`#lui-node-${items.hoverFg}`)
+    await foreground.hover()
+    assert.deepEqual(await foreground.evaluate(el => ({
+      background: getComputedStyle(el).backgroundColor,
+      color: getComputedStyle(el).color,
+    })), { background: defaultHighlight, color: "rgb(18, 52, 86)" })
+    await page.evaluate(id => {
+      window.probe.unset(id, "hover-foreground")
+      window.probe.flush()
+    }, items.hoverFg)
+    assert.notEqual(await foreground.evaluate(el => getComputedStyle(el).color), "rgb(18, 52, 86)")
+  }
+})
+
+test("menu focus channels override their defaults independently", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
+  await page.mouse.move(1250, 850)
+  await page.keyboard.press("Tab")
+  const variants = await page.evaluate(() => window.probe.menuItems)
+  for (const items of Object.values(variants)) {
+    const baseline = page.locator(`#lui-node-${items.baseline}`)
+    await baseline.focus()
+    const defaultHighlight = await baseline.evaluate(el => getComputedStyle(el).backgroundColor)
+    const background = page.locator(`#lui-node-${items.focusBg}`)
+    await background.focus()
+    assert.equal(await background.evaluate(el => el.matches(":focus-visible")), true)
+    assert.equal(await background.evaluate(el => getComputedStyle(el).backgroundColor), "rgb(18, 52, 86)")
+    await page.evaluate(id => {
+      window.probe.unset(id, "focus-within-background")
+      window.probe.flush()
+    }, items.focusBg)
+    assert.equal(await background.evaluate(el => getComputedStyle(el).backgroundColor), defaultHighlight)
+    const border = page.locator(`#lui-node-${items.focusBorder}`)
+    await border.focus()
+    assert.equal(await border.evaluate(el => getComputedStyle(el).borderTopColor), "rgb(18, 52, 86)")
+    const shadow = page.locator(`#lui-node-${items.focusShadow}`)
+    await shadow.focus()
+    assert.match(await shadow.evaluate(el => getComputedStyle(el).boxShadow), /^rgb\(18, 52, 86\) 0px 0px 0px 2px$/)
+  }
+})
+
+test("disabled menu items ignore authored hover channels", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
+  await page.mouse.move(1250, 850)
+  const variants = await page.evaluate(() => window.probe.menuItems)
+  for (const items of Object.values(variants)) {
+    const item = page.locator(`#lui-node-${items.disabled}`)
+    const ordinaryInk = await item.evaluate(el => getComputedStyle(el).color)
+    await item.hover({ force: true })
+    assert.equal(await item.evaluate(el => getComputedStyle(el).color), ordinaryInk)
+  }
+})
+
 test('retained button content preserves owned slots and intrinsic spacing', async () => {
   await page.goto(`${origin}/platform/web/test/fixtures/button-content-regression.html`)
   await page.getByRole('button', {name: 'Audit retained content', exact: true}).click()

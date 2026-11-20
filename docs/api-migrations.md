@@ -49,6 +49,16 @@ The new menu-label typography and interaction overrides are currently drawn
 by Web and SDL/native only. Apple and Android still receive the properties;
 applications must not rely on them changing native menu labels there.
 
+Web's default menu highlight honors each authored appearance channel
+independently. A foreground-only hover override preserves the default
+highlight background; a focus-background-only override wins on keyboard
+focus without requiring a hover background:
+
+```ocaml
+dropdown_menu_item ~text:"Open" ~hover_foreground:"red" []
+dropdown_menu_item ~text:"Save" ~focus_within_background:"muted" []
+```
+
 ### Apple row intrinsic text priority
 
 Non-growing `text`, `heading`, and `paragraph` children in Apple rows now
