@@ -249,8 +249,14 @@ let spawn c e load =
     Some task
   with exn ->
     e.state <- Failed (Printexc.to_string exn);
-    notify e;
     None
+
+(* Watchers may reload from Failed; assign [e.task] before notifying
+   so a retry's handle is not overwritten by this spawn's [None]. *)
+let notify_if_spawn_failed e =
+  match e.state, e.task with
+  | Failed _, None -> notify e
+  | _ -> ()
 
 let add_watcher e scope = function
   | None -> ()
@@ -291,6 +297,7 @@ let request c ~scope ?on_state key ~load =
       attach c e scope;
       add_watcher e scope on_state;
       e.task <- spawn c e load;
+      notify_if_spawn_failed e;
       e
 
 let reload c ~scope ?on_state key ~load =
@@ -311,6 +318,7 @@ let reload c ~scope ?on_state key ~load =
       attach c e scope;
       add_watcher e scope on_state;
       e.task <- spawn c e load;
+      notify_if_spawn_failed e;
       e
 
 let watch ~scope e f =
