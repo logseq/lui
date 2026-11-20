@@ -4060,3 +4060,26 @@ unknown values; they no longer raise `Invalid_argument`.
 Mounting `split ~sizing_signal` no longer emits a spurious default
 `ProgressValue 0.5` before the signal's first value. Mode transitions remove
 only properties belonging to the previous sizing mode.
+
+## Native store: structural patch validation
+
+`Lui_store.apply_batch` validates a batch against a structural shadow before
+mutating the live tree. Cyclic `InsertChild`/`MoveChild`, `RemoveChild` that
+names the wrong parent, and structural ops on missing nodes raise
+`Invalid_argument` with op index and a `describe_op` prefix (`patch op N (...):
+...`). The store is unchanged so `Lui_host.apply_batch` can return `false` and
+the runtime can resync, matching Web and Android. Property ops on missing
+nodes are still ignored. `apply_op` stays lenient except that inserting a node
+under itself or an ancestor raises to keep `iter_preorder` acyclic.
+
+```ocaml
+(* Before: InsertChild (2, 1) after InsertChild (1, 2) closed a cycle and
+   hung iter_preorder; RemoveChild (2, 3) while parent(3)=1 duplicated 3 in
+   the root set. *)
+Lui_store.apply_batch store { generation; ops = [ InsertChild (2, 1, 0) ] }
+
+(* After: the batch raises and the tree is unchanged. Hosts treat the
+   failure as a rejected batch:
+     Lui_host.apply_batch host batch  (* false *)
+*)
+```

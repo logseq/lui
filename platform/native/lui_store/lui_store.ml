@@ -390,6 +390,18 @@ let rec drop t id =
     Hashtbl.remove t.roots id;
     mark_dirty_mask t id (d_structure lor d_paint)
 
+(* Walk [id]'s parent chain looking for [ancestor]. Used to reject
+   InsertChild/MoveChild ops that would close a cycle and hang
+   [iter_preorder]. *)
+let rec is_ancestor t ancestor id =
+  match Hashtbl.find_opt t.nodes id with
+  | Some n -> (
+    match n.parent with
+    | Some p when p = ancestor -> true
+    | Some p -> is_ancestor t ancestor p
+    | None -> false)
+  | None -> false
+
 (* Insert child at index within parent, detaching it from its previous
    parent first so a move never leaves the id listed twice.
 
@@ -397,6 +409,8 @@ let rec drop t id =
    the target's children: [c.parent = None] means the id sits in no
    child list, so the common first-attach path skips any walk. *)
 let insert_child t parent child index =
+  if parent = child || is_ancestor t child parent then
+    invalid_arg "child insertion would create a cycle";
   match (Hashtbl.find_opt t.nodes parent, Hashtbl.find_opt t.nodes child) with
   | Some p, Some c ->
     (match c.parent with
@@ -547,7 +561,134 @@ let apply_op t = function
     | _ -> ());
     journal_push t op
 
+let describe_op = function
+  | CreateNode (node, _) -> Printf.sprintf "CreateNode %d" node
+  | CreateExtension (node, identifier, _) ->
+    Printf.sprintf "CreateExtension %d %s" node identifier
+  | DropNode node -> Printf.sprintf "DropNode %d" node
+  | DetachSubtree node -> Printf.sprintf "DetachSubtree node=%d" node
+  | SetProp (node, _, _) -> Printf.sprintf "SetProp %d" node
+  | RemoveProp (node, _) -> Printf.sprintf "RemoveProp %d" node
+  | SetExtensionProp (node, property, _) ->
+    Printf.sprintf "SetExtensionProp %d %s" node property
+  | RemoveExtensionProp (node, property) ->
+    Printf.sprintf "RemoveExtensionProp %d %s" node property
+  | InsertChild (parent, child, index) ->
+    Printf.sprintf "InsertChild parent=%d child=%d index=%d" parent child index
+  | RemoveChild (parent, child) ->
+    Printf.sprintf "RemoveChild parent=%d child=%d" parent child
+  | MoveChild (parent, child, index) ->
+    Printf.sprintf "MoveChild parent=%d child=%d index=%d" parent child index
+
+(* Lightweight structural shadow used to validate a batch before any
+   live node is mutated. Property ops on missing ids stay silent (the
+   web store's rule); structural ops on missing/detached/wrong-parent
+   nodes and cycle-forming inserts fail the whole batch so the host
+   can resync. *)
+type shadow = {
+  parent : (int, int option) Hashtbl.t;
+  children : (int, int list) Hashtbl.t;
+}
+
+let shadow_of t =
+  let parent = Hashtbl.create (Hashtbl.length t.nodes) in
+  let children = Hashtbl.create (Hashtbl.length t.nodes) in
+  Hashtbl.iter
+    (fun id n ->
+      Hashtbl.replace parent id n.parent;
+      Hashtbl.replace children id (map_children (fun c -> c.id) n))
+    t.nodes;
+  { parent; children }
+
+let shadow_exists sh id = Hashtbl.mem sh.parent id
+
+let shadow_children sh id =
+  match Hashtbl.find_opt sh.children id with Some xs -> xs | None -> []
+
+let rec shadow_is_ancestor sh ancestor id =
+  match Hashtbl.find_opt sh.parent id with
+  | Some (Some p) when p = ancestor -> true
+  | Some (Some p) -> shadow_is_ancestor sh ancestor p
+  | _ -> false
+
+let rec drop_shadow sh id =
+  if shadow_exists sh id then begin
+    (match Hashtbl.find sh.parent id with
+     | Some pid ->
+       Hashtbl.replace sh.children pid
+         (List.filter (( <> ) id) (shadow_children sh pid))
+     | None -> ());
+    List.iter (drop_shadow sh) (shadow_children sh id);
+    Hashtbl.remove sh.parent id;
+    Hashtbl.remove sh.children id
+  end
+
+let unlink_shadow sh child =
+  match Hashtbl.find_opt sh.parent child with
+  | Some (Some pid) ->
+    Hashtbl.replace sh.children pid
+      (List.filter (( <> ) child) (shadow_children sh pid));
+    Hashtbl.replace sh.parent child None
+  | _ -> ()
+
+let insert_at_list xs child index =
+  let xs = List.filter (( <> ) child) xs in
+  let rec go i = function
+    | rest when i <= 0 -> child :: rest
+    | [] -> [ child ]
+    | x :: rest -> x :: go (i - 1) rest
+  in
+  go index xs
+
+let insert_shadow sh parent child index =
+  unlink_shadow sh child;
+  Hashtbl.replace sh.children parent
+    (insert_at_list (shadow_children sh parent) child index);
+  Hashtbl.replace sh.parent child (Some parent)
+
+let fail_op index op msg =
+  invalid_arg
+    (Printf.sprintf "patch op %d (%s): %s" index (describe_op op) msg)
+
+let validate_batch t (batch : patch_batch) =
+  let sh = shadow_of t in
+  List.iteri
+    (fun op_index op ->
+      match op with
+      | CreateNode (id, _) | CreateExtension (id, _, _) ->
+        if shadow_exists sh id then drop_shadow sh id;
+        Hashtbl.replace sh.parent id None;
+        Hashtbl.replace sh.children id []
+      | DropNode id | DetachSubtree id ->
+        if not (shadow_exists sh id) then fail_op op_index op "unknown node";
+        drop_shadow sh id
+      | SetProp (id, _, _)
+      | RemoveProp (id, _)
+      | SetExtensionProp (id, _, _)
+      | RemoveExtensionProp (id, _) ->
+        (* Missing-node property writes are moot; dropping them keeps
+           one stale write from aborting the rest of the batch. *)
+        ignore id
+      | InsertChild (parent, child, at) | MoveChild (parent, child, at) ->
+        if not (shadow_exists sh parent) then
+          fail_op op_index op "unknown parent";
+        if not (shadow_exists sh child) then
+          fail_op op_index op "unknown child";
+        if parent = child || shadow_is_ancestor sh child parent then
+          fail_op op_index op "child insertion would create a cycle";
+        insert_shadow sh parent child at
+      | RemoveChild (parent, child) ->
+        if not (shadow_exists sh parent) then
+          fail_op op_index op "unknown parent";
+        if not (shadow_exists sh child) then
+          fail_op op_index op "unknown child";
+        if not (List.mem child (shadow_children sh parent)) then
+          fail_op op_index op "child is not attached to parent";
+        unlink_shadow sh child)
+    batch.ops
+
 let apply_batch t (batch : patch_batch) =
+  validate_batch t batch;
   t.generation <- batch.generation;
   List.iter (apply_op t) batch.ops
 

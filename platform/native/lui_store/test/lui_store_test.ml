@@ -226,18 +226,7 @@ let test_root_ids () =
       InsertChild (1, 9, 0) ];
   check (list int) "roots" [1; 2] (Lui_store.root_ids t)
 
-let test_ops_on_missing_are_ignored () =
-  let t = Lui_store.create () in
-  apply t
-    [ SetProp (99, TextValue, StringValue "x");
-      InsertChild (99, 98, 0);
-      RemoveChild (99, 98);
-      DropNode 99 ];
-  check int "still empty" 0 (Lui_store.node_count t)
-
-(* H2: RemoveChild(parent, child) when child is not in that parent's
-   list must not add the child to the root set. Doing so duplicates it
-   in preorder (parent(3)=1 still, but 3 is also a root). *)
+(* Bound preorder so a cycle cannot hang the suite. *)
 let bounded_preorder t =
   let ids = ref [] in
   let n = ref 0 in
@@ -249,6 +238,64 @@ let bounded_preorder t =
    with Failure _ -> ());
   List.rev !ids
 
+let test_ops_on_missing_are_ignored () =
+  let t = Lui_store.create () in
+  apply t [ SetProp (99, TextValue, StringValue "x"); RemoveProp (99, TextValue) ];
+  check int "still empty" 0 (Lui_store.node_count t)
+
+let test_structural_ops_on_missing_fail_atomically () =
+  let t = Lui_store.create () in
+  apply t [ CreateNode (1, Column); CreateNode (2, Text) ];
+  check_raises "unknown child"
+    (Invalid_argument
+       "patch op 0 (InsertChild parent=1 child=99 index=0): unknown child")
+    (fun () -> apply t [ InsertChild (1, 99, 0); SetProp (2, TextValue, StringValue "x") ]);
+  check (option string) "later SetProp not applied" None
+    (Lui_store.string_prop t 2 "text");
+  check (list int) "tree unchanged" [1; 2] (bounded_preorder t);
+  check_raises "unknown parent"
+    (Invalid_argument
+       "patch op 0 (RemoveChild parent=99 child=2): unknown parent")
+    (fun () -> apply t [ RemoveChild (99, 2) ]);
+  check_raises "unknown drop"
+    (Invalid_argument "patch op 0 (DropNode 99): unknown node")
+    (fun () -> apply t [ DropNode 99; SetProp (2, TextValue, StringValue "y") ]);
+  check (option string) "drop batch did not apply props" None
+    (Lui_store.string_prop t 2 "text")
+
+let test_stale_remove_child_batch_rejected () =
+  let t = Lui_store.create () in
+  apply t
+    [ CreateNode (1, Column); CreateNode (2, Column); CreateNode (3, Text);
+      InsertChild (1, 3, 0) ];
+  check_raises "wrong parent"
+    (Invalid_argument
+       "patch op 0 (RemoveChild parent=2 child=3): child is not attached to parent")
+    (fun () ->
+      apply t [ RemoveChild (2, 3); SetProp (3, TextValue, StringValue "x") ]);
+  check (option int) "parent of 3 stays 1" (Some 1) (Lui_store.parent t 3);
+  check (list int) "roots" [1; 2] (Lui_store.root_ids t);
+  check (list int) "preorder" [1; 3; 2] (bounded_preorder t);
+  check (option string) "text not applied" None (Lui_store.string_prop t 3 "text")
+
+let test_cyclic_insert_rejected () =
+  let t = Lui_store.create () in
+  apply t
+    [ CreateNode (1, Column); CreateNode (2, Column); InsertChild (1, 2, 0) ];
+  check_raises "cycle"
+    (Invalid_argument
+       "patch op 0 (InsertChild parent=2 child=1 index=0): child insertion would create a cycle")
+    (fun () -> apply t [ InsertChild (2, 1, 0) ]);
+  check (option int) "1 remains a root" None (Lui_store.parent t 1);
+  check (list int) "preorder" [1; 2] (bounded_preorder t);
+  check_raises "self insert"
+    (Invalid_argument
+       "patch op 0 (InsertChild parent=1 child=1 index=0): child insertion would create a cycle")
+    (fun () -> apply t [ InsertChild (1, 1, 0) ])
+
+(* H2: RemoveChild(parent, child) when child is not in that parent's
+   list must not add the child to the root set. Doing so duplicates it
+   in preorder (parent(3)=1 still, but 3 is also a root). *)
 let test_stale_remove_child_keeps_real_parent () =
   let t = Lui_store.create () in
   apply t
@@ -452,6 +499,11 @@ let () =
          test_case "roots" `Quick test_root_ids;
          test_case "stale RemoveChild keeps real parent" `Quick
            test_stale_remove_child_keeps_real_parent;
+         test_case "stale RemoveChild batch rejected" `Quick
+           test_stale_remove_child_batch_rejected;
+         test_case "cyclic insert rejected" `Quick test_cyclic_insert_rejected;
+         test_case "structural ops on missing fail atomically" `Quick
+           test_structural_ops_on_missing_fail_atomically;
          test_case "preorder allocation" `Quick test_preorder_allocation;
          test_case "streamed preorder order" `Quick test_iter_preorder_order;
          test_case "kind lookup allocation" `Quick test_kind_lookup_allocation;

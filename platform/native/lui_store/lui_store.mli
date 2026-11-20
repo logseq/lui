@@ -61,6 +61,12 @@ val node_revision : node -> int
 val node_child_count : node -> int
 
 val apply_batch : t -> Lui_protocol.patch_batch -> unit
+(** Apply [batch] atomically. Structural ops that name missing nodes,
+    remove a child from the wrong parent, or would create a parent-cycle
+    raise [Invalid_argument] with op context and leave the store
+    unchanged so the host can reject the batch and resync. Property ops
+    on missing nodes are ignored. *)
+
 val apply_op : t -> Lui_protocol.patch_op -> unit
 
 (* Incremental invalidation: ids touched since the last drain,

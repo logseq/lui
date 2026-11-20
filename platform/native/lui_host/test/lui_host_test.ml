@@ -34,6 +34,21 @@ let test_apply_marks_dirty () =
   check bool "dirty after apply" true (Lui_host.wants_repaint h);
   check int "nodes" 2 (Lui_store.node_count (Lui_host.store h))
 
+let test_invalid_batch_rejected () =
+  let h = make () in
+  check bool "mount" true
+    (Lui_host.apply_batch h
+       (batch [ CreateNode (1, Column); CreateNode (2, Text); InsertChild (1, 2, 0) ]));
+  ignore (Lui_host.repaint h);
+  check bool "cycle rejected" false
+    (Lui_host.apply_batch h (batch [ InsertChild (2, 1, 0) ]));
+  check (option int) "tree unchanged" None
+    (Lui_store.parent (Lui_host.store h) 1);
+  check bool "stale remove rejected" false
+    (Lui_host.apply_batch h (batch [ RemoveChild (2, 1) ]));
+  check (list int) "child still under 1" [2]
+    (Lui_store.child_ids (Lui_host.store h) 1)
+
 let test_repaint_clears_dirty () =
   let h = make () in
   ignore
@@ -600,6 +615,7 @@ let () =
       ( "dirty",
         [ test_case "create clean" `Quick test_create_clean;
           test_case "apply marks dirty" `Quick test_apply_marks_dirty;
+          test_case "invalid batch rejected" `Quick test_invalid_batch_rejected;
           test_case "repaint clears" `Quick test_repaint_clears_dirty;
           test_case "resize marks dirty" `Quick test_resize_marks_dirty;
           test_case "set_hidden marks dirty" `Quick test_set_hidden_marks_dirty
