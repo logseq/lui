@@ -68,7 +68,7 @@ export function typedViewFunctions(signature) {
   return new Map(declarations.map(([, name, body]) => [name, split(body, '->')]));
 }
 
-export function typedViewSchema(schema, signature, implementation, {extension = false} = {}) {
+export function typedViewSchema(schema, signature, implementation, {extension = false, admission} = {}) {
   const source = uncomment(signature).replace(/Lui_elements\.t\b/g, 't');
   const functions = typedViewFunctions(signature);
   const types = new Map([...source.matchAll(/^type (\w+)\s*=\s*(\[[\s\S]*?\])/gm)]
@@ -76,6 +76,18 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
   const converters = new Map([...uncomment(implementation).matchAll(/\blet \w+\s*:\s*(\w+)\s*->\s*string\s*=\s*function\b([\s\S]*?)(?=^let\b|$(?![\s\S]))/gm)]
     .map(([, type, body]) => [type, new Map([...body.matchAll(/\|\s*`(\w+)\s*->\s*"([^"\\]*)"/g)].map(([, tag, value]) => [tag, value]))]));
   const domains = new Map();
+  const styleSignature = source.match(/module Slot_style : sig[\s\S]*?val make :([\s\S]*?)\n\s*val merge/);
+  const styleArguments = styleSignature ? split(styleSignature[1], '->').filter(arg => arg.startsWith('?')) : [];
+  function expandStyle(args, wire) {
+    return args.flatMap(arg => {
+      if (arg !== '?style:Slot_style.t') return [arg];
+      if (!admission?.kinds[wire]) throw new Error(`missing style admission for ${wire}`);
+      return styleArguments.filter(argument => {
+        const name = /^\?(\w+):/.exec(argument)?.[1].replace(/_signal$/, '').replaceAll('_', '-');
+        return admission.kinds[wire].includes(name);
+      });
+    });
+  }
   function enumValues(type, stack = []) {
     if (stack.includes(type)) throw new Error(`recursive view type ${type}`);
     const members = types.get(type);
@@ -117,7 +129,7 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
     const signatures = names.map(name => {
       const args = functions.get(name);
       if (!args) throw new Error(`no typed constructor for ${name}`);
-      return args;
+      return expandStyle(args, wire);
     });
     if (signatures.length === 1) return signatures[0];
     const parameters = new Map();

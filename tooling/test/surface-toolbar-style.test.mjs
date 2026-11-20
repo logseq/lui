@@ -44,7 +44,7 @@ test('surface and toolbar styling preserves capabilities, defaults and reactive 
     writeFileSync(join(dir, 'driver.ml'), 'let () = Ppxlib.Driver.standalone ()\n');
     success(['ocamlfind', 'ocamlopt', '-package', 'ppxlib', '-linkpkg', '-linkall',
       '_build/default/ppx/lui_ppx.cmxa', join(dir, 'driver.ml'), '-o', join(dir, 'driver')]);
-    const staticProps = props.map(([name, , value]) => `~${name}:(${value})`).join(' ');
+    const staticProps = '~style:(Slot_style.make ' + props.map(([name, , value]) => `~${name}:(${value})`).join(' ') + ' ())';
     const initial = {
       font_size: ['"12px"', 'StringValue "12px"'],
       font_weight: ['400', 'IntValue 400'],
@@ -69,12 +69,12 @@ test('surface and toolbar styling preserves capabilities, defaults and reactive 
       hover_opacity: ['0.8', 'FloatValue 0.8'],
       max_height_viewport: ['0.5', 'FloatValue 0.5'],
     };
-    const reactiveProps = '~font_size:"999px" ' + props.map(([name, , value]) =>
-      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ');
+    const reactiveProps = '~style:(Slot_style.make ~font_size:"999px" ' + props.map(([name, , value]) =>
+      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ') + ' ())';
     const surfaceProps = props.filter(([name]) => !['white_space', 'text_overflow'].includes(name));
-    const surfaceStaticProps = surfaceProps.map(([name, , value]) => `~${name}:(${value})`).join(' ');
-    const surfaceReactiveProps = surfaceProps.map(([name, , value]) =>
-      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ');
+    const surfaceStaticProps = '~style:(Slot_style.make ' + surfaceProps.map(([name, , value]) => `~${name}:(${value})`).join(' ') + ' ())';
+    const surfaceReactiveProps = '~style:(Slot_style.make ' + surfaceProps.map(([name, , value]) =>
+      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ') + ' ~collision_padding:99. ~collision_padding:(reactive (fun active -> if active then 5. else 2.) source) ())';
     const checks = props.map(([name, wire, , value]) =>
       `${['white_space', 'text_overflow'].includes(name) ? 'if not (List.mem label ["surface"; "surface-adapter"; "json-surface"]) then ' : ''}check label (property node ${wire} = Some (if reactive && not active then ${initial[name][1]} else ${value}));`).join('\n');
     const jsonProps = props.map(([name, , , wire]) => {
@@ -97,16 +97,24 @@ let property node prop = List.fold_left (fun result -> function
   | SetProp (id, key, value) when id = node && key = prop -> Some value
   | _ -> result) None (ops ())
 let json_item label = Lui_json_view.Obj
-  (["kind", Lui_json_view.Str "menu-item"; "text", Lui_json_view.Str label]
+  (["kind", Lui_json_view.Str (if label = "json-dropdown" then "menu-item" else "button"); "text", Lui_json_view.Str label]
    @ [${jsonProps}])
+let json_icon label = Lui_json_view.Obj
+  (["kind", Lui_json_view.Str "button"; "icon", Lui_json_view.Str "app:dots";
+    "label", Lui_json_view.Str label] @ [${jsonProps}])
 let json = Lui_json_view.Obj ["kind", Lui_json_view.Str "column";
-  "children", Lui_json_view.Arr [json_item "json-ordinary";
+  "children", Lui_json_view.Arr [json_item "json-ordinary"; json_icon "json-icon";
     Lui_json_view.Obj ["kind", Lui_json_view.Str "toolbar";
       "label", Lui_json_view.Str "Actions";
-      "children", Lui_json_view.Arr [json_item "json-toolbar"]];
+      "children", Lui_json_view.Arr [json_item "json-toolbar"; json_icon "json-toolbar-icon"]];
     Lui_json_view.Obj ["kind", Lui_json_view.Str "dropdown-menu";
       "children", Lui_json_view.Arr [json_item "json-dropdown"]]]]
 let view _ source _ = column [
+  button ~text:"merged"
+    ~style:(Slot_style.merge
+      (Slot_style.make ~font_size:(reactive (fun active -> if active then "12px" else "10px") source)
+        ~hover_foreground:"red" ())
+      (Slot_style.make ~font_size:"20px" ())) [];
   button ~text:"static" ${staticProps} [];
   button ~text:"ordinary" ${reactiveProps} [];
   toolbar ~label:"Actions" [toolbar_button ~text:"toolbar" ${reactiveProps} []];
@@ -114,12 +122,13 @@ let view _ source _ = column [
     dropdown_menu_item ~text:"dropdown" ${reactiveProps} [];
     reactive_dropdown_menu_item (fun _ -> dropdown_menu_item ~text:"adapter"
       ${staticProps} []) source;
-    dropdown_menu_item ~text:"default" []]);
+    dropdown_menu_item ~text:"default" [];
+    dropdown_menu_item ~text:"empty" ~style:(Slot_style.make ()) []]);
   toolbar ~label:"Additional controls" [
     toolbar_text ~value:"toolbar-text" ${reactiveProps} [];
     toolbar_icon_button ~label:"toolbar-icon" ~icon:(\`app "dots") ${reactiveProps} []];
   dropdown_menu_view (dropdown_menu ~accessibility_identifier:"surface" ${surfaceReactiveProps}
-    ~collision_padding:99. ~collision_padding:(reactive (fun active -> if active then 5. else 2.) source) []);
+     []);
   dropdown_menu_view (reactive_dropdown_menu (fun _ ->
     dropdown_menu ~accessibility_identifier:"surface-adapter" ${surfaceStaticProps} []) source);
   Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
@@ -136,18 +145,26 @@ let () =
       let reactive = List.mem label ["ordinary"; "toolbar"; "dropdown"; "toolbar-text"; "toolbar-icon"; "surface"] in
       ${checks}
       ()) ["static"; "ordinary"; "toolbar"; "dropdown"; "adapter";
-        "json-ordinary"; "json-toolbar"; "json-dropdown"; "toolbar-text"; "toolbar-icon";
+        "json-ordinary"; "json-icon"; "json-toolbar"; "json-toolbar-icon"; "json-dropdown"; "toolbar-text"; "toolbar-icon";
         "surface"; "surface-adapter"; "json-surface"];
     check "collision padding" (property (node "surface") CollisionPadding = Some (FloatValue (if active then 5. else 2.)));
+    check "merged override" (property (node "merged") FontSize = Some (StringValue "20px"));
+    check "merged base" (property (node "merged") HoverForeground = Some (StringValue "red"));
+    check "empty font untouched" (property (node "empty") FontSize = None);
+    check "empty hover untouched" (property (node "empty") HoverBackground = None);
     let node = node "default" in
     check "default font untouched" (property node FontSize = None);
     check "default hover untouched" (property node HoverBackground = None)
   in
   verify false;
   let retained = node "dropdown" in
+  let retained_surface = node "surface" in
+  let retained_control = node "toolbar" in
   check "send" (Lui_app.send app true);
   ignore (Lui_app.flush app);
   check "retained node" (retained = node "dropdown");
+  check "retained surface identity" (node "surface" = retained_surface);
+  check "retained control identity" (node "toolbar" = retained_control);
   verify true;
   check "dispose" (Lui_app.dispose app)
 `);
@@ -157,6 +174,22 @@ let () =
     success([...compile, join(dir, 'probe.ml'), '-o', join(dir, 'probe')]);
     const executed = spawnSync(join(dir, 'probe'), [], { cwd: root, encoding: 'utf8' });
     assert.equal(executed.status, 0, executed.stdout + executed.stderr);
+    writeFileSync(join(dir, 'unsupported.ml'), `open Lui_elements
+open Lui_protocol
+let backend = {backend_profile = generic_profile (); apply_batch = (fun _ -> true)}
+let () =
+  let rejected = try
+    let app = Lui_app.create backend () (fun value _ -> value) (fun _ _ _ ->
+      button ~text:"Invalid" ~style:(Slot_style.make ~collision_padding:5. ()) []) in
+    ignore (Lui_app.start app);
+    ignore (Lui_app.dispose app);
+    false
+  with Invalid_argument message -> message = "Slot_style: property is unsupported on this kind" in
+  if not rejected then failwith "unsupported style was not rejected"
+`);
+    success([...compile, join(dir, 'unsupported.ml'), '-o', join(dir, 'unsupported')]);
+    const unsupported = spawnSync(join(dir, 'unsupported'), [], { cwd: root, encoding: 'utf8' });
+    assert.equal(unsupported.status, 0, unsupported.stdout + unsupported.stderr);
     for (const expression of [
       'toolbar_button ~text:"Copy" ~font_weight:"bold" []',
       'dropdown_menu ~shadow:1 []',

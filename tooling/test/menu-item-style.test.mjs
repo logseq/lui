@@ -37,7 +37,7 @@ test('menu-item styling preserves slot capabilities and reactive properties', ()
     writeFileSync(join(dir, 'driver.ml'), 'let () = Ppxlib.Driver.standalone ()\n');
     success(['ocamlfind', 'ocamlopt', '-package', 'ppxlib', '-linkpkg', '-linkall',
       '_build/default/ppx/lui_ppx.cmxa', join(dir, 'driver.ml'), '-o', join(dir, 'driver')]);
-    const staticProps = props.map(([name, , value]) => `~${name}:(${value})`).join(' ');
+    const staticProps = '~style:(Slot_style.make ' + props.map(([name, , value]) => `~${name}:(${value})`).join(' ') + ' ())';
     const initial = {
       font_size: ['"12px"', 'StringValue "12px"'],
       font_weight: ['400', 'IntValue 400'],
@@ -55,8 +55,8 @@ test('menu-item styling preserves slot capabilities and reactive properties', ()
       focus_within_border: ['"gray"', 'StringValue "gray"'],
       focus_shadow: ['"none"', 'StringValue "none"'],
     };
-    const reactiveProps = '~font_size:"999px" ' + props.map(([name, , value]) =>
-      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ');
+    const reactiveProps = '~style:(Slot_style.make ~font_size:"999px" ' + props.map(([name, , value]) =>
+      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ') + ' ())';
     const checks = props.map(([name, wire, , value]) =>
       `check label (property node ${wire} = Some (if reactive && not active then ${initial[name][1]} else ${value}));`).join('\n');
     const jsonProps = props.map(([name, , , wire]) => {
@@ -128,7 +128,8 @@ let () =
     const executed = spawnSync(join(dir, 'probe'), [], { cwd: root, encoding: 'utf8' });
     assert.equal(executed.status, 0, executed.stdout + executed.stderr);
     for (const expression of [
-      'dropdown_menu_item ~font_weight:"bold" []',
+      'dropdown_menu_item ~font_weight:500 []',
+      'dropdown_menu_item ~style:(Slot_style.make ~font_weight:"bold" ()) []',
       'dropdown_menu_item ~font_style:`invalid []',
       'dropdown_menu [menu_item ~font_size:"14px" []]',
     ]) {

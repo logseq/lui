@@ -279,6 +279,7 @@ val move_child_op : int -> int -> int -> patch_op
 }
 
 function renderOCamlWire(schema) {
+  const admission = JSON.parse(readFileSync(resolve(repository, 'schema/apple-property-admission.json'), 'utf8'));
   const kindCases = schema.nodeKinds
     .map(({ lg, wire }) => `  | ${lg} -> "${wire}"`)
     .join('\n');
@@ -330,7 +331,7 @@ let property_web_only property = List.mem property [ ${schema.properties.filter(
 
 ${typedViewSchema(schema,
   readFileSync(resolve(repository, 'src/lui_elements.mli'), 'utf8'),
-  readFileSync(resolve(repository, 'src/lui_elements.ml'), 'utf8')).trimEnd()}
+  readFileSync(resolve(repository, 'src/lui_elements.ml'), 'utf8'), {admission}).trimEnd()}
 
 ${typedViewSchema({properties: [], nodeKinds: ['split-view', 'split-branch', 'split-pane', 'split-tab'].map(wire => ({wire, lg: JSON.stringify(wire)}))},
   readFileSync(resolve(repository, 'src/lui_split.mli'), 'utf8'),

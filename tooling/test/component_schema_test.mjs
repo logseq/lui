@@ -59,6 +59,7 @@ test('element constructors expose only admitted properties and events', () => {
       if (!match) continue;
       const [, parameter, type] = match;
       const base = parameter.replace(/_signal$/, '');
+      if (base === 'style' && type === 'Slot_style.t') continue;
       if (base === 'key' || /^(t|\w+_el)( list)?$/.test(type)) continue;
       if (constructor === 'scroll' && base === 'virtual_owner' && type === 'Lui_virtual.owner') continue;
       if (original === 'virtual_list' && base === 'viewport' && type === 'Lui_virtual.source') continue;
@@ -110,7 +111,8 @@ test('raw constructor callbacks and schema payload drift are rejected', () => {
   const implementation = readFileSync(join(repository, 'src/lui_elements.ml'), 'utf8');
   const raw = signature.replace('?on_press:(unit -> unit)', '?on_press:(Lui_protocol.event -> unit)');
   assert.notEqual(raw, signature);
-  assert.throws(() => typedViewSchema(schema, raw, implementation), /unknown event type: table-cell.on_press/);
+  const admission = JSON.parse(readFileSync(join(repository, 'schema/apple-property-admission.json'), 'utf8'));
+  assert.throws(() => typedViewSchema(schema, raw, implementation, {admission}), /unknown event type: table-cell.on_press/);
   const changed = structuredClone(schema);
   changed.events.find(event => event.lg === 'ValueChanged').fields[1] = ':int';
   assert.throws(() => renderEventPayloads(changed), /incompatible callback scalar on_resize/);
