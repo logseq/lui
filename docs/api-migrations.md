@@ -1,67 +1,67 @@
 # LUI API migration guide
 
-### Typed dropdown surfaces and toolbar appearance
+### Shared typed slot appearance
 
-Dropdown surfaces now expose their existing wire-level typography, overflow,
-`shadow`, `collision_padding` and `max_height_viewport` properties directly.
-Use `menu_trigger` with a styled `dropdown_menu` to customize a trigger's surface.
-Toolbar controls and text expose the typography and interaction properties
-admitted by their existing wire kinds, matching their ordinary constructors.
-These include hover/focus colors, shadows, cursor, user selection and interaction
-opacity. Every added argument has a `_signal` twin; current signal values win
-over static values, update retained nodes and borrow their source lifetime.
-Omitted arguments leave existing defaults unchanged.
+`menu_item`, dropdown surfaces and items, toolbar controls and toolbar text
+accept one optional `~style:Slot_style.t` argument. Their ordinary constructors
+accept the same value. The individual appearance arguments added earlier in
+this PR, including their signal twins, have been removed from constructors.
+Pre-existing constructor properties are unchanged.
+
+Build appearance once with `Slot_style.make`: `font_size`, `font_weight`,
+`font_family`, `font_style`, `line_height`, `letter_spacing`, `text_decoration`,
+`white_space`, `text_overflow`, `overflow`, `hover_background`, `hover_foreground`,
+`focus_within_background`, `focus_within_border`, `focus_shadow`, `shadow`,
+`collision_padding`, `cursor`, `user_select`, `disabled_opacity`,
+`pressed_opacity`, `hover_opacity` and `max_height_viewport`. Typed signal twins
+are centralized in this builder only. Inside a style, current signal values win
+over static values and updates retain the node. Sources are borrowed; reactive
+derivations are created and owned at each mount through the PPX's style-scoping
+adapter. Omitted properties, an empty style and an omitted style preserve defaults.
+`Slot_style.scoped` is the PPX adapter; views should use `reactive` rather than
+calling this adapter directly.
+
+`Slot_style.merge base override` is right-biased per property, including signal
+bindings: an overridden base binding is not installed. A style may only contain
+properties admitted by its target's existing wire kind. Unsupported properties
+are rejected before any style bindings are installed; for example, collision
+padding belongs on a dropdown surface, not a toolbar button.
 
 ```ocaml
-menu_trigger ~label:"Actions"
-  (dropdown_menu ~shadow:"0 4px 6px black" ~collision_padding:5.
-     ~font_size:"14px" ~line_height:"20px" ~overflow:`auto
-     [dropdown_menu_item ~text:"Open" []])
+let menu =
+  let surface_style = Slot_style.make ~shadow:"0 4px 6px black"
+    ~collision_padding:5. ~font_size:"14px" ~line_height:"20px" ~overflow:`auto () in
+  menu_trigger ~text:"Actions" ~label:"Actions"
+    (dropdown_menu ~style:surface_style
+       [dropdown_menu_item ~text:"Open" []])
 
-toolbar ~label:"Actions"
-  [toolbar_button ~text:"Copy" ~font_size:"12px" ~line_height:"16px"
-     ~hover_foreground:(reactive (fun active ->
-         if active then "primary" else "foreground") selected) []]
+let actions selected = toolbar ~label:"Actions"
+  [toolbar_button ~text:"Copy"
+     ~style:(Slot_style.make ~font_size:"12px" ~line_height:"16px"
+       ~hover_foreground:(reactive (fun active ->
+         if active then "primary" else "foreground") selected) ()) []]
 ```
 
 Restricted slot capabilities are unchanged: ordinary views cannot become toolbar
 or dropdown slots through post-mount decorators. Use the typed constructors and
 their existing reactive/scoped adapters instead. JSON adapters and view-contract
-metadata expose the same static properties. No wire properties or admission
-rules were added: in particular, controls without wire typography support do
-not gain typography arguments. Web and SDL/native draw these existing appearance
+metadata keep the same flat static appearance keys, including ordinary and
+toolbar buttons with text or icons. These keys are decoded through the shared
+style builder. No wire properties, admission rules, defaults or events changed.
+Web and SDL/native draw these existing appearance
 channels; Apple and Android retain native control/menu styling where their
 renderers do not consume them, as described below for menu items.
 
-### Typed menu-item typography and interaction styling
-
-`menu_item`, `dropdown_menu_item` and `toolbar_menu_item` now accept the same
-optional typography and interaction styling properties. Each has a matching
-`_signal` argument: `font_size`, `font_weight`, `font_family`, `font_style`,
-`line_height`, `letter_spacing`, `text_decoration`, `white_space`,
-`text_overflow`, `overflow`, `hover_background`, `hover_foreground`,
-`focus_within_background`, `focus_within_border` and `focus_shadow`.
-The enum-valued properties use the existing closed text vocabularies.
-
-Move ordinary-view post-mount styling onto the slot constructor rather than
-erasing or casting its restricted capability:
+Move ordinary-view post-mount styling into a typed style rather than erasing
+or casting its restricted capability:
 
 ```ocaml
 dropdown_menu
-  [ dropdown_menu_item ~text:"Open" ~font_size:"0.875rem"
-      ~line_height:"1.42857" ~hover_background:"muted"
-      ~hover_foreground:(reactive (fun active ->
-          if active then "primary" else "foreground") selected)
-      ~focus_shadow:"inset 0 0 0 2px blue" [] ]
+  [ dropdown_menu_item ~text:"Open"
+      ~style:(Slot_style.make ~font_size:"0.875rem"
+        ~line_height:"1.42857" ~hover_background:"muted"
+        ~focus_shadow:"inset 0 0 0 2px blue" ()) [] ]
 ```
-
-The existing slot adapters retain these properties. Signals are borrowed;
-their current values override static values, and subsequent publications
-update the same node. Omitted properties remain unset, preserving all existing
-defaults. The JSON menu-item renderer accepts the same static properties.
-The language-neutral menu-item view contract includes these properties too.
-This exposes existing wire properties only; the wire vocabulary, admission
-tables, backend defaults and event behavior are unchanged.
 
 These are wire-level properties, not a promise of identical native menu
 styling on every renderer:
@@ -91,8 +91,8 @@ active foreground channel overrides it, rather than assuming an inverted
 highlight background:
 
 ```ocaml
-dropdown_menu_item ~text:"Open" ~hover_foreground:"red" []
-dropdown_menu_item ~text:"Save" ~focus_within_background:"muted" []
+dropdown_menu_item ~text:"Open" ~style:(Slot_style.make ~hover_foreground:"red" ()) []
+dropdown_menu_item ~text:"Save" ~style:(Slot_style.make ~focus_within_background:"muted" ()) []
 ```
 
 ### Apple row intrinsic text priority

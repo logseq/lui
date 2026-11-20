@@ -176,8 +176,10 @@ let scoped_expression ?(adapter = "scoped") ~loc build =
           { txt = Ldot (Lident "Lui_ui", name); loc }) ((Nolabel, evar ~loc context) :: args)
       | _ -> expression
   end in
-  let scoped = B.pexp_ident ~loc
-    { txt = Ldot (Lident "Lui_elements", adapter); loc } in
+  let path = if adapter = "slot_style" then
+      Ldot (Ldot (Lident "Lui_elements", "Slot_style"), "scoped")
+    else Ldot (Lident "Lui_elements", adapter) in
+  let scoped = B.pexp_ident ~loc { txt = path; loc } in
   apply ~loc scoped [lam ~loc [pvar ~loc context] (build own_generated)]
 
 let structural_constructor expression = match expression.pexp_desc with
@@ -281,7 +283,10 @@ class mapper =
           super#expression result in
           let plain = transform args (new Ast_traverse.map) in
           if !needs_scope then
-            let adapter = Lui_nesting_schema.scoped_adapter (constructor_name fn) in
+            let adapter = match fn.pexp_desc with
+              | Pexp_ident {txt = Ldot (Lident "Slot_style", "make"); _}
+              | Pexp_ident {txt = Ldot (Ldot (Lident "Lui_elements", "Slot_style"), "make"); _} -> "slot_style"
+              | _ -> Lui_nesting_schema.scoped_adapter (constructor_name fn) in
             let scoped = scoped_expression ~adapter ~loc:expr.pexp_loc (transform constructor_args) in
             if mount_args = [] then scoped
             else B.pexp_apply ~loc:expr.pexp_loc scoped
