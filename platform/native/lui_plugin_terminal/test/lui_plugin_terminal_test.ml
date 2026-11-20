@@ -176,6 +176,37 @@ let test_links () =
 
 (* ------------------------------------------------------------ PTY *)
 
+let test_flush_pending () =
+  let wrote = ref [] in
+  let write s =
+    wrote := s :: !wrote;
+    2
+  in
+  Alcotest.(check (list string)) "short writes keep the tail"
+    ["llo"; "world"]
+    (Lui_plugin_terminal.flush_pending ~write ["hello"; "world"]);
+  Alcotest.(check (list string)) "first chunk offered" ["hello"] (List.rev !wrote);
+  let write_all s = String.length s in
+  Alcotest.(check (list string)) "full writes drain"
+    []
+    (Lui_plugin_terminal.flush_pending ~write:write_all ["ab"; "cd"]);
+  Alcotest.(check (list string)) "back-pressure keeps all"
+    ["ab"; "cd"]
+    (Lui_plugin_terminal.flush_pending ~write:(fun _ -> 0) ["ab"; "cd"]);
+  Alcotest.(check (list string)) "error keeps all"
+    ["ab"; "cd"]
+    (Lui_plugin_terminal.flush_pending ~write:(fun _ -> -1) ["ab"; "cd"])
+
+let test_pty_close_twice () =
+  let true_bin =
+    if Sys.file_exists "/bin/true" then "/bin/true" else "true"
+  in
+  let p =
+    P.spawn ~argv:[| true_bin |] ~env:[||] ~cwd:"/" ~cols:80 ~rows:24
+  in
+  P.close p;
+  P.close p
+
 let test_pty_cat () =
   let cat = if Sys.file_exists "/bin/cat" then "/bin/cat" else "cat" in
   let p = P.spawn ~argv:[| cat |] ~env:[| "TERM=xterm" |] ~cwd:"/"
@@ -319,11 +350,14 @@ let () =
     "keys", [ Alcotest.test_case "encodings" `Quick test_keys ];
     "links", [ Alcotest.test_case "detect" `Quick test_links ];
     "pty",
-    (match Sys.getenv_opt "GITHUB_ACTIONS" with
-     (* ConPTY under a service session has no console for cat to run in:
-        the spawn produces no echo and the bounded read times out. *)
-     | Some _ -> []
-     | None -> [ Alcotest.test_case "cat round-trip" `Slow test_pty_cat ]);
+    [ Alcotest.test_case "flush pending" `Quick test_flush_pending ]
+    @ (match Sys.getenv_opt "GITHUB_ACTIONS" with
+       (* ConPTY under a service session has no console for cat to run in:
+          the spawn produces no echo and the bounded read times out. *)
+       | Some _ -> []
+       | None ->
+         [ Alcotest.test_case "cat round-trip" `Slow test_pty_cat;
+           Alcotest.test_case "close twice" `Quick test_pty_close_twice ]);
     "render", [
       Alcotest.test_case "smoke ops" `Quick test_render_smoke;
     ];
