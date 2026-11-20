@@ -172,7 +172,10 @@ val invalidate_paint : t -> unit
     a stable store). *)
 
 val apply_batch : ?animate_resize:bool -> t -> Lui_protocol.patch_batch -> bool
-(** [animate_resize=false] applies direct manipulation feedback, including
+(** Returns [false] when the store rejects the batch (cycles, ops on
+    missing nodes, wrong parent) so the runtime can resync. The store
+    is left unchanged on rejection.
+    [animate_resize=false] applies direct manipulation feedback, including
     dependent split corrections, without scheduling eased catch-up. *)
 
 val resize : t -> width:int -> height:int -> scale:float -> unit

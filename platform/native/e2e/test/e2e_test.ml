@@ -400,17 +400,19 @@ let test_real_layout_positions () =
 let test_invalid_ops_ignored () =
   let h = E2e_harness.create () in
   let store = E2e_harness.store h in
-  ignore (E2e_harness.apply_batch h
-            { generation = 1;
-              ops =
-                [ SetProp (99, Gap, IntValue 4);
-                  RemoveProp (99, Gap);
-                  InsertChild (1, 99, 0);
-                  RemoveChild (1, 99);
-                  DropNode 99 ] });
+  let accepted =
+    E2e_harness.apply_batch h
+      { generation = 1;
+        ops =
+          [ SetProp (99, Gap, IntValue 4);
+            RemoveProp (99, Gap);
+            InsertChild (1, 99, 0);
+            RemoveChild (1, 99);
+            DropNode 99 ] }
+  in
+  check bool "structural ops on missing ids reject the batch" false accepted;
   check int "empty store" 0 (Lui_store.node_count store);
-  (* DropNode on a nonexistent id touches nothing — not even the
-     dirty set. *)
+  (* Rejection rolls the batch back — nothing is dirtied. *)
   check int "nothing dirtied" 0
     (List.length (Lui_store.drain_dirty store))
 

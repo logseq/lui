@@ -323,44 +323,51 @@ let set_reduced_motion h enabled =
   end
 
 let apply_batch ?(animate_resize=true) h (batch : Lui_protocol.patch_batch) =
-  let previous = Hashtbl.create 4 and created = Hashtbl.create 4 in
+  let previous = Hashtbl.create 4 and created = Hashtbl.create 4
+  and drop_motion = Hashtbl.create 4 in
   List.iter (function
     | Lui_protocol.CreateNode (id,_) | CreateExtension (id,_,_)
     | DropNode id | DetachSubtree id ->
         Hashtbl.replace created id ();
-        Hashtbl.remove previous id;
-        Hashtbl.remove h.transitions id
+        Hashtbl.replace drop_motion id ();
+        Hashtbl.remove previous id
     | RemoveProp (id, (ProgressValue | FirstPaneWidth)) ->
-        Hashtbl.remove previous id;
-        Hashtbl.remove h.transitions id
+        Hashtbl.replace drop_motion id ();
+        Hashtbl.remove previous id
     | SetProp (id, ((ProgressValue | FirstPaneWidth) as property), _) when not (Hashtbl.mem created id)
         && Lui_store.kind h.store id = "split" ->
-        if not animate_resize then Hashtbl.remove h.transitions id;
+        if not animate_resize then Hashtbl.replace drop_motion id ();
         if not (Hashtbl.mem previous id) then
           (match Lui_store.float_prop h.store id (Lui_wire_schema.property_name property) with
            | Some value -> Hashtbl.add previous id (property, value)
            | None -> ())
     | _ -> ()) batch.ops;
-  Lui_store.apply_batch h.store batch;
-  Hashtbl.filter_map_inplace (fun id motion ->
-    if Lui_store.mem h.store id then Some motion else None) h.transitions;
-  Hashtbl.iter (fun id (property, from_value) ->
-    match h.animation_time, Lui_store.prop h.store id (Lui_wire_schema.property_name property) with
-    | Some started, Some (Lui_protocol.FloatValue target)
-        when animate_resize && not h.reduced_motion && from_value <> target ->
-        let duration = Option.value ~default:0 (Lui_store.int_prop h.store id "resize-duration") in
-        if duration > 0 then begin
-          let easing = Option.value ~default:"standard"
-            (Lui_store.string_prop h.store id "resize-easing") in
-          (match Hashtbl.find_opt h.transitions id with
-           | Some motion when motion.property = property && motion.target = target -> ()
-           | _ -> Hashtbl.replace h.transitions id
-               {property;from_value;target;started;duration=float duration /. 1000.;easing});
-          set_transition_value h id property from_value
-        end else Hashtbl.remove h.transitions id
-    | _ -> Hashtbl.remove h.transitions id) previous;
-  h.dirty <- true;
-  true
+  match
+    try Lui_store.apply_batch h.store batch; Ok ()
+    with Invalid_argument _ -> Error ()
+  with
+  | Error () -> false
+  | Ok () ->
+    Hashtbl.iter (fun id () -> Hashtbl.remove h.transitions id) drop_motion;
+    Hashtbl.filter_map_inplace (fun id motion ->
+      if Lui_store.mem h.store id then Some motion else None) h.transitions;
+    Hashtbl.iter (fun id (property, from_value) ->
+      match h.animation_time, Lui_store.prop h.store id (Lui_wire_schema.property_name property) with
+      | Some started, Some (Lui_protocol.FloatValue target)
+          when animate_resize && not h.reduced_motion && from_value <> target ->
+          let duration = Option.value ~default:0 (Lui_store.int_prop h.store id "resize-duration") in
+          if duration > 0 then begin
+            let easing = Option.value ~default:"standard"
+              (Lui_store.string_prop h.store id "resize-easing") in
+            (match Hashtbl.find_opt h.transitions id with
+             | Some motion when motion.property = property && motion.target = target -> ()
+             | _ -> Hashtbl.replace h.transitions id
+                 {property;from_value;target;started;duration=float duration /. 1000.;easing});
+            set_transition_value h id property from_value
+          end else Hashtbl.remove h.transitions id
+      | _ -> Hashtbl.remove h.transitions id) previous;
+    h.dirty <- true;
+    true
 
 let resize h ~width ~height ~scale =
   h.width <- width;
