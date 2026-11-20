@@ -320,7 +320,12 @@ CAMLprim value lui_term_pty_spawn(value vargv, value venv, value vcwd,
   if (!p) caml_failwith("pty: out of memory");
   argv = strv(vargv);
   env = strv(venv);
-  if (!argv || !env) caml_failwith("pty: out of memory");
+  if (!argv || !env) {
+    free(argv);
+    free(env);
+    free(p);
+    caml_failwith("pty: out of memory");
+  }
 
   memset(&ws, 0, sizeof(ws));
   ws.ws_col = (unsigned short)Int_val(vcols);
@@ -342,6 +347,11 @@ CAMLprim value lui_term_pty_spawn(value vargv, value venv, value vcwd,
   p->exited = 0;
   /* master: nonblocking so the UI loop can poll freely */
   fcntl(p->mfd, F_SETFL, fcntl(p->mfd, F_GETFL) | O_NONBLOCK);
+  {
+    int fdflags = fcntl(p->mfd, F_GETFD);
+    if (fdflags >= 0)
+      fcntl(p->mfd, F_SETFD, fdflags | FD_CLOEXEC);
+  }
   CAMLreturn(caml_copy_nativeint((intnat)p));
 }
 
@@ -421,7 +431,10 @@ CAMLprim value lui_term_pty_close(value vh) {
   CAMLparam1(vh);
   pty_t *p = (pty_t *)(intnat)Nativeint_val(vh);
   if (p) {
-    if (p->mfd >= 0) close(p->mfd);
+    if (p->mfd >= 0) {
+      close(p->mfd);
+      p->mfd = -1;
+    }
     free(p);
   }
   CAMLreturn(Val_unit);
