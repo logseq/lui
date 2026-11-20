@@ -28,6 +28,32 @@ const openPositioner = () =>
     has: page.locator(".lui-dropdown-menu[data-open]"),
   })
 
+for (const theme of ["light", "dark"]) {
+  test(`keyboard highlighting applies authored menu foreground in ${theme}`, async () => {
+    await page.goto(`${origin}/platform/web/test/fixtures/point-menu-regression.html`)
+    await page.evaluate(theme => { document.documentElement.dataset.kbTheme = theme }, theme)
+    await page.mouse.move(1100, 800)
+    await page.evaluate(() => window.audit.openPointMenu())
+    const alpha = page.getByRole("menuitem", { name: "Point alpha", exact: true })
+    const beta = page.getByRole("menuitem", { name: "Point beta", exact: true })
+    await alpha.focus()
+    await page.keyboard.press("Home")
+    assert.equal(await alpha.evaluate(el => el.hasAttribute("data-highlighted")), true)
+    const ordinaryInk = await beta.locator(".lui-menu-item-label").evaluate(el => getComputedStyle(el).color)
+    await page.keyboard.press("ArrowDown")
+    assert.equal(await beta.evaluate(el => el.hasAttribute("data-highlighted")), true)
+    assert.equal(await beta.evaluate(el => el.matches(":hover")), false)
+    assert.equal(await beta.evaluate(el => el.style.getPropertyValue("--lui-hover-bg")), "")
+    assert.equal(await beta.locator(".lui-menu-item-label").evaluate(el => getComputedStyle(el).color), "rgb(18, 52, 86)")
+    await page.keyboard.press("ArrowUp")
+    assert.equal(await beta.evaluate(el => el.hasAttribute("data-highlighted")), false)
+    assert.equal(await beta.locator(".lui-menu-item-label").evaluate(el => getComputedStyle(el).color), ordinaryInk)
+    await page.keyboard.press("ArrowDown")
+    assert.equal(await beta.locator(".lui-menu-item-label").evaluate(el => getComputedStyle(el).color), "rgb(18, 52, 86)")
+    assert.deepEqual(await page.evaluate(() => window.audit.activations), [])
+  })
+}
+
 test("a closing dropdown leaves the accessibility tree before its exit animation finishes", async () => {
   await page.goto(`${origin}/platform/web/test/fixtures/point-menu-regression.html`)
   await page.evaluate(() => window.audit.openPointMenu())

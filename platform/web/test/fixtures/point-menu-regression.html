@@ -88,7 +88,9 @@ function openPointMenu(x = 64, y = 96) {
   set(menu, "x", x)
   set(menu, "y", y)
   create("menu-item", menu, { text: "Point alpha", "press-enabled": true, selected: true })
-  const beta = create("menu-item", menu, { text: "Point beta", "press-enabled": true })
+  const beta = create("menu-item", menu, {
+    text: "Point beta", "press-enabled": true, "hover-foreground": "#123456",
+  })
   handlers.set(beta, () => activations.push("beta"))
   handlers.set(menu, () => { drop(menu); menu = null })
   flush()
