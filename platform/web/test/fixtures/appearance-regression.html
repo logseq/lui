@@ -17,6 +17,7 @@
 body { margin: 24px; font: 16px system-ui }
 #host { max-width: 720px }
 #host .lui-button { transition: none }
+#host .lui-menu-item { transition: none }
 </style>
 <main id="host"></main>
 <nav aria-label="Appearance test controls">
@@ -146,6 +147,23 @@ const explicit = create("button", root, {
   "pressed-background": "#778899", "pressed-opacity": 0.7,
   "selected-background": "#998877", "disabled-opacity": 0.4,
 })
+const menuItems = {}
+for (const variant of ["normal", "destructive"]) {
+  const parent = create("row", root, { gap: 4 })
+  const item = (name, props = {}) => create("menu-item", parent, {
+    text: name, width: 88, height: 32,
+    ...(variant === "destructive" ? { variant } : {}), ...props,
+  })
+  menuItems[variant] = {
+    baseline: item("Default"),
+    hoverBg: item("Hover bg", { "hover-background": "#123456" }),
+    hoverFg: item("Hover fg", { "hover-foreground": "#123456" }),
+    focusBg: item("Focus bg", { "focus-within-background": "#123456" }),
+    focusBorder: item("Focus border", { "focus-within-border": "#123456" }),
+    focusShadow: item("Focus shadow", { "focus-shadow": "0 0 0 2px #123456" }),
+    disabled: item("Disabled", { "hover-foreground": "#123456", enabled: false }),
+  }
+}
 document.querySelector("#select").onclick = () => { set(explicit, "selected", true); flush() }
 document.querySelector("#disable").onclick = () => {
   set(explicit, "selected", false); set(explicit, "enabled", false); flush()
@@ -159,7 +177,7 @@ flush()
 Web.mount(renderer, root, host)
 
 window.probe = {
-  typography, positioned, interactive, explicit,
+  typography, positioned, interactive, explicit, menuItems,
   set, unset, flush,
 }
 </script>

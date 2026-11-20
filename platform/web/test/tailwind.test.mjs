@@ -312,7 +312,7 @@ test("menus use the Base UI popup and transition contract", async () => {
   assert.match(css, /\.lui-menu-item\[data-highlighted\]/)
   assert.match(
     css,
-    /\.lui-menu-item:is\(\[data-highlighted\],:focus-visible\):not\([^)]*\)\{[^}]*background-color:var\(--lui-foreground\)/,
+    /\.lui-menu-item:is\(\[data-highlighted\],:focus-visible\):not\([^)]*\)\{[^}]*background-color:var\(--lui-current-focus-within-bg,var\(--lui-foreground\)\)/,
   )
   assert.match(css, /\.lui-menu-item\[data-submenu-trigger\]/)
   assert.match(css, /\.lui-menu-item\[data-variant=destructive\]/)
