@@ -1,5 +1,35 @@
 # LUI API migration guide
 
+### Typed menu-item typography and interaction styling
+
+`menu_item`, `dropdown_menu_item` and `toolbar_menu_item` now accept the same
+optional typography and interaction styling properties. Each has a matching
+`_signal` argument: `font_size`, `font_weight`, `font_family`, `font_style`,
+`line_height`, `letter_spacing`, `text_decoration`, `white_space`,
+`text_overflow`, `overflow`, `hover_background`, `hover_foreground`,
+`focus_within_background`, `focus_within_border` and `focus_shadow`.
+The enum-valued properties use the existing closed text vocabularies.
+
+Move ordinary-view post-mount styling onto the slot constructor rather than
+erasing or casting its restricted capability:
+
+```ocaml
+dropdown_menu
+  [ dropdown_menu_item ~text:"Open" ~font_size:"0.875rem"
+      ~line_height:"1.42857" ~hover_background:"muted"
+      ~hover_foreground:(reactive (fun active ->
+          if active then "primary" else "foreground") selected)
+      ~focus_shadow:"inset 0 0 0 2px blue" [] ]
+```
+
+The existing slot adapters retain these properties. Signals are borrowed;
+their current values override static values, and subsequent publications
+update the same node. Omitted properties remain unset, preserving all existing
+defaults. The JSON menu-item renderer accepts the same static properties.
+The language-neutral menu-item view contract includes these properties too.
+This exposes existing wire properties only; the wire vocabulary, admission
+tables, backend defaults and event behavior are unchanged.
+
 ### Apple row intrinsic text priority
 
 Non-growing `text`, `heading`, and `paragraph` children in Apple rows now

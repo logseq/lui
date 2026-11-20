@@ -2307,10 +2307,40 @@ let accordion ?key ?height ?accessibility_identifier ?accessibility_identifier_s
   mount_children context node children;
   node
 
-let menu_item ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?icon ?icon_signal ?selection_placement ?variant ?size ?selected ?checked ?selected_signal ?checked_signal ?disabled ?disabled_signal ?on_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition (children : t list) : t =
+let menu_item ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?icon ?icon_signal ?selection_placement ?variant ?size ?selected ?checked ?selected_signal ?checked_signal ?disabled ?disabled_signal ?on_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?font_size ?font_size_signal ?font_weight ?font_weight_signal ?font_family ?font_family_signal ?font_style ?font_style_signal ?line_height ?line_height_signal ?letter_spacing ?letter_spacing_signal ?text_decoration ?text_decoration_signal ?white_space ?white_space_signal ?text_overflow ?text_overflow_signal ?overflow ?overflow_signal ?hover_background ?hover_background_signal ?hover_foreground ?hover_foreground_signal ?focus_within_background ?focus_within_background_signal ?focus_within_border ?focus_within_border_signal ?focus_shadow ?focus_shadow_signal ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.menu_item context in
   apply_universal ?key ?gap ?main ?cross ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
+  Option.iter (Lui_ui.font_size context node) font_size;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node FontSize signal_) font_size_signal;
+  Option.iter (Lui_ui.font_weight context node) font_weight;
+  Option.iter (fun signal_ -> Lui_ui.int_property_signal context node FontWeight signal_) font_weight_signal;
+  Option.iter (Lui_ui.font_family context node) font_family;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node FontFamily signal_) font_family_signal;
+  Option.iter (Lui_ui.font_style context node) (Option.map font_style_value font_style);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node FontStyle (owned_map context font_style_value signal_)) font_style_signal;
+  Option.iter (Lui_ui.line_height context node) line_height;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node LineHeight signal_) line_height_signal;
+  Option.iter (Lui_ui.letter_spacing context node) letter_spacing;
+  Option.iter (fun signal_ -> Lui_ui.float_property_signal context node LetterSpacing signal_) letter_spacing_signal;
+  Option.iter (Lui_ui.text_decoration context node) text_decoration;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node TextDecoration signal_) text_decoration_signal;
+  Option.iter (Lui_ui.white_space context node) (Option.map white_space_value white_space);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node WhiteSpace (owned_map context white_space_value signal_)) white_space_signal;
+  Option.iter (Lui_ui.text_overflow context node) (Option.map text_overflow_value text_overflow);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node TextOverflow (owned_map context text_overflow_value signal_)) text_overflow_signal;
+  Option.iter (Lui_ui.overflow context node) (Option.map overflow_value overflow);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node Overflow (owned_map context overflow_value signal_)) overflow_signal;
+  Option.iter (Lui_ui.hover_background context node) hover_background;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node HoverBackground signal_) hover_background_signal;
+  Option.iter (Lui_ui.hover_foreground context node) hover_foreground;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node HoverForeground signal_) hover_foreground_signal;
+  Option.iter (Lui_ui.focus_within_background context node) focus_within_background;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node FocusWithinBackground signal_) focus_within_background_signal;
+  Option.iter (Lui_ui.focus_within_border context node) focus_within_border;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node FocusWithinBorder signal_) focus_within_border_signal;
+  Option.iter (Lui_ui.focus_shadow context node) focus_shadow;
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node FocusShadow signal_) focus_shadow_signal;
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
   Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);

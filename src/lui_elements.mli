@@ -3438,6 +3438,36 @@ val menu_item :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
   ?transition:string -> t list -> t
 val list_item :
   ?key:string ->
@@ -4635,6 +4665,36 @@ val toolbar_menu_item :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_menu_trigger :
   ?key:string ->
@@ -4896,6 +4956,36 @@ val dropdown_menu_item :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
   ?transition:string -> t list -> dropdown_menu_item_el
 val dropdown_menu_trigger :
   ?key:string ->
