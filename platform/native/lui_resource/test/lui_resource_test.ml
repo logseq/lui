@@ -279,6 +279,40 @@ let test_cooperative_cancel () =
 
 (* ---------- real domain executor ---------- *)
 
+let test_executor_raise_marks_failed () =
+  let exec _ = failwith "domain cap" in
+  let c = R.create ~executor:exec () in
+  let sc = scope () in
+  let e = R.request c ~scope:sc "k" ~load:(fun _ -> Ok "v") in
+  (match R.state e with
+   | R.Failed msg ->
+     check' bool "failed after spawn raise" true
+       (String.length msg > 0)
+   | _ -> fail "expected Failed, not stuck Loading");
+  check' (option string) "not published" None (R.get c "k");
+  Signal.dispose_scope sc;
+  R.unregister c
+
+let test_pool_executor () =
+  let exec = R.executor_pool ~workers:2 () in
+  let c = R.create ~executor:exec () in
+  let sc = scope () in
+  let woke = ref false in
+  R.set_completion_wake (fun () -> woke := true);
+  let e = R.request c ~scope:sc "k" ~load:(fun _ -> Ok "pooled") in
+  let deadline = Unix.gettimeofday () +. 5. in
+  while R.pending c = 0 && Unix.gettimeofday () < deadline do
+    Unix.sleepf 0.001
+  done;
+  check' bool "completed" true (R.pending c = 1);
+  check' bool "wake fired" true !woke;
+  ignore (R.drain c);
+  check' (option string) "ready" (Some "pooled") (R.get c "k");
+  ignore e;
+  R.set_completion_wake (fun () -> ());
+  Signal.dispose_scope sc;
+  R.unregister c
+
 let test_domain_executor () =
   let c = R.create ~executor:R.executor_domain () in
   let sc = scope () in
@@ -400,5 +434,8 @@ let () =
             test_late_watcher_fires_immediately;
         ] );
       ( "executors",
-        [ test_case "domain" `Quick test_domain_executor ] );
+        [ test_case "domain" `Quick test_domain_executor;
+          test_case "spawn raise marks failed" `Quick
+            test_executor_raise_marks_failed;
+          test_case "bounded pool" `Quick test_pool_executor ] );
     ]
