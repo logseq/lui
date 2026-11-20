@@ -257,7 +257,8 @@ for (const theme of ["light", "dark"]) {
       await item.focus()
       assert.equal(await item.evaluate(el => el.matches(":focus-visible")), true)
       assert.equal(await label.evaluate(el => getComputedStyle(el).color), normalInk)
-      assert.notEqual(await item.evaluate(el => getComputedStyle(el).backgroundColor), normalInk)
+      assert.equal(await item.evaluate(el => getComputedStyle(el).backgroundColor),
+        theme === "light" ? "oklch(0.97 0 0)" : "oklch(0.269 0 0)")
     }
   })
 }
