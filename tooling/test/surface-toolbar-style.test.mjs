@@ -110,6 +110,12 @@ let json = Lui_json_view.Obj ["kind", Lui_json_view.Str "column";
     Lui_json_view.Obj ["kind", Lui_json_view.Str "dropdown-menu";
       "children", Lui_json_view.Arr [json_item "json-dropdown"]]]]
 let view _ source _ = column [
+  button ~text:"lazy-merge"
+    ~style:(Slot_style.merge
+      (Slot_style.make
+        ~font_size:(reactive (fun active -> if active then "14px" else "12px") source)
+        ~font_weight:(reactive (fun _ -> failwith "overridden projection evaluated") source) ())
+      (Slot_style.make ~font_weight:600 ())) [];
   button ~text:"merged"
     ~style:(Slot_style.merge
       (Slot_style.make ~font_size:(reactive (fun active -> if active then "12px" else "10px") source)
@@ -150,6 +156,8 @@ let () =
     check "collision padding" (property (node "surface") CollisionPadding = Some (FloatValue (if active then 5. else 2.)));
     check "merged override" (property (node "merged") FontSize = Some (StringValue "20px"));
     check "merged base" (property (node "merged") HoverForeground = Some (StringValue "red"));
+    check "lazy merged projection" (property (node "lazy-merge") FontSize = Some (StringValue (if active then "14px" else "12px")));
+    check "lazy merged override" (property (node "lazy-merge") FontWeight = Some (IntValue 600));
     check "empty font untouched" (property (node "empty") FontSize = None);
     check "empty hover untouched" (property (node "empty") HoverBackground = None);
     let node = node "default" in

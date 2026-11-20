@@ -163,7 +163,7 @@ let dyn_supported args =
    becoming a nonexistent `~test_signal:` parameter. *)
 let signal_only_labels = [ "test"; "source" ]
 
-let scoped_expression ?(adapter = "scoped") ~loc build =
+let scoped_expression ?(adapter = "scoped") ?property ~loc build =
   let context = gen_symbol ~prefix:"__lui_context_" () in
   let own_generated = object
     inherit Ast_traverse.map as super
@@ -180,7 +180,7 @@ let scoped_expression ?(adapter = "scoped") ~loc build =
       Ldot (Ldot (Lident "Lui_elements", "Slot_style"), "scoped")
     else Ldot (Lident "Lui_elements", adapter) in
   let scoped = B.pexp_ident ~loc { txt = path; loc } in
-  apply ~loc scoped [lam ~loc [pvar ~loc context] (build own_generated)]
+  apply ~loc scoped (Option.to_list property @ [lam ~loc [pvar ~loc context] (build own_generated)])
 
 let structural_constructor expression = match expression.pexp_desc with
   | Pexp_ident { txt = Lident name | Ldot (Lident "Lui_elements", name); _ } ->
@@ -287,6 +287,26 @@ class mapper =
               | Pexp_ident {txt = Ldot (Lident "Slot_style", "make"); _}
               | Pexp_ident {txt = Ldot (Ldot (Lident "Lui_elements", "Slot_style"), "make"); _} -> "slot_style"
               | _ -> Lui_nesting_schema.scoped_adapter (constructor_name fn) in
+            if adapter = "slot_style" then begin
+              let is_reactive = function
+                | Labelled _, {pexp_desc = Pexp_apply
+                    ({pexp_desc = Pexp_ident {txt = Lident "reactive"; _}; _}, _); _} -> true
+                | _ -> false in
+              let static, reactive = List.partition (fun arg -> not (is_reactive arg)) args in
+              List.fold_left (fun base ((label, _) as argument) ->
+                let name = match label with Labelled name -> name | _ -> assert false in
+                let name = if ends_with name "_signal" then String.sub name 0 (String.length name - 7) else name in
+                let name = String.concat "" (List.map String.capitalize_ascii (String.split_on_char '_' name)) in
+                let property = B.pexp_construct ~loc:expr.pexp_loc
+                  {txt = Ldot (Lident "Lui_protocol", name); loc = expr.pexp_loc} None in
+                let unit = B.eunit ~loc:expr.pexp_loc in
+                let style = scoped_expression ~adapter ~property ~loc:expr.pexp_loc
+                  (transform [argument; Nolabel, unit]) in
+                let merge = B.pexp_ident ~loc:expr.pexp_loc
+                  {txt = Ldot (Ldot (Lident "Lui_elements", "Slot_style"), "merge"); loc = expr.pexp_loc} in
+                apply ~loc:expr.pexp_loc merge [base; style])
+                (transform static (new Ast_traverse.map)) reactive
+            end else
             let scoped = scoped_expression ~adapter ~loc:expr.pexp_loc (transform constructor_args) in
             if mount_args = [] then scoped
             else B.pexp_apply ~loc:expr.pexp_loc scoped
