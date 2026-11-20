@@ -249,6 +249,7 @@ let spawn c e load =
     Some task
   with exn ->
     e.state <- Failed (Printexc.to_string exn);
+    notify e;
     None
 
 let add_watcher e scope = function

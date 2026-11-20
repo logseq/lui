@@ -33,11 +33,16 @@ let noop_renderer : Lui_host.renderer =
       (fun (s : Lui_scene.t) ->
          Bytes.make (s.Lui_scene.width * s.Lui_scene.height * 4) '\000') }
 
-let dbus_wait_cap_ms ~connected ~watching next =
-  if connected && not watching then Float.min next 50. else next
+let dbus_wait_cap_ms ~connected ~watching ~gtk next =
+  (* GTK/AppIndicator run on a GLib context that is not covered by
+     the two libdbus fds, so a bounded wake remains while GTK is up.
+     Pure D-Bus (a11y/session) with a watched fd stays idle-quiet. *)
+  if gtk || (connected && not watching) then Float.min next 50. else next
 
-(* Unix.file_descr is the raw fd on this platform. *)
-external fd_of_int : int -> Unix.file_descr = "%identity"
+(* [select_readable fds timeout] waits until a descriptor in [fds] is
+   readable. [timeout] < 0 waits forever. Returns the select count
+   (0 on timeout / empty set). *)
+external select_readable : int list -> float -> int = "lui_linux_select_readable"
 
 (* AT-triggered action -> protocol event, mirroring the pointer path:
    a screen reader's "press" lands exactly where a click's [Press]

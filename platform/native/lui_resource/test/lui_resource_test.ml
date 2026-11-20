@@ -283,12 +283,20 @@ let test_executor_raise_marks_failed () =
   let exec _ = failwith "domain cap" in
   let c = R.create ~executor:exec () in
   let sc = scope () in
-  let e = R.request c ~scope:sc "k" ~load:(fun _ -> Ok "v") in
+  let seen = ref None in
+  let e =
+    R.request c ~scope:sc "k"
+      ~on_state:(fun e -> seen := Some (R.state e))
+      ~load:(fun _ -> Ok "v")
+  in
   (match R.state e with
    | R.Failed msg ->
      check' bool "failed after spawn raise" true
        (String.length msg > 0)
    | _ -> fail "expected Failed, not stuck Loading");
+  (match !seen with
+   | Some (R.Failed _) -> ()
+   | _ -> fail "watcher should see Failed");
   check' (option string) "not published" None (R.get c "k");
   Signal.dispose_scope sc;
   R.unregister c

@@ -87,15 +87,19 @@ let test_dbus_wait_cap () =
   Alcotest.(check bool) "idle without bus is unbounded" true
     (Float.is_infinite
        (Lui_linux.dbus_wait_cap_ms ~connected:false ~watching:false
-          Float.infinity));
+          ~gtk:false Float.infinity));
   Alcotest.(check (float 0.001)) "connected without fd watch caps at 50"
     50.
     (Lui_linux.dbus_wait_cap_ms ~connected:true ~watching:false
-       Float.infinity);
+       ~gtk:false Float.infinity);
   Alcotest.(check bool) "watching fds does not cap" true
     (Float.is_infinite
        (Lui_linux.dbus_wait_cap_ms ~connected:true ~watching:true
-          Float.infinity))
+          ~gtk:false Float.infinity));
+  Alcotest.(check (float 0.001)) "GTK keeps a bounded wake for GLib"
+    50.
+    (Lui_linux.dbus_wait_cap_ms ~connected:true ~watching:true
+       ~gtk:true Float.infinity)
 
 (* The real walk/demote path the driver uses: injected init failures
    step down the ladder at startup, and a mid-render device loss
