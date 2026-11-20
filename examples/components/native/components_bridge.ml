@@ -25,5 +25,5 @@ let () =
   Printexc.record_backtrace true;
   Callback.register "lui_ocaml_init" initialize;
   Callback.register "lui_kotlin_init" initialize;
-  Lui_native_bridge.register ~register_named:Callback.register "lui_ocaml" bridge;
-  Lui_native_bridge.register ~register_named:Callback.register "lui_kotlin" bridge
+  Lui_native_bridge.register ~register_named:{ register_named = Callback.register } "lui_ocaml" bridge;
+  Lui_native_bridge.register ~register_named:{ register_named = Callback.register } "lui_kotlin" bridge

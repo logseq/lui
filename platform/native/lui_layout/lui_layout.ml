@@ -958,12 +958,10 @@ let vlist_state ctx id =
     Hashtbl.replace ctx.vlists id v;
     v
 
-(* data-attrs is the wire-clean channel for virtual-list config that
-   the schema does not model: [data-item-extent] is the estimated row
-   main extent in logical px, [data-overscan] the extra rows mounted
-   past each viewport edge, [data-scroll-target]/[data-scroll-token]/
-   [data-scroll-anchor] the scroll-request triple and
-   [data-track-visible-range] the visible-range opt-in. *)
+(* Legacy virtual-list config still rides [data-attrs]: typed
+   [item-extent]/[overscan] take precedence when present, then these
+   semantic attributes, then host defaults. Scroll-request and
+   visible-range opt-ins remain data-attrs-only for now. *)
 let vlist_data_attr store id name =
   match Lui_store.prop store id "data-attrs" with
   | Some (StringValue s) -> (
@@ -976,9 +974,9 @@ let vlist_data_attr store id name =
 let vlist_vertical store id =
   pstr store id "orientation" <> Some "horizontal"
 
-(* Pull the model inputs off the resolved style and the data-attrs.
-   [style] is the vlist's own flex style — padding, border and the
-   row gap come straight from it. *)
+(* Pull the model inputs off the resolved style, typed props and the
+   data-attrs. [style] is the vlist's own flex style — padding, border
+   and the row gap come straight from it. *)
 let vlist_configure ctx store (v : vlist) (style : Lui_flex.style) =
   (* The logical child ids snapshot: [count] stays O(1) on the store,
      but a per-row indexed probe on the intrusive child list is O(i),
@@ -989,28 +987,34 @@ let vlist_configure ctx store (v : vlist) (style : Lui_flex.style) =
   let count = Lui_store.child_count store v.vid in
   let gap = len_px ~owner:ctx.vh style.row_gap in
   let estimate =
-    match
-      Option.bind
-        (vlist_data_attr store v.vid "data-item-extent")
-        (fun s -> float_of_string_opt (String.trim s))
-    with
+    match pnum store v.vid "item-extent" with
     | Some f when f > 0. -> f *. ctx.scale
     | _ -> (
-      match if count > 0 then v.kids.(0) else -1 with
-      | cid when cid >= 0 -> (
-        match pnum store cid "height" with
-        | Some h -> h *. ctx.scale
-        | None -> 28. *. ctx.scale)
-      | _ -> 28. *. ctx.scale)
+      match
+        Option.bind
+          (vlist_data_attr store v.vid "data-item-extent")
+          (fun s -> float_of_string_opt (String.trim s))
+      with
+      | Some f when f > 0. -> f *. ctx.scale
+      | _ -> (
+        match if count > 0 then v.kids.(0) else -1 with
+        | cid when cid >= 0 -> (
+          match pnum store cid "height" with
+          | Some h -> h *. ctx.scale
+          | None -> 28. *. ctx.scale)
+        | _ -> 28. *. ctx.scale))
   in
   let overscan =
-    match
-      Option.bind
-        (vlist_data_attr store v.vid "data-overscan")
-        (fun s -> int_of_string_opt (String.trim s))
-    with
-    | Some n -> max 0 n
-    | None -> 4
+    match Lui_store.int_prop store v.vid "overscan" with
+    | Some n when n >= 0 -> n
+    | _ -> (
+      match
+        Option.bind
+          (vlist_data_attr store v.vid "data-overscan")
+          (fun s -> int_of_string_opt (String.trim s))
+      with
+      | Some n -> max 0 n
+      | None -> 4)
   in
   (* Configure runs once per structural sync; child props may have
      changed under a stable shape, so the lazy lookup indexes rebuild

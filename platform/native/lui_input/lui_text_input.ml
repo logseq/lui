@@ -62,10 +62,15 @@ let composing st = Lui_ime.composing st.ime
 let sel_lo st = min st.anchor st.caret
 let sel_hi st = max st.anchor st.caret
 
-(* Whether the node's focused field accepts edits — admits
-   TextChanged. *)
+(* Whether the node is a text field that admits TextChanged — focus,
+   selection and copy still apply when [read-only] is set. *)
 let editable store node =
   node <> 0 && Lui_query.event_supported store node (TextChanged (node, ""))
+
+(* User edits (insert, delete, paste, IME commit, undo) require an
+   editable field that is not marked read-only. *)
+let accepts_edits store node =
+  editable store node && not (Lui_store.bool_prop store node "read-only")
 
 (* Session ids — every attach starts a new session so model
    responses to one session cannot leak into the next. *)
@@ -242,11 +247,13 @@ let edit_key hooks store rects st ~(k : Lui_input.key)
          then Lui_query.submit store n else []
        | _ -> Lui_query.submit store n) )
   | Lui_input.Backspace ->
-    if sel_hi st > sel_lo st then splice st ""
+    if not (accepts_edits store n) then (st, [])
+    else if sel_hi st > sel_lo st then splice st ""
     else if caret > 0 then delete_between st (prev caret) caret
     else (st, [])
   | Lui_input.Delete ->
-    if sel_hi st > sel_lo st then splice st ""
+    if not (accepts_edits store n) then (st, [])
+    else if sel_hi st > sel_lo st then splice st ""
     else if caret < String.length cur then
       delete_between st caret (next caret)
     else (st, [])
@@ -309,7 +316,7 @@ let apply_ime store st actions =
               nothing or finds no editable target *)
            (match !st.node with
             | 0 -> [ `Repaint ]
-            | n when Lui_query.node_enabled store n && editable store n ->
+            | n when Lui_query.node_enabled store n && accepts_edits store n ->
               let st', acts = splice !st s in
               st := st';
               `Repaint :: acts
@@ -321,11 +328,20 @@ let apply_ime store st actions =
   (!st, out)
 
 (* Feed one IME event into the embedded state machine and apply what
-   it asks for. *)
+   it asks for. Read-only fields keep caret tracking but reject
+   composition and commit so the shadow never changes. *)
 let feed_ime store st ev =
-  let ime, actions = Lui_ime.feed_event st.ime ev in
-  let st, acts = apply_ime store { st with ime } actions in
-  (st, acts)
+  let reject_edit =
+    match ev with
+    | `Editing _ | `Commit _ ->
+      st.node <> 0 && not (accepts_edits store st.node)
+    | `Focus _ | `Caret _ -> false
+  in
+  if reject_edit then (st, [])
+  else
+    let ime, actions = Lui_ime.feed_event st.ime ev in
+    let st, acts = apply_ime store { st with ime } actions in
+    (st, acts)
 
 (* Model-side text sync — the revision protocol. The host's own
    edits mirror into the store prop immediately, so a prop equal to

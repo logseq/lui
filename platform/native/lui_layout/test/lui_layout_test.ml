@@ -1259,6 +1259,56 @@ let test_vlist_mounted_children () =
   check int "first id" (10 + f) (List.hd ids);
   check int "last id" (10 + l - 1) (List.nth ids (l - f - 1))
 
+(* Typed [overscan]/[item-extent] drive the mount window; legacy
+   data-attrs remain a fallback and lose to typed values. Row heights
+   match the configured estimate so measurement does not expand the
+   window mid-sync. *)
+let test_vlist_typed_props () =
+  let store = vlist_store ~item_h:40. ~n:1000 () in
+  apply store
+    [ SetProp (2, VirtualOverscan, IntValue 0);
+      SetProp (2, VirtualItemExtent, FloatValue 40.) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 200.) t store;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  check int "typed overscan 0 first" 0 f;
+  (* 200px / 40px = 5 rows (+1 touching), no overscan past the end *)
+  check int "typed overscan 0 last" 6 l;
+  (* Legacy attributes alone still configure the estimate/window. *)
+  let legacy = vlist_store ~item_h:50. ~n:1000 () in
+  apply legacy
+    [ SetProp
+        (2, DataAttrs,
+          StringValue
+            (Lui_protocol.data_attrs_encode
+               [ ("data-item-extent", "50"); ("data-overscan", "1") ])) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 200.) t legacy;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  check int "legacy overscan first" 0 f;
+  (* 200/50 = 4 (+1) + 1 overscan → last 6 *)
+  check int "legacy overscan last" 6 l;
+  (* Typed props win over conflicting legacy attributes. Rebuild with
+     matching row heights so measurement does not widen the window. *)
+  let prefer = vlist_store ~item_h:100. ~n:1000 () in
+  apply prefer
+    [ SetProp
+        (2, DataAttrs,
+          StringValue
+            (Lui_protocol.data_attrs_encode
+               [ ("data-item-extent", "50"); ("data-overscan", "8") ]));
+      SetProp (2, VirtualOverscan, IntValue 0);
+      SetProp (2, VirtualItemExtent, FloatValue 100.) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 200.) t prefer;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  check int "typed wins first" 0 f;
+  (* 200/100 = 2 (+1), overscan 0 → last 3 (legacy overscan 8 ignored) *)
+  check int "typed wins last" 3 l
+
 (* Variable heights settle through measured extents: overscan rows
    above the anchor that differ from the estimate shift the prefix
    sums — the drift the scroller folds back into the offset so the
@@ -2601,6 +2651,7 @@ let () =
          test_case "vlist unwindowed" `Quick test_vlist_unwindowed;
          test_case "vlist mounted children" `Quick
            test_vlist_mounted_children;
+         test_case "vlist typed props" `Quick test_vlist_typed_props;
          test_case "vlist anchor drift" `Quick test_vlist_anchor_drift;
          test_case "vlist incremental child" `Quick
            test_vlist_incremental_child;

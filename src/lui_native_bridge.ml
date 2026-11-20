@@ -235,8 +235,15 @@ let agent bridge request =
 let pointer_detail x y modifiers button target_class =
   {x; y; modifiers; button; target_class}
 
-let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
-  let register suffix value = register_named (prefix ^ "_" ^ suffix) value in
+(* Rank-2 registrar: each callback may close over a different payload
+   type. OCaml only accepts that polymorphism through a record field,
+   so callers wrap [Callback.register] (or a test stub) in {!registrar}. *)
+type registrar = { register_named : 'a. string -> 'a -> unit }
+
+let register ~(register_named : registrar) prefix bridge =
+  let register suffix value =
+    register_named.register_named (prefix ^ "_" ^ suffix) value
+  in
   let node make node_id = dispatch_event bridge (make node_id) in
   register "appear" (node (fun id -> Appear id));
   register "press" (node (fun id -> Press id));

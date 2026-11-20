@@ -5911,7 +5911,9 @@ let test_native_bridge_negotiation_drives_real_source_windows () =
   List.iter (fun (os, _plain, flagged, host) ->
     let bridge = Lui_native_bridge.create "startup-window" in
     let registered = ref [] in
-    Lui_native_bridge.register ~register_named:(fun name _ -> registered := name :: !registered)
+    Lui_native_bridge.register
+      ~register_named:
+        { register_named = (fun name _ -> registered := name :: !registered) }
       "startup-window" bridge;
     List.iter (fun callback -> Alcotest.(check bool) "callback registration remains complete" true
       (List.mem ("startup-window_" ^ callback) !registered))
@@ -6026,7 +6028,9 @@ let test_runtime_constructor_capability_is_immutable_and_owned () =
 let test_native_bridge_reports_refused_calls () =
   let bridge = Lui_native_bridge.create "refusal" in
   let registered = ref [] in
-  Lui_native_bridge.register ~register_named:(fun name _ -> registered := name :: !registered)
+  Lui_native_bridge.register
+      ~register_named:
+        { register_named = (fun name _ -> registered := name :: !registered) }
     "refusal" bridge;
   Alcotest.(check bool) "last_error is a registered bridge callback" true
     (List.mem "refusal_last_error" !registered);

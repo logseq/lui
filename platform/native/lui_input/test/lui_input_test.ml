@@ -309,6 +309,37 @@ let test_text_session () =
        acts);
   ignore store
 
+let test_read_only_accepts_edits () =
+  let store =
+    store_of
+      [ CreateNode (1, TextField);
+        SetProp (1, TextValue, StringValue "ref");
+        SetProp (1, ReadOnly, BoolValue true) ]
+  in
+  Alcotest.(check bool) "editable for focus" true
+    (Lui_text_input.editable store 1);
+  Alcotest.(check bool) "rejects edits" false
+    (Lui_text_input.accepts_edits store 1);
+  let st = Lui_text_input.attach Lui_text_input.initial ~node:1 ~text:"ref" in
+  let st, acts = Lui_text_input.feed_ime store st (`Commit "x") in
+  Alcotest.(check string) "commit ignored" "ref" (Lui_text_input.text st);
+  Alcotest.(check bool) "no TextChanged" true
+    (not
+       (List.exists
+          (function `Dispatch (TextChanged _) -> true | _ -> false)
+          acts));
+  let rects = rects_of [ 1, rect 0. 0. 100. 20. ] in
+  let st, _ =
+    Lui_text_input.key hooks store rects st ~k:Lui_input.Backspace
+      ~mods:none ~prim:false
+  in
+  Alcotest.(check string) "backspace ignored" "ref" (Lui_text_input.text st);
+  let st, _ =
+    Lui_text_input.key hooks store rects st ~k:Lui_input.Arrow_left
+      ~mods:none ~prim:false
+  in
+  Alcotest.(check int) "navigation kept" 2 (Lui_text_input.caret st)
+
 let test_unchanged_committed_replacement () =
   let initial = Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"hello" in
   let selected, _ = Lui_text_input.select_all initial in
@@ -1332,6 +1363,7 @@ let () =
       ( "text input",
         [ Alcotest.test_case "navigation" `Quick test_text_navigation;
           Alcotest.test_case "splice" `Quick test_text_session;
+          Alcotest.test_case "read-only" `Quick test_read_only_accepts_edits;
           Alcotest.test_case "unchanged committed replacement" `Quick test_unchanged_committed_replacement;
           Alcotest.test_case "undo" `Quick test_text_undo;
           Alcotest.test_case "caret ops" `Quick test_text_caret_ops;

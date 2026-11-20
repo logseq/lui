@@ -3813,6 +3813,24 @@ boolean property. Removing it restores editable behavior. Applications that
 used `disabled` solely to prevent edits may switch to `read_only` when users
 should retain selection and copying.
 
+The experimental self-drawn native backend now enforces the same contract:
+`Lui_text_input.accepts_edits` gates insert, delete, paste, cut-deletion, undo
+and IME commit/composition, while focus, selection, copy and caret navigation
+remain available. Typed virtual-list `overscan` and `item-extent` are read by
+`Lui_layout` with precedence over legacy `data-overscan` / `data-item-extent`.
+
+### Native bridge registrar is a polymorphic record
+
+`Lui_native_bridge.register` takes `~register_named` as
+`{ register_named : 'a. string -> 'a -> unit }` instead of a bare function.
+Wrap `Callback.register` (or a test stub) in that record:
+
+```ocaml
+Lui_native_bridge.register
+  ~register_named:{ register_named = Callback.register }
+  "lui_ocaml" bridge
+```
+
 ### Tabs, lifecycle and scroll results
 
 Ordinary `tabs` keep their application-owned content. Arrow keys activate the

@@ -136,6 +136,24 @@ let prop_coverage =
     ("scroll-token", Host);
     ("scroll-animated", Host);
     ("track-visible-range", Host);
+    ("overscan", Layout); (* virtual-list mount window *)
+    ("item-extent", Layout); (* virtual-list row estimate *)
+    ("virtual-total-count", Host); (* sparse virtual-list wire *)
+    ("virtual-generation", Host);
+    ("virtual-indices", Host);
+    ("virtual-scroll-index", Host);
+    ("virtual-viewport-epoch", Host);
+    ("virtual-owner-node", Host);
+    ("virtual-owner-epoch", Host);
+    ("virtual-row-keys", Host);
+    ("virtual-retentions", Host);
+    ("virtual-retention-releases", Host);
+    ("read-only", Host); (* text controls: focus/copy, reject edits *)
+    ("pointer-capture", Host);
+    ("indeterminate", Painted); (* checkbox mixed state *)
+    ("toggle-detail-enabled", Host);
+    ("focus-within-enabled", Host);
+    ("shrink", Layout); (* flex shrink factor *)
     ("edge", Layout); (* edge-inset side *)
     ("request", Host); (* file picker *)
     ("types", Host);

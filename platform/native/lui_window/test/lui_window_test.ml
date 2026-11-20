@@ -2043,6 +2043,49 @@ let test_sel_shift_and_all () =
   Alcotest.(check int) "sel all a" 0 (Ui.sel_anchor ui);
   Alcotest.(check int) "sel all c" 5 (Ui.caret ui)
 
+(* Read-only keeps focus, selection and copy; typing, paste, cut
+   deletion, backspace and IME commits are rejected. *)
+let test_read_only_text_field () =
+  let s, rects = ui_store_fresh () in
+  Lui_store.apply_batch s
+    { generation = 2;
+      ops =
+        [ SetProp (4, TextValue, StringValue "locked");
+          SetProp (4, ReadOnly, BoolValue true) ] };
+  let ui = Ui.create () in
+  press_field s rects ui 5. 40.;
+  Alcotest.(check int) "focuses" 4 (Ui.focused ui);
+  Alcotest.(check string) "shadow" "locked" (Ui.shadow ui);
+  Alcotest.(check bool) "typing rejected" true
+    (press_actions (Ui.handle ui s rects (Input.Text_input "x")) = []);
+  Alcotest.(check string) "text unchanged after type" "locked" (Ui.shadow ui);
+  Alcotest.(check bool) "IME editing rejected" true
+    (Ui.handle ui s rects (Input.Text_editing ("候補", 0, 2)) = []);
+  Alcotest.(check string) "no marked text" "" (Ui.marked ui);
+  ignore (Ui.handle ui s rects (key ~mods:meta (Input.Other 4)));
+  Alcotest.(check int) "select-all anchor" 0 (Ui.sel_anchor ui);
+  Alcotest.(check int) "select-all caret" 6 (Ui.caret ui);
+  (match Ui.handle ui s rects (key ~mods:meta (Input.Other 6)) with
+   | [ Clipboard_write "locked" ] -> ()
+   | _ -> Alcotest.fail "copy must still work");
+  (match Ui.handle ui s rects (key ~mods:meta (Input.Other 27)) with
+   | [ Clipboard_write "locked" ] -> ()
+   | a -> Alcotest.failf "cut must copy without deleting (%d acts)" (List.length a));
+  Alcotest.(check string) "cut leaves text" "locked" (Ui.shadow ui);
+  Alcotest.(check bool) "paste request denied" true
+    (Ui.handle ui s rects (key ~mods:meta (Input.Other 25)) = []);
+  ignore (Ui.handle ui s rects (Input.Paste "nope"));
+  Alcotest.(check string) "paste rejected" "locked" (Ui.shadow ui);
+  ignore
+    (Ui.handle ui s rects
+       (Input.Key_down (Input.Backspace, Input.mods_none, false)));
+  Alcotest.(check string) "backspace rejected" "locked" (Ui.shadow ui);
+  (* Collapse the selection, then arrow navigation still moves the caret. *)
+  ignore (Ui.handle ui s rects (key Input.End));
+  Alcotest.(check int) "collapsed at end" 6 (Ui.caret ui);
+  ignore (Ui.handle ui s rects (key Input.Arrow_left));
+  Alcotest.(check int) "arrow left" 5 (Ui.caret ui)
+
 let test_clipboard_cycle () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -5068,7 +5111,8 @@ let () =
           Alcotest.test_case "siblings" `Quick test_sel_siblings ] );
       ( "clipboard",
         [ Alcotest.test_case "cut/copy/paste" `Quick test_clipboard_cycle;
-          Alcotest.test_case "undo/redo" `Quick test_undo_redo ] );
+          Alcotest.test_case "undo/redo" `Quick test_undo_redo;
+          Alcotest.test_case "read-only" `Quick test_read_only_text_field ] );
       ( "split resize",
         [ Alcotest.test_case "pointer feedback" `Quick test_split_pointer_resize;
           Alcotest.test_case "pixel pane resize" `Quick test_split_pointer_pixels;
