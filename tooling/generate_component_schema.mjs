@@ -2,7 +2,15 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { typedViewFunctions, typedViewSchema, typedViewSignature } from './typed_view_schema.mjs';
+import {
+  parseElementTypes,
+  parseSlotStyle,
+  parseSlotStyleBucket,
+  resolveElementResult,
+  typedViewFunctions,
+  typedViewSchema,
+  typedViewSignature,
+} from './typed_view_schema.mjs';
 import { renderEventPayloads, validateCallbackEvents } from './event_payload_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -484,6 +492,105 @@ ${extraEntries}
 `;
 }
 
+const uiConstructors = [
+  ['form_section', 'ListSection', 'ListSection', 'Children_list'],
+  ['form_sheet', 'Sheet', 'ListContainer', 'Children_list'],
+  ['form_row', 'ListItem', 'Column', 'Child_arguments 1'],
+  ['data_row', 'ListItem', 'Column', 'Child_arguments 1'],
+  ['data_list', 'ListContainer', 'ListSection', 'Children_list'],
+  ['hstack', 'Row', 'Row', 'Children_list'],
+  ['vstack', 'Column', 'Column', 'Children_list'],
+  ['page', 'Column', 'Column', 'Children_list'],
+  ['section', 'Column', 'Column', 'Children_list'],
+];
+
+function validateElementsCompleteness(schema) {
+  const elementsMli = readFileSync(resolve(repository, 'src/lui_elements.mli'), 'utf8');
+  const uiMli = readFileSync(resolve(repository, 'src/lui_ui_composites.mli'), 'utf8');
+  const admission = JSON.parse(readFileSync(resolve(repository, 'schema/apple-property-admission.json'), 'utf8'));
+  const functions = typedViewFunctions(elementsMli);
+  const slotStyle = parseSlotStyle(elementsMli);
+  if (!slotStyle) fail('missing Slot_style module signature in src/lui_elements.mli');
+  const elementTypes = parseElementTypes(elementsMli);
+
+  for (const [name, args] of functions) {
+    for (const arg of args.slice(0, -1)) {
+      const match = /^\??style:(.*)$/.exec(arg);
+      if (!match) continue;
+      const type = match[1];
+      if (name === 'list' && type === 'list_style') continue;
+      const bucket = parseSlotStyleBucket(type);
+      if (!bucket || !slotStyle.bucketProperties.has(bucket)) {
+        fail(`constructor ${name} exposes unsupported ?style type: ${type}`);
+      }
+      const canonical = schema.slotConstructors?.[name]?.constructor ?? name;
+      const aliased = schema.constructorAliases?.[canonical] ?? canonical;
+      const wire = { separator: 'divider', menu: 'dropdown-menu', submenu: 'dropdown-menu' }[aliased]
+        ?? (aliased === 'switch_' ? 'switch' : aliased.replaceAll('_', '-'));
+      const admitted = admission.kinds[wire];
+      if (!admitted) fail(`missing admission entry for styled constructor ${name} (${wire})`);
+      for (const property of slotStyle.bucketProperties.get(bucket)) {
+        if (!admitted.includes(property)) {
+          fail(`${name}.style (Slot_style.${bucket}) admits ${property}, unsupported on ${wire}`);
+        }
+      }
+      const expectedCaps = [...slotStyle.builders.entries()]
+        .filter(([, { properties }]) => properties.every((prop) => admitted.includes(prop)))
+        .map(([cap]) => cap);
+      const actualCaps = slotStyle.buckets.get(bucket);
+      if (expectedCaps.length !== actualCaps.length || expectedCaps.some((cap) => !actualCaps.includes(cap))) {
+        fail(`${name}.style bucket Slot_style.${bucket} (${actualCaps.join(', ')}) does not match admitted capabilities for ${wire} (${expectedCaps.join(', ')})`);
+      }
+    }
+  }
+
+  const expectedSlots = new Map();
+  for (const { constructor, result } of Object.values(schema.slotConstructors ?? {})) {
+    if (result === 'context_menu_item_el') continue;
+    if (!expectedSlots.has(constructor)) expectedSlots.set(constructor, new Set());
+    expectedSlots.get(constructor).add(result);
+  }
+  if (schema.dynamicAdapters?.dropdown_menu) {
+    expectedSlots.set('dropdown_menu', new Set(['dropdown_menu_el']));
+  }
+
+  const actualSlots = new Map();
+  for (const [name, args] of functions) {
+    const result = args.at(-1);
+    if (!result.startsWith('[<')) continue;
+    const resolved = resolveElementResult(result, elementTypes);
+    if (!resolved) fail(`cannot resolve polymorphic result type on ${name}: ${result}`);
+    if (resolved.primary !== 't') {
+      fail(`polymorphic constructor ${name} must include \`general capability: ${result}`);
+    }
+    actualSlots.set(name, new Set(resolved.slots));
+  }
+
+  for (const [constructor, expected] of expectedSlots) {
+    const actual = actualSlots.get(constructor);
+    if (!actual) {
+      fail(`missing polymorphic slot capabilities on ${constructor}; expected ${[...expected].sort().join(', ')}`);
+    }
+    const expectedList = [...expected].sort().join(', ');
+    const actualList = [...actual].sort().join(', ');
+    if (expectedList !== actualList) {
+      fail(`polymorphic slot capabilities on ${constructor} (${actualList}) do not match schema/components.json (${expectedList})`);
+    }
+  }
+  for (const [constructor, actual] of actualSlots) {
+    if (!expectedSlots.has(constructor)) {
+      fail(`unexpected polymorphic constructor ${constructor} (${[...actual].sort().join(', ')}) not declared in schema/components.json`);
+    }
+  }
+
+  const uiFunctions = typedViewFunctions(uiMli);
+  for (const [name] of uiConstructors) {
+    if (!uiFunctions.has(name)) {
+      fail(`Lui_nesting_schema ui_constructor ${name} missing from src/lui_ui_composites.mli`);
+    }
+  }
+}
+
 function renderNestingSchema(schema) {
   const protocol = readFileSync(resolve(repository, 'src/lui_protocol.ml'), 'utf8');
   const functions = typedViewFunctions(readFileSync(resolve(repository, 'src/lui_elements.mli'), 'utf8'));
@@ -544,7 +651,7 @@ ${Object.entries({...schema.mandatoryParameters,
   | _ -> []
 
 let scoped_adapter = function
-${[...functions].filter(([, args]) => args.at(-1).endsWith('_el')).map(([name, args]) => `  | ${JSON.stringify(name)} -> "scoped_${args.at(-1).slice(0, -3)}"`).join('\n')}
+${[...functions].filter(([, args]) => /^\w+_el$/.test(args.at(-1))).map(([name, args]) => `  | ${JSON.stringify(name)} -> "scoped_${args.at(-1).slice(0, -3)}"`).join('\n')}
   | _ -> "scoped"
 
 let dynamic_adapter = function
@@ -555,6 +662,10 @@ let dynamic_adapter = function
 let exports = function
   | ${[...functions.keys()].map(JSON.stringify).join(' | ')} -> true
   | _ -> false
+
+let ui_constructor = function
+${uiConstructors.map(([name, root, parent, shape]) => `  | ${JSON.stringify(name)} -> Some (${root}, ${parent}, ${shape})`).join('\n')}
+  | _ -> None
 `;
 }
 
@@ -581,7 +692,10 @@ try {
 }
 validate(schema);
 
-if (process.argv.includes('--validate')) process.exit(0);
+if (process.argv.includes('--validate')) {
+  if (!argumentValue('--manifest')) validateElementsCompleteness(schema);
+  process.exit(0);
+}
 
 if (process.argv.includes('--summary')) {
   const byStatus = (status) => schema.publicElements
@@ -597,6 +711,7 @@ if (process.argv.includes('--summary')) {
   process.exit(0);
 }
 
+validateElementsCompleteness(schema);
 const generated = artifacts(schema);
 if (process.argv.includes('--check')) {
   const stale = [];

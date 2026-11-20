@@ -11,5 +11,6 @@ type text_role = [ `display | `title | `headline | `subheadline | `body | `capti
 
 val color_value : color -> string
 val space_value : space -> int
+val space_value_for : Lui_protocol.operating_system -> space -> int
 val radius_value : radius -> int
 val text_role_value : text_role -> string

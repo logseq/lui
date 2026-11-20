@@ -38,7 +38,7 @@ let action_text = function
      | _ -> None)
 ;;
 
-let glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press =
+let glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press () : t =
   let icon_only = Option.is_none text in
   let make = match text with
     | Some text -> button ~text ?text_signal:None ~icon ~label ~size:`default
@@ -60,7 +60,7 @@ let glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press =
    menu triggers carry no surface properties. The ["capsule"] style class
    asks the host to give the trigger label the cell's full frame and hit
    shape. *)
-let menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu:entries ~on_dismiss =
+let menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu:entries ~on_dismiss () : t =
   box
     ~height:44
     ?background
@@ -77,13 +77,13 @@ let menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu:entries
     ]
 ;;
 
-let glass_action ?background ?corner_radius action =
+let glass_action ?background ?corner_radius action : t =
   let text = action_text action in
   match action with
   | Press { label; icon; text = _; on_press } ->
-    glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press
+    glass_press_button ?background ?corner_radius ~label ~icon ~text ~on_press ()
   | Menu { label; icon; text = _; menu; on_dismiss } ->
-    menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu ~on_dismiss
+    menu_action_cell ?background ?corner_radius ~label ~icon ~text ~menu ~on_dismiss ()
 ;;
 
 let buttons ~actions =
@@ -99,7 +99,7 @@ let buttons ~actions =
       ~height:44
       ~background:"glass"
       ~corner_radius:999
-      [ menu_action_cell ~label ~icon ~text ~menu ~on_dismiss ]
+      [ menu_action_cell ~label ~icon ~text ~menu ~on_dismiss () ]
   | _ :: _ :: _ ->
     button_group
       ~gap:0
@@ -121,18 +121,18 @@ let rec intersperse separator_ = function
 (* ------------------------------------------------------------------ *)
 
 let with_press handler (elem : t) : t =
- fun context parent ->
-   let node = elem context parent in
+ custom (fun context parent ->
+   let node = mount context ?parent elem in
    enable context node Lui_protocol.PressEnabled;
    register_press context node handler;
-   node
+   node)
 ;;
 
 let with_bool_prop_signal prop signal_ (elem : t) : t =
- fun context parent ->
-   let node = elem context parent in
+ custom (fun context parent ->
+   let node = mount context ?parent elem in
    Lui_ui.bool_property_signal context node prop signal_;
-   node
+   node)
 ;;
 
 let composer_send_button context ?send_icon ?(send_label = "Send")
@@ -181,7 +181,7 @@ let composer
       ()
   : t
   =
- fun context parent ->
+ custom (fun context parent ->
    let attachment_strip =
      match attachments with
      | None -> []
@@ -267,16 +267,16 @@ let composer
         @ Option.to_list feedback
         @ controls)
    in
-   (match on_press with
-    | None -> capsule
-    | Some handler -> with_press handler capsule)
-     context parent
+   mount context ?parent
+     (match on_press with
+      | None -> capsule
+      | Some handler -> with_press handler capsule))
 ;;
 
 let composer_attachment_preview_slot = Signal.state_slot "composer-attachment-preview"
 
 let composer_attachment ?(disabled = false) ?status ~key ~path ~title ~file_type ~on_remove () : t =
- fun context parent ->
+ custom (fun context parent ->
    let context = Lui_ui.child_context context ("composer-attachment:" ^ key) in
    let preview = Signal.state_at context.ui_scheduler context.ui_state_scope
        composer_attachment_preview_slot false in
@@ -326,7 +326,7 @@ let composer_attachment ?(disabled = false) ?status ~key ~path ~title ~file_type
             else []))
      ; if_ ~test:(Signal.value preview)
          (file_preview ~path ~on_dismiss:(fun _ -> Signal.set preview false) [])
-     ] context parent
+     ] |> mount context ?parent)
 ;;
 
 
@@ -339,13 +339,11 @@ let composer_collapsed
       ()
   : t
   =
- fun context parent ->
-   (button
-      ?key ?accessibility_identifier ~variant:`ghost ~grow:1.0 ~height:58
-      ~padding_horizontal:30 ~background:"glass"
-      ~foreground:"muted-foreground" ~corner_radius:999 ?icon ~text:label
-      ~on_press [])
-     context parent
+  button
+    ?key ?accessibility_identifier ~variant:`ghost ~grow:1.0 ~height:58
+    ~padding_horizontal:30 ~background:"glass"
+    ~foreground:"muted-foreground" ~corner_radius:999 ?icon ~text:label
+    ~on_press []
 ;;
 
 (* ------------------------------------------------------------------ *)
@@ -828,7 +826,7 @@ let menu_button
     ?accessibility_identifier
     [ trigger
     ; if_ ~test:open_
-        (dropdown_menu_view (dropdown_menu ~anchor ~anchor_alignment:`start ?on_dismiss menu))
+        (dropdown_menu ~target:(Menu_anchor { side = anchor; align = `start; offset = 0. }) ?on_dismiss menu)
     ]
 ;;
 

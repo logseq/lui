@@ -1632,6 +1632,8 @@ let normalize_property_value property value =
     | PaddingRight | PaddingBottom | PaddingLeft | BorderWidth | CornerRadius
     | TooltipDelay | DurationValue | ResizeDuration), IntValue number ->
       IntValue (max 0 number)
+  | TreeLevel, IntValue number ->
+      IntValue (max 1 number)
   | (Opacity | LabelOpacity | HoverOpacity | PressedOpacity | DisabledOpacity), FloatValue number ->
       let number = if is_finite number then number else begin
         let name = match property with
@@ -1642,6 +1644,18 @@ let normalize_property_value property value =
         1.
       end in
       FloatValue (max 0. (min 1. number))
+  | (CollisionPadding | FirstPaneWidth | AvailableHeight | GrowValue | ShrinkValue), FloatValue number ->
+      let number = if is_finite number then number else begin
+        let name = match property with
+          | CollisionPadding -> "collision-padding"
+          | FirstPaneWidth -> "first-pane-width"
+          | AvailableHeight -> "available-height"
+          | GrowValue -> "grow"
+          | _ -> "shrink" in
+        Printf.eprintf "LUI numeric normalization: property=%s reason=non-finite fallback=0\n%!" name;
+        0.
+      end in
+      FloatValue (max 0. number)
   | _ -> value
 
 let size_properties = [WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight]

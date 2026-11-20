@@ -143,13 +143,13 @@ let toast_view _context model send =
     [ Lui_elements.button ~text:"Show" ~on_press:(Lui_elements.press send `Show) [];
       Lui_elements.dyn ~equal:( = )
         (fun shown ->
-           if shown then fun context parent ->
-             ignore (Lui_ui.after context 4_000. (fun () -> ignore (send `Hide)));
-             Lui_elements.row
-               [ Lui_elements.text ~value:"Saved" [];
-                 Lui_elements.button ~text:"Close"
-                   ~on_press:(Lui_elements.press send `Hide) [] ]
-               context parent
+           if shown then
+             Lui_elements.scoped (fun context ->
+               ignore (Lui_ui.after context 4_000. (fun () -> ignore (send `Hide)));
+               Lui_elements.row
+                 [ Lui_elements.text ~value:"Saved" [];
+                   Lui_elements.button ~text:"Close"
+                     ~on_press:(Lui_elements.press send `Hide) [] ])
            else Lui_elements.column [])
         model ]
 

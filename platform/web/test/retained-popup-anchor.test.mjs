@@ -220,8 +220,13 @@ test('configured popup clearance follows resize, property updates and removal', 
   apply([Protocol.remove_prop_op(2, prop('collision-padding'))])
   check(220, 188, 8, 'right', 204)
   for (const value of [-1, NaN, Infinity, -Infinity]) {
-    assert.throws(() => apply([set('collision-padding', {TAG: 3, _0: value})]))
+    apply([set('collision-padding', {TAG: 3, _0: value})])
+    assert.deepEqual(Store.property(store, 2, prop('collision-padding')), {TAG: 3, _0: 0})
+    check(220, 188, 0, 'right', 220)
   }
+  apply([set('collision-padding', {TAG: 3, _0: 6})])
+  assert.deepEqual(Store.property(store, 2, prop('collision-padding')), {TAG: 3, _0: 6})
+  check(220, 188, 6, 'right', 208)
 })
 
 

@@ -3913,3 +3913,150 @@ Applications can keep `column ~min_height:60 children`: the 60-point empty
 surface remains, and taller content determines the surface height. Use an
 explicit height or maximum height when a bounded surface is intended. No API,
 schema, event or imperative-scroll behavior changes are required.
+
+## ADR 0008: capability-indexed Slot_style
+
+`Slot_style.t` is now phantom-capability indexed. Builders are split by admitted
+property families, and constructors take the matching capability bucket:
+
+| Builder | Capability | Properties |
+| --- | --- | --- |
+| `Slot_style.make` | `base` | overflow, hover/focus/shadow/cursor/opacity/viewport |
+| `Slot_style.typography` | `[> \`typography]` | font_*, line_height, letter_spacing, text_decoration, user_select |
+| `Slot_style.text_flow` | `[> \`text_flow]` | white_space, text_overflow |
+| `Slot_style.collision` | `[> \`collision]` | collision_padding |
+
+Combine with `Slot_style.merge`. Constructor `?style` parameters are exact:
+
+- `text` / `button` / `menu_item` / … → `Slot_style.text_caps`
+- `checkbox` / `text_field` / `select` / … → `Slot_style.typography_caps`
+- `switch_` / `radio_group` / `button_group` / … → `Slot_style.base`
+- `dropdown_menu` / `popover` / `menu` / `submenu` → `Slot_style.surface_caps`
+
+Passing a rejected property is now a compile-time type error (for example
+`button ~style:(Slot_style.collision ~collision_padding:5. ()) []`).
+
+```ocaml
+(* Before *)
+let style = Slot_style.make ~font_size:"14px" ~collision_padding:8. () in
+dropdown_menu ~style [dropdown_menu_item ~style []]
+
+(* After *)
+let surface =
+  Slot_style.merge
+    (Slot_style.make ~shadow:"0 4px 6px black" ())
+    (Slot_style.merge
+       (Slot_style.typography ~font_size:"14px" ())
+       (Slot_style.collision ~collision_padding:8. ()))
+in
+let item =
+  Slot_style.merge
+    (Slot_style.make ())
+    (Slot_style.merge
+       (Slot_style.typography ~font_size:"14px" ())
+       (Slot_style.text_flow ~white_space:`nowrap ()))
+in
+dropdown_menu ~style:surface [dropdown_menu_item ~style:item []]
+```
+
+`text` / `heading` / `paragraph` / `label` apply `Slot_style` before
+`~truncate` recipes, so `~truncate:true` cannot be overridden by
+`~style:(Slot_style.text_flow ~white_space:\`normal ())`.
+
+## ADR 0008: polymorphic `'kind el` and uniform dynamic combinators
+
+Restricted slot types are now transparent aliases of a covariant phantom
+`'kind el`. Base constructors return polymorphic upper bounds such as
+`[< \`general | \`toolbar_item ] el`. Uniform `if_`, `keyed`, `scoped`, and
+`dyn`/`reactive` work inside restricted parents without per-slot adapters:
+
+```ocaml
+(* Before *)
+toolbar ~label:"Actions"
+  [ toolbar_button ~text:"A" []
+  ; if_toolbar ~test:flag (toolbar_button ~text:"B" [])
+  ; keyed_toolbar ~source:items ~key:Fun.id ~cmp:compare
+      ~mount:(fun s -> toolbar_button ~text:(reactive s) []) ]
+
+(* After *)
+toolbar ~label:"Actions"
+  [ button ~text:"A" []
+  ; if_ ~test:flag (button ~text:"B" [])
+  ; keyed ~source:items ~key:Fun.id ~cmp:compare
+      ~mount:(fun s -> button ~text:(reactive s) []) ]
+```
+
+Legacy `toolbar_*` / `dropdown_menu_*` / `if_*` / `keyed_*` / `reactive_*` /
+`scoped_*` aliases remain available. `menu_trigger` still rejects `if_` /
+`keyed` because its single child is mandatory. Use `Lui_elements.custom` and
+`Lui_elements.mount` for host-owned element functions — `el` is abstract.
+
+## ADR 0008: dropdown_menu target grouping
+
+`dropdown_menu` no longer takes flat `?at` / `?anchor` / `?anchor_alignment` /
+`?anchor_offset`. Use `?target` / `?target_signal` with `dropdown_target`:
+
+```ocaml
+(* Before *)
+dropdown_menu ~at:(48., 96.) entries
+dropdown_menu ~anchor:`below ~anchor_alignment:`start entries
+
+(* After *)
+dropdown_menu ~target:(Menu_at (48., 96.)) entries
+dropdown_menu
+  ~target:(Menu_anchor { side = `below; align = `start; offset = 0. })
+  entries
+```
+
+`popover` already used `popover_target`; both surfaces now emit only the wire
+properties of the active mode and remove only stale mode properties on
+transitions. Same-mode updates emit zero `RemoveProp`.
+
+## ADR 0008: Lui.Ui Tier-1 contract
+
+`Lui.Ui` no longer includes `Lui_ui`. Raw `int`-returning builders live under
+`Lui.Raw` / `Lui_ui`. `Ui.form_section` and `Ui.data_list` accept
+`list_section_item_el list`; wrap general views with `Ui.form_row` /
+`Ui.data_row` (or pass `list_item` / `if_` / `keyed` / `reactive` directly):
+
+```ocaml
+(* Before *)
+Ui.form_section ~title:"Identity"
+  [ Ui.form_field ~label:"Name" (text_field [])
+  ; toggle ~text:"Enabled" [] ]
+
+(* After *)
+Ui.form_section ~title:"Identity"
+  [ Ui.form_row (Ui.form_field ~label:"Name" (text_field []))
+  ; Ui.form_row (toggle ~text:"Enabled" [])
+  ; if_ ~test:flag (Ui.form_row (text_field [])) ]
+
+(* Before *)
+Ui.form_sheet ~title:"Edit" ~confirm_disabled:(Signal.value disabled) content
+
+(* After — static bool and signal twins *)
+Ui.form_sheet ~title:"Edit" ~confirm_disabled:true content
+Ui.form_sheet ~title:"Edit" ~confirm_disabled_signal:(Signal.value disabled) content
+```
+
+`Ui.hstack` / `Ui.vstack` / `Ui.page` / `Ui.section` accept typed token
+parameters (`?background:color`, `?gap:space`, `?padding:space`, …) and resolve
+`Tokens.space` with `Tokens.space_value_for (Lui_ui.platform context)`
+(desktop/web denser than iOS/Android touch metrics).
+
+## ADR 0008: protocol numeric normalization and JSON enum decoding
+
+`Lui_protocol.normalize_property_value` clamps `CollisionPadding`,
+`FirstPaneWidth`, `AvailableHeight`, `GrowValue`, and `ShrinkValue` to
+`>= 0` (non-finite floats fall back to `0.` with a diagnostic), and clamps
+`TreeLevel` to `>= 1`. Web retained-property tests that previously expected
+throws for invalid `collision-padding` must assert clamping to `0.` instead.
+
+`Lui_json_view` enum decoders return `None` with a structured diagnostic for
+unknown values; they no longer raise `Invalid_argument`.
+
+## ADR 0008: split sizing_signal default
+
+Mounting `split ~sizing_signal` no longer emits a spurious default
+`ProgressValue 0.5` before the signal's first value. Mode transitions remove
+only properties belonging to the previous sizing mode.

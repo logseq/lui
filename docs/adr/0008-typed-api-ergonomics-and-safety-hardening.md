@@ -1,6 +1,6 @@
 # ADR 0008: Typed API ergonomics, compile-time completeness, and runtime hardening
 
-Status: proposed
+Status: implemented
 
 Date: 2026-11-21
 

@@ -152,12 +152,16 @@ def extra_arg(name, typ, element=None):
     if element and name in DEAD_EVENTS.get(element, ()):
         return None
     j = name.replace('_', '-')
-    if typ == 'Slot_style.t':
-        schema = json.load(open('schema/components.json'))
-        constructor = schema.get('slotConstructors', {}).get(element, {}).get('constructor', element)
-        wire = schema.get('constructorAliases', {}).get(constructor, kind_of(constructor))
-        kind = next(entry['lg'] for entry in schema['nodeKinds'] if entry['wire'] == wire)
-        return f'~style:(slot_style P.{kind} props)'
+    if typ == 'Slot_style.base Slot_style.t':
+        return '~style:(slot_style_base props)'
+    if typ == 'Slot_style.typography_caps Slot_style.t':
+        return '~style:(slot_style_typography props)'
+    if typ == 'Slot_style.text_caps Slot_style.t':
+        return '~style:(slot_style_text props)'
+    if typ == 'Slot_style.surface_caps Slot_style.t':
+        return '~style:(slot_style_surface props)'
+    if typ == 'dropdown_target':
+        return '?target:(dropdown_target_prop props)'
     if 'Signal.signal' in typ:
         return None
     if name in SKIP_ARGS or typ in SKIP_ARG_TYPES:
@@ -423,16 +427,26 @@ let props_of fields =
 
 (* ---------- enum decoders (unknown -> None, never raise) ---------- *)
 
+let diagnostic message = Printf.eprintf "LUI JSON view: %s\n%!" message
+
+let unknown_enum property value =
+  diagnostic
+    (Printf.sprintf "property=%s reason=unknown-enum value=%S fallback=none"
+       property value);
+  None
+
 let cursor_opt = function
   | Some "default" -> Some `default
   | Some "pointer" -> Some `pointer
   | Some "text" -> Some `text
-  | None -> None | Some _ -> invalid_arg "Invalid cursor"
+  | None -> None
+  | Some value -> unknown_enum "cursor" value
 
 let user_select_opt = function
   | Some "none" -> Some `none
   | Some "text" -> Some `text
-  | None -> None | Some _ -> invalid_arg "Invalid user_select"
+  | None -> None
+  | Some value -> unknown_enum "user-select" value
 
 let variant_opt = function
   | Some "primary" -> Some `primary
@@ -441,14 +455,16 @@ let variant_opt = function
   | Some "ghost" -> Some `ghost
   | Some "destructive" -> Some `destructive
   | Some "default" -> Some `default
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "variant" value
 
 let control_size_opt = function
   | Some "sm" -> Some `sm
   | Some "lg" -> Some `lg
   | Some "icon" -> Some `icon
   | Some "default" -> Some `default
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "size" value
 
 let cell_size_opt = function
   | Some "heading" -> Some `heading
@@ -460,45 +476,52 @@ let main_opt = function
   | Some ("end" | "end_") -> Some `end_
   | Some ("space-between" | "space_between") -> Some `space_between
   | Some "start" -> Some `start
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "main" value
 
 let cross_opt = function
   | Some "stretch" -> Some `stretch
   | Some "start" -> Some `start
   | Some "center" -> Some `center
   | Some ("end" | "end_") -> Some `end_
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "cross" value
 
 let text_align_opt = function
   | Some "center" -> Some `center
   | Some ("end" | "end_") -> Some `end_
   | Some "start" -> Some `start
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "text-alignment" value
 
 let orientation_opt = function
   | Some "vertical" -> Some `vertical
   | Some "horizontal" -> Some `horizontal
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "orientation" value
 
 let icon_placement_opt = function
   | Some "trailing" -> Some `trailing
   | Some "top" -> Some `top
   | Some "leading" -> Some `leading
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "icon-placement" value
 
 let anchor_opt = function
   | Some "above" -> Some `above
   | Some "below" -> Some `below
   | Some "left" -> Some `left
   | Some "right" -> Some `right
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "anchor" value
 
 let anchor_align_opt = function
   | Some "start" -> Some `start
   | Some "center" -> Some `center
   | Some ("end" | "end_") -> Some `end_
   | Some "stretch" -> Some `stretch
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "anchor-alignment" value
 
 let frame_axes_opt = function
   | Some "horizontal" -> Some `horizontal
@@ -507,27 +530,31 @@ let frame_axes_opt = function
   | Some "min-horizontal" -> Some `min_horizontal
   | Some "min-vertical" -> Some `min_vertical
   | Some "min-both" -> Some `min_both
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "container-relative-frame" value
 
 let resize_easing_opt = function
   | Some "linear" -> Some `linear
   | Some "standard" -> Some `standard
   | Some "emphasized" -> Some `emphasized
   | Some "spring" -> Some `spring
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "resize-easing" value
 
 let role_opt = function
   | Some "treeitem" -> Some `treeitem
   | Some "navigation" -> Some `navigation
   | Some "navigation-heading" -> Some `navigation_heading
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "role" value
 
 let edge_opt = function
   | Some "top" -> Some `top
   | Some "bottom" -> Some `bottom
   | Some "leading" -> Some `leading
   | Some "trailing" -> Some `trailing
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "edge" value
 
 let alignment_opt = function
   | Some "top-leading" -> Some `top_leading
@@ -539,7 +566,36 @@ let alignment_opt = function
   | Some "bottom-leading" -> Some `bottom_leading
   | Some "bottom" -> Some `bottom
   | Some "bottom-trailing" -> Some `bottom_trailing
-  | _ -> None
+  | None -> None
+  | Some value -> unknown_enum "alignment" value
+
+let font_style_opt = function
+  | Some "normal" -> Some `normal
+  | Some "italic" -> Some `italic
+  | Some "oblique" -> Some `oblique
+  | None -> None
+  | Some value -> unknown_enum "font-style" value
+
+let white_space_opt = function
+  | Some "normal" -> Some `normal
+  | Some "nowrap" -> Some `nowrap
+  | Some "pre-wrap" -> Some `pre_wrap
+  | Some "pre-line" -> Some `pre_line
+  | None -> None
+  | Some value -> unknown_enum "white-space" value
+
+let text_overflow_opt = function
+  | Some "clip" -> Some `clip
+  | Some "ellipsis" -> Some `ellipsis
+  | None -> None
+  | Some value -> unknown_enum "text-overflow" value
+
+let overflow_opt = function
+  | Some "visible" -> Some `visible
+  | Some "hidden" -> Some `hidden
+  | Some "auto" -> Some `auto
+  | None -> None
+  | Some value -> unknown_enum "overflow" value
 
 (* schema icon names; unknown -> `app (host-registered icon) *)
 let icon_of_string = function
@@ -708,32 +764,50 @@ let render ~(on_event : event_sink) (node : value) : E.t =
 '''
 
 
-STYLE = r'''let slot_style kind props =
+STYLE = r'''let slot_style_base props : E.Slot_style.base E.Slot_style.t =
   E.Slot_style.make
-    ?font_size:(if P.property_supported kind P.FontSize then (v_str props "font-size") else None)
-    ?font_weight:(if P.property_supported kind P.FontWeight then (v_int props "font-weight") else None)
-    ?font_family:(if P.property_supported kind P.FontFamily then (v_str props "font-family") else None)
-    ?font_style:(if P.property_supported kind P.FontStyle then (font_style_opt (v_str props "font-style")) else None)
-    ?line_height:(if P.property_supported kind P.LineHeight then (v_str props "line-height") else None)
-    ?letter_spacing:(if P.property_supported kind P.LetterSpacing then (v_float props "letter-spacing") else None)
-    ?text_decoration:(if P.property_supported kind P.TextDecoration then (v_str props "text-decoration") else None)
-    ?white_space:(if P.property_supported kind P.WhiteSpace then (white_space_opt (v_str props "white-space")) else None)
-    ?text_overflow:(if P.property_supported kind P.TextOverflow then (text_overflow_opt (v_str props "text-overflow")) else None)
-    ?overflow:(if P.property_supported kind P.Overflow then (overflow_opt (v_str props "overflow")) else None)
-    ?hover_background:(if P.property_supported kind P.HoverBackground then (v_str props "hover-background") else None)
-    ?hover_foreground:(if P.property_supported kind P.HoverForeground then (v_str props "hover-foreground") else None)
-    ?focus_within_background:(if P.property_supported kind P.FocusWithinBackground then (v_str props "focus-within-background") else None)
-    ?focus_within_border:(if P.property_supported kind P.FocusWithinBorder then (v_str props "focus-within-border") else None)
-    ?focus_shadow:(if P.property_supported kind P.FocusShadow then (v_str props "focus-shadow") else None)
-    ?shadow:(if P.property_supported kind P.Shadow then (v_str props "shadow") else None)
-    ?collision_padding:(if P.property_supported kind P.CollisionPadding then (v_float props "collision-padding") else None)
-    ?cursor:(if P.property_supported kind P.Cursor then (cursor_opt (v_str props "cursor")) else None)
-    ?user_select:(if P.property_supported kind P.UserSelect then (user_select_opt (v_str props "user-select")) else None)
-    ?disabled_opacity:(if P.property_supported kind P.DisabledOpacity then (v_float props "disabled-opacity") else None)
-    ?pressed_opacity:(if P.property_supported kind P.PressedOpacity then (v_float props "pressed-opacity") else None)
-    ?hover_opacity:(if P.property_supported kind P.HoverOpacity then (v_float props "hover-opacity") else None)
-    ?max_height_viewport:(if P.property_supported kind P.MaxHeightViewport then (v_float props "max-height-viewport") else None)
+    ?overflow:(overflow_opt (v_str props "overflow"))
+    ?hover_background:(v_str props "hover-background")
+    ?hover_foreground:(v_str props "hover-foreground")
+    ?focus_within_background:(v_str props "focus-within-background")
+    ?focus_within_border:(v_str props "focus-within-border")
+    ?focus_shadow:(v_str props "focus-shadow")
+    ?shadow:(v_str props "shadow")
+    ?cursor:(cursor_opt (v_str props "cursor"))
+    ?disabled_opacity:(v_float props "disabled-opacity")
+    ?pressed_opacity:(v_float props "pressed-opacity")
+    ?hover_opacity:(v_float props "hover-opacity")
+    ?max_height_viewport:(v_float props "max-height-viewport")
     ()
+
+let slot_style_typography props : E.Slot_style.typography_caps E.Slot_style.t =
+  E.Slot_style.merge
+    (slot_style_base props :> E.Slot_style.typography_caps E.Slot_style.t)
+    (E.Slot_style.typography
+       ?font_size:(v_str props "font-size")
+       ?font_weight:(v_int props "font-weight")
+       ?font_family:(v_str props "font-family")
+       ?font_style:(font_style_opt (v_str props "font-style"))
+       ?line_height:(v_str props "line-height")
+       ?letter_spacing:(v_float props "letter-spacing")
+       ?text_decoration:(v_str props "text-decoration")
+       ?user_select:(user_select_opt (v_str props "user-select"))
+       ())
+
+let slot_style_text props : E.Slot_style.text_caps E.Slot_style.t =
+  E.Slot_style.merge
+    (slot_style_typography props :> E.Slot_style.text_caps E.Slot_style.t)
+    (E.Slot_style.text_flow
+       ?white_space:(white_space_opt (v_str props "white-space"))
+       ?text_overflow:(text_overflow_opt (v_str props "text-overflow"))
+       ())
+
+let slot_style_surface props : E.Slot_style.surface_caps E.Slot_style.t =
+  E.Slot_style.merge
+    (slot_style_typography props :> E.Slot_style.surface_caps E.Slot_style.t)
+    (E.Slot_style.collision
+       ?collision_padding:(v_float props "collision-padding")
+       ())
 
 '''
 

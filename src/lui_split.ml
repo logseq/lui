@@ -261,7 +261,7 @@ let split_view ?key ?divider_thickness ?divider_thickness_signal ?animation
     ?animation_signal ?accessibility_identifier
     ?accessibility_identifier_signal (children : Lui_elements.t list) :
     Lui_elements.t =
- fun context parent ->
+ Lui_elements.custom (fun context parent ->
   let node = Lui_ui.extension context "split-view" in
   Option.iter (Lui_ui.key context node) key;
   Option.iter
@@ -295,11 +295,11 @@ let split_view ?key ?divider_thickness ?divider_thickness_signal ?animation
     accessibility_identifier_signal;
   Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+  node)
 
 let split_branch ?key ~orientation ~ratio ?ratio_signal ?on_ratio_changed
     (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
+ Lui_elements.custom (fun context parent ->
   let node = Lui_ui.extension context "split-branch" in
   Option.iter (Lui_ui.key context node) key;
   Lui_ui.extension_property context node "orientation"
@@ -318,14 +318,14 @@ let split_branch ?key ~orientation ~ratio ?ratio_signal ?on_ratio_changed
     on_ratio_changed;
   Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+  node)
 
 let split_pane ?key ~pane_id ?selected ?selected_signal ?focused
     ?focused_signal ?accessibility_identifier ?on_tab_selected ?on_tab_closed
     ?on_tab_moved ?on_pane_focused ?on_navigate ?on_split_requested
     ?on_split_drop ?on_pane_closed (children : Lui_elements.t list) :
     Lui_elements.t =
- fun context parent ->
+ Lui_elements.custom (fun context parent ->
   let node = Lui_ui.extension context "split-pane" in
   Option.iter (Lui_ui.key context node) key;
   Lui_ui.extension_property context node "pane-id" (StringValue pane_id);
@@ -376,12 +376,12 @@ let split_pane ?key ~pane_id ?selected ?selected_signal ?focused
     on_pane_closed;
   Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+  node)
 
 let split_tab ?key ~tab_id ~title ?title_signal ?icon ?icon_signal ?dirty
     ?dirty_signal ?closable ?accessibility_identifier
     (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
+ Lui_elements.custom (fun context parent ->
   let node = Lui_ui.extension context "split-tab" in
   Option.iter (Lui_ui.key context node) key;
   Lui_ui.extension_property context node "tab-id" (StringValue tab_id);
@@ -420,7 +420,7 @@ let split_tab ?key ~tab_id ~title ?title_signal ?icon ?icon_signal ?dirty
     accessibility_identifier;
   Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+  node)
 
 (* The shared controller: owns the split tree as data, applies pointer/keyboard
    events to it, and renders it back into extension nodes. Platform backends
@@ -951,10 +951,11 @@ module Model = struct
      through [update]. *)
   let render ?key ?divider_thickness ?animation ~build ~dispatch state :
       Lui_elements.t =
-    let with_handler element handle context parent =
-      let node = element context parent in
-      Lui_ui.on_event context node handle;
-      node
+    let with_handler element handle =
+      Lui_elements.custom (fun context parent ->
+        let node = Lui_elements.mount context ?parent element in
+        Lui_ui.on_event context node handle;
+        node)
     in
     let render_node node =
       let rec go = function

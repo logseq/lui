@@ -258,16 +258,14 @@ function mountImpl(spec, comp) {
 
   return {
     impl: `let ${name} ${args.join(' ')} ${childrenArg} : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context ${JSON.stringify(comp.identifier)} in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context ${JSON.stringify(comp.identifier)} in
+    Option.iter (Lui_ui.key context node) key;
 ${setters.join('\n')}
 ${handlers.join('\n')}
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
 ${childrenMount}
-  node`,
+    node)`,
     decl: `val ${name} : ${params.join(' -> ')} -> ${childrenDecl} -> Lui_elements.t`,
   };
 }

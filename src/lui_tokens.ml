@@ -19,9 +19,18 @@ let color_value : color -> string = function
     Printf.sprintf (if value <= 0xffffff then "#%06x" else "#%08x") value
   | `token value -> if String.trim value = "" then "transparent" else value
 
-let space_value : space -> int = function
-  | `none -> 0 | `xs -> 4 | `sm -> 8 | `md -> 12 | `lg | `page -> 16 | `xl -> 24
+let space_value_for (os : Lui_protocol.operating_system) : space -> int =
+  let touch = match os with IOS | AndroidOS -> true | _ -> false in
+  function
+  | `none -> 0
+  | `xs -> 4
+  | `sm -> if touch then 10 else 8
+  | `md -> if touch then 16 else 12
+  | `lg | `page -> if touch then 20 else 16
+  | `xl -> if touch then 28 else 24
   | `px value -> max 0 value
+
+let space_value : space -> int = space_value_for GenericOS
 
 let radius_value : radius -> int = function
   | `none -> 0 | `sm -> 4 | `md -> 6 | `lg -> 8 | `xl -> 12 | `full -> 9999

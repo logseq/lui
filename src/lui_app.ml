@@ -81,7 +81,8 @@ let create_with_extensions ?virtual_rows ?virtual_capabilities backend registry 
     else false
   in
   let root =
-    (view context (Signal.value model_state) send_action) context None
+    Lui_elements.mount context
+      (view context (Signal.value model_state) send_action)
   in
   {
     app_scheduler = scheduler;
@@ -125,7 +126,8 @@ let create_reloadable_with_extensions ?virtual_rows ?virtual_capabilities backen
   in
   let root = Lui_runtime.create_node application Lui_protocol.Root in
   let view_node =
-    (view context (Signal.value model_state) send_action) context None
+    Lui_elements.mount context
+      (view context (Signal.value model_state) send_action)
   in
   let session = Lui_hot_reload.create source_hash contract_hash view in
   let app =
@@ -272,8 +274,8 @@ let reload_view app request source_hash contract_hash view elapsed_ms =
               candidate_active_state_paths
           in
           let node =
-            (view context state.reload_model_source app.app_send_action)
-              context None
+            Lui_elements.mount context
+              (view context state.reload_model_source app.app_send_action)
           in
           candidate_node :=
             Some

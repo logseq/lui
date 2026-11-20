@@ -16,35 +16,50 @@ test('surface and toolbar styling preserves capabilities, defaults and reactive 
     assert.equal(result.status, 0, result.stdout + result.stderr);
   };
   const props = [
-    ['font_size', 'FontSize', '"14px"', 'StringValue "14px"'],
-    ['font_weight', 'FontWeight', '500', 'IntValue 500'],
-    ['font_family', 'FontFamily', '"sans-serif"', 'StringValue "sans-serif"'],
-    ['font_style', 'FontStyle', '`italic', 'StringValue "italic"'],
-    ['line_height', 'LineHeight', '"20px"', 'StringValue "20px"'],
-    ['letter_spacing', 'LetterSpacing', '0.5', 'FloatValue 0.5'],
-    ['text_decoration', 'TextDecoration', '"underline"', 'StringValue "underline"'],
-    ['white_space', 'WhiteSpace', '`nowrap', 'StringValue "nowrap"'],
-    ['text_overflow', 'TextOverflow', '`ellipsis', 'StringValue "ellipsis"'],
-    ['overflow', 'Overflow', '`hidden', 'StringValue "hidden"'],
-    ['hover_background', 'HoverBackground', '"red"', 'StringValue "red"'],
-    ['hover_foreground', 'HoverForeground', '"blue"', 'StringValue "blue"'],
-    ['focus_within_background', 'FocusWithinBackground', '"green"', 'StringValue "green"'],
-    ['focus_within_border', 'FocusWithinBorder', '"black"', 'StringValue "black"'],
-    ['focus_shadow', 'FocusShadow', '"inset 0 0 0 2px blue"', 'StringValue "inset 0 0 0 2px blue"'],
-    ['shadow', 'Shadow', '"0 2px 4px black"', 'StringValue "0 2px 4px black"'],
-    ['cursor', 'Cursor', '`pointer', 'StringValue "pointer"'],
-    ['user_select', 'UserSelect', '`none', 'StringValue "none"'],
-    ['disabled_opacity', 'DisabledOpacity', '0.5', 'FloatValue 0.5'],
-    ['pressed_opacity', 'PressedOpacity', '0.7', 'FloatValue 0.7'],
-    ['hover_opacity', 'HoverOpacity', '0.9', 'FloatValue 0.9'],
-    ['max_height_viewport', 'MaxHeightViewport', '0.75', 'FloatValue 0.75'],
+    ['font_size', 'FontSize', '"14px"', 'StringValue "14px"', 'typography'],
+    ['font_weight', 'FontWeight', '500', 'IntValue 500', 'typography'],
+    ['font_family', 'FontFamily', '"sans-serif"', 'StringValue "sans-serif"', 'typography'],
+    ['font_style', 'FontStyle', '`italic', 'StringValue "italic"', 'typography'],
+    ['line_height', 'LineHeight', '"20px"', 'StringValue "20px"', 'typography'],
+    ['letter_spacing', 'LetterSpacing', '0.5', 'FloatValue 0.5', 'typography'],
+    ['text_decoration', 'TextDecoration', '"underline"', 'StringValue "underline"', 'typography'],
+    ['white_space', 'WhiteSpace', '`nowrap', 'StringValue "nowrap"', 'text_flow'],
+    ['text_overflow', 'TextOverflow', '`ellipsis', 'StringValue "ellipsis"', 'text_flow'],
+    ['overflow', 'Overflow', '`hidden', 'StringValue "hidden"', 'make'],
+    ['hover_background', 'HoverBackground', '"red"', 'StringValue "red"', 'make'],
+    ['hover_foreground', 'HoverForeground', '"blue"', 'StringValue "blue"', 'make'],
+    ['focus_within_background', 'FocusWithinBackground', '"green"', 'StringValue "green"', 'make'],
+    ['focus_within_border', 'FocusWithinBorder', '"black"', 'StringValue "black"', 'make'],
+    ['focus_shadow', 'FocusShadow', '"inset 0 0 0 2px blue"', 'StringValue "inset 0 0 0 2px blue"', 'make'],
+    ['shadow', 'Shadow', '"0 2px 4px black"', 'StringValue "0 2px 4px black"', 'make'],
+    ['cursor', 'Cursor', '`pointer', 'StringValue "pointer"', 'make'],
+    ['user_select', 'UserSelect', '`none', 'StringValue "none"', 'typography'],
+    ['disabled_opacity', 'DisabledOpacity', '0.5', 'FloatValue 0.5', 'make'],
+    ['pressed_opacity', 'PressedOpacity', '0.7', 'FloatValue 0.7', 'make'],
+    ['hover_opacity', 'HoverOpacity', '0.9', 'FloatValue 0.9', 'make'],
+    ['max_height_viewport', 'MaxHeightViewport', '0.75', 'FloatValue 0.75', 'make'],
   ];
+  const buildStyle = (entries, formatArg, extraByCtor = {}) => {
+    const groups = new Map();
+    for (const [ctor, args] of Object.entries(extraByCtor)) {
+      groups.set(ctor, [...args]);
+    }
+    for (const entry of entries) {
+      const ctor = entry[4];
+      if (!groups.has(ctor)) groups.set(ctor, []);
+      groups.get(ctor).push(formatArg(entry));
+    }
+    const parts = [...groups.entries()].map(
+      ([ctor, args]) => `(Slot_style.${ctor} ${args.join(' ')} ())`
+    );
+    return `~style:${parts.reduce((acc, part) => `(Slot_style.merge ${acc} ${part})`)}`;
+  };
   try {
     success(['dune', 'build', 'ppx/lui_ppx.cmxa', 'src/lui.cmxa']);
     writeFileSync(join(dir, 'driver.ml'), 'let () = Ppxlib.Driver.standalone ()\n');
     success(['ocamlfind', 'ocamlopt', '-package', 'ppxlib', '-linkpkg', '-linkall',
       '_build/default/ppx/lui_ppx.cmxa', join(dir, 'driver.ml'), '-o', join(dir, 'driver')]);
-    const staticProps = '~style:(Slot_style.make ' + props.map(([name, , value]) => `~${name}:(${value})`).join(' ') + ' ())';
+    const staticProps = buildStyle(props, ([name, , value]) => `~${name}:(${value})`);
     const initial = {
       font_size: ['"12px"', 'StringValue "12px"'],
       font_weight: ['400', 'IntValue 400'],
@@ -69,12 +84,25 @@ test('surface and toolbar styling preserves capabilities, defaults and reactive 
       hover_opacity: ['0.8', 'FloatValue 0.8'],
       max_height_viewport: ['0.5', 'FloatValue 0.5'],
     };
-    const reactiveProps = '~style:(Slot_style.make ~font_size:"999px" ' + props.map(([name, , value]) =>
-      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ') + ' ())';
+    const reactiveProps = buildStyle(
+      props,
+      ([name, , value]) =>
+        `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`,
+      { typography: ['~font_size:"999px"'] }
+    );
     const surfaceProps = props.filter(([name]) => !['white_space', 'text_overflow'].includes(name));
-    const surfaceStaticProps = '~style:(Slot_style.make ' + surfaceProps.map(([name, , value]) => `~${name}:(${value})`).join(' ') + ' ())';
-    const surfaceReactiveProps = '~style:(Slot_style.make ' + surfaceProps.map(([name, , value]) =>
-      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ') + ' ~collision_padding:99. ~collision_padding:(reactive (fun active -> if active then 5. else 2.) source) ())';
+    const surfaceStaticProps = buildStyle(surfaceProps, ([name, , value]) => `~${name}:(${value})`);
+    const surfaceReactiveProps = buildStyle(
+      surfaceProps,
+      ([name, , value]) =>
+        `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`,
+      {
+        collision: [
+          '~collision_padding:99.',
+          '~collision_padding:(reactive (fun active -> if active then 5. else 2.) source)',
+        ],
+      }
+    );
     const checks = props.map(([name, wire, , value]) =>
       `${['white_space', 'text_overflow'].includes(name) ? 'if not (List.mem label ["surface"; "surface-adapter"; "json-surface"]) then ' : ''}check label (property node ${wire} = Some (if reactive && not active then ${initial[name][1]} else ${value}));`).join('\n');
     const jsonProps = props.map(([name, , , wire]) => {
@@ -112,15 +140,16 @@ let json = Lui_json_view.Obj ["kind", Lui_json_view.Str "column";
 let view _ source _ = column [
   button ~text:"lazy-merge"
     ~style:(Slot_style.merge
-      (Slot_style.make
+      (Slot_style.typography
         ~font_size:(reactive (fun active -> if active then "14px" else "12px") source)
         ~font_weight:(reactive (fun _ -> failwith "overridden projection evaluated") source) ())
-      (Slot_style.make ~font_weight:600 ())) [];
+      (Slot_style.typography ~font_weight:600 ())) [];
   button ~text:"merged"
     ~style:(Slot_style.merge
-      (Slot_style.make ~font_size:(reactive (fun active -> if active then "12px" else "10px") source)
-        ~hover_foreground:"red" ())
-      (Slot_style.make ~font_size:"20px" ())) [];
+      (Slot_style.merge
+        (Slot_style.typography ~font_size:(reactive (fun active -> if active then "12px" else "10px") source) ())
+        (Slot_style.make ~hover_foreground:"red" ()))
+      (Slot_style.typography ~font_size:"20px" ())) [];
   button ~text:"static" ${staticProps} [];
   button ~text:"ordinary" ${reactiveProps} [];
   toolbar ~label:"Actions" [toolbar_button ~text:"toolbar" ${reactiveProps} []];
@@ -182,28 +211,33 @@ let () =
     success([...compile, join(dir, 'probe.ml'), '-o', join(dir, 'probe')]);
     const executed = spawnSync(join(dir, 'probe'), [], { cwd: root, encoding: 'utf8' });
     assert.equal(executed.status, 0, executed.stdout + executed.stderr);
-    writeFileSync(join(dir, 'unsupported.ml'), `open Lui_elements
-open Lui_protocol
-let backend = {backend_profile = generic_profile (); apply_batch = (fun _ -> true)}
-let () =
-  let rejected = try
-    let app = Lui_app.create backend () (fun value _ -> value) (fun _ _ _ ->
-      button ~text:"Invalid" ~style:(Slot_style.make ~collision_padding:5. ()) []) in
-    ignore (Lui_app.start app);
-    ignore (Lui_app.dispose app);
-    false
-  with Invalid_argument message -> message = "Slot_style: property is unsupported on this kind" in
-  if not rejected then failwith "unsupported style was not rejected"
-`);
-    success([...compile, join(dir, 'unsupported.ml'), '-o', join(dir, 'unsupported')]);
-    const unsupported = spawnSync(join(dir, 'unsupported'), [], { cwd: root, encoding: 'utf8' });
-    assert.equal(unsupported.status, 0, unsupported.stdout + unsupported.stderr);
+    for (const expression of [
+      'popover ~style:(Slot_style.collision ~collision_padding:8. ()) ~target:Cover []',
+      'menu ~style:(Slot_style.collision ~collision_padding:8. ()) []',
+      'submenu ~style:(Slot_style.collision ~collision_padding:8. ()) []',
+      'switch_ ~style:(Slot_style.make ~cursor:`pointer ()) []',
+      'checkbox ~style:(Slot_style.typography ~font_size:"14px" ()) []',
+    ]) {
+      writeFileSync(join(dir, 'accepted.ml'), `open Lui_elements\nlet _ = ${expression}\n`);
+      const result = run([...compile, '-c', join(dir, 'accepted.ml')]);
+      assert.equal(result.status, 0, `${expression}\n${result.stdout}${result.stderr}`);
+    }
     for (const expression of [
       'toolbar_button ~text:"Copy" ~font_weight:"bold" []',
       'dropdown_menu ~shadow:1 []',
-      'toolbar ~label:"Actions" [button ~text:"Copy" []]',
+      'toolbar ~label:"Actions" [column []]',
       'dropdown_menu_item ~font_style:`invalid []',
       'dropdown_menu [menu_item ~font_size:"14px" []]',
+      'button ~text:"x" ~style:(Slot_style.collision ~collision_padding:5. ()) []',
+      'switch_ ~style:(Slot_style.typography ~font_size:"14px" ()) []',
+      'switch_ ~style:(Slot_style.text_flow ~white_space:`nowrap ()) []',
+      'switch_ ~style:(Slot_style.collision ~collision_padding:5. ()) []',
+      'checkbox ~style:(Slot_style.text_flow ~white_space:`nowrap ()) []',
+      'checkbox ~style:(Slot_style.collision ~collision_padding:5. ()) []',
+      'popover ~target:Cover ~style:(Slot_style.text_flow ~white_space:`nowrap ()) []',
+      'dropdown_menu ~style:(Slot_style.text_flow ~white_space:`nowrap ()) []',
+      'menu ~style:(Slot_style.text_flow ~white_space:`nowrap ()) []',
+      'submenu ~style:(Slot_style.text_flow ~white_space:`nowrap ()) []',
     ]) {
       writeFileSync(join(dir, 'invalid.ml'), `open Lui_elements\nlet _ = ${expression}\n`);
       const result = run([...compile, '-c', join(dir, 'invalid.ml')]);

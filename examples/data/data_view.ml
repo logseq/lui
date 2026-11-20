@@ -860,29 +860,29 @@ let rec mount ~dispatch source node context parent =
         children;
       id
   | When (condition, child) ->
-      Lui_elements.dynamic
-        (fun context parent ->
-          let test =
-            derive context
-              (fun environment -> boolean (evaluate environment condition))
-              source
-          in
-          Lui_dynamic.conditional context parent test (fun context ->
-              mount ~dispatch source child context None))
-        context parent
+      Lui_elements.mount context ?parent
+        (Lui_elements.dynamic
+           (fun context parent ->
+             let test =
+               derive context
+                 (fun environment -> boolean (evaluate environment condition))
+                 source
+             in
+             Lui_dynamic.conditional context parent test (fun context ->
+                 mount ~dispatch source child context None)))
   | Each (expression, alias, key, child) ->
-      Lui_elements.dynamic
-        (fun context parent ->
-          let rows =
-            derive context
-              (fun environment -> items environment expression alias key)
-              source
-          in
-          Lui_dynamic.keyed context parent rows fst String.compare
-            (fun context row ->
-              let source = derive context snd row in
-              mount ~dispatch source child context None))
-        context parent
+      Lui_elements.mount context ?parent
+        (Lui_elements.dynamic
+           (fun context parent ->
+             let rows =
+               derive context
+                 (fun environment -> items environment expression alias key)
+                 source
+             in
+             Lui_dynamic.keyed context parent rows fst String.compare
+               (fun context row ->
+                 let source = derive context snd row in
+                 mount ~dispatch source child context None)))
   | Component (props, child) ->
       let source =
         derive context
@@ -891,29 +891,30 @@ let rec mount ~dispatch source node context parent =
       in
       mount ~dispatch source child context parent
   | Choice (condition, yes, no) ->
-      Lui_elements.dynamic
-        (fun context parent ->
-          let test = derive context (fun environment -> boolean (evaluate environment condition)) source in
-          Lui_dynamic.switch context parent test Bool.equal (fun context enabled ->
-            mount ~dispatch source (if enabled then yes else no) context None))
-        context parent
+      Lui_elements.mount context ?parent
+        (Lui_elements.dynamic
+           (fun context parent ->
+             let test = derive context (fun environment -> boolean (evaluate environment condition)) source in
+             Lui_dynamic.switch context parent test Bool.equal (fun context enabled ->
+               mount ~dispatch source (if enabled then yes else no) context None)))
   | Platform branches ->
       mount ~dispatch source (platform_branch context.U.ui_profile branches) context parent
   | Slot (Some child) ->
       mount ~dispatch (derive context caller source) child context parent
   | Slot None -> fail "unresolved component slot"
 
-let render document ~model ~project ~dispatch context parent =
-  if not (List.exists (fun host -> host.Contract.profile = context.U.ui_profile) document.contract.Contract.hosts) then
-    fail "view was not compiled for the current backend profile";
-  let source =
-    derive context
-      (fun model ->
-        let data = project model in
-        Contract.check_value "model" document.contract.Contract.model data;
-        let environment = {values = [ ("model", data) ]; caller = None} in
-        validate context.U.ui_profile environment document.root;
-        environment)
-      model
-  in
-  mount ~dispatch source document.root context parent
+let render document ~model ~project ~dispatch =
+  Lui_elements.custom (fun context parent ->
+    if not (List.exists (fun host -> host.Contract.profile = context.U.ui_profile) document.contract.Contract.hosts) then
+      fail "view was not compiled for the current backend profile";
+    let source =
+      derive context
+        (fun model ->
+          let data = project model in
+          Contract.check_value "model" document.contract.Contract.model data;
+          let environment = {values = [ ("model", data) ]; caller = None} in
+          validate context.U.ui_profile environment document.root;
+          environment)
+        model
+    in
+    mount ~dispatch source document.root context parent)

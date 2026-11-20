@@ -56,7 +56,13 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["context_menu [reactive_context_menu_item (fun _ -> context_menu_item ~on_press:(fun () -> ()) ()) source]"],
       ['list [list_section ~header:(text ~value:"Title" []) [list_section_item []]]'],
       ['Lui.Ui.form_field ~label:"Name" ~error:(reactive (fun invalid -> if invalid then Some "Required" else None) source) (text_field [])'],
-      ['Lui.Ui.form_sheet ~title:"Edit" ~confirm_disabled:(reactive source) [Lui.Ui.form_section ~title:"Identity" [text_field []]]'],
+      ['Lui.Ui.form_sheet ~title:"Edit" ~confirm_disabled:true [Lui.Ui.form_section ~title:"Identity" [Lui.Ui.form_row (text_field [])]]'],
+      ['Lui.Ui.form_sheet ~title:"Edit" ~confirm_disabled:(reactive source) [Lui.Ui.form_section ~title:"Identity" [Lui_elements.list_item [text_field []]]]'],
+      ["Lui.Elements.context_menu [Lui.Elements.button ~text:{|Action|} []]", "context-menu", "button"],
+      ["Lui.Elements.(context_menu [button ~text:{|Action|} []])", "context-menu", "button"],
+      ["Lui.(Elements.context_menu [Elements.button ~text:{|Action|} []])", "context-menu", "button"],
+      ["let module E = Lui.Elements in E.context_menu [E.button ~text:{|Action|} []]", "context-menu", "button"],
+      ["let module E = Lui.Elements in E.context_menu [E.context_menu_item ~on_press:(fun () -> ()) ()]"],
       ["let button _ = context_menu_item ~on_press:(fun () -> ()) () in context_menu [button []]"],
       ["(fun button -> context_menu [button []]) (fun _ -> context_menu_item ~on_press:(fun () -> ()) ())"],
       ["let module Other = struct let button _ = context_menu_item ~on_press:(fun () -> ()) () end in context_menu [Other.button []]"],
@@ -262,6 +268,9 @@ let () =
     String.concat ";" (List.init 200 (fun _ -> "menu_item []")) ^ ";button ~text:{|Action|} []]");
   check false "open Lui_elements let _ = let child = button ~text:{|Action|} [] in Lui_elements.(context_menu [child])";
   check false "module E = Lui_elements let _ = E.context_menu [E.button ~text:{|Action|} []]";
+  check false "let _ = Lui.Elements.context_menu [Lui.Elements.button ~text:{|Action|} []]";
+  check false "open Lui let _ = Elements.context_menu [Elements.button ~text:{|Action|} []]";
+  check false "let _ = let module E = Lui.Elements in E.context_menu [E.button ~text:{|Action|} []]";
   check false "open Lui_elements let wrap child = context_menu [child] let _ = wrap (button ~text:{|Action|} [])";
   check false "open Lui_elements let make = context_menu ~disabled:false let _ = make [button ~text:{|Action|} []]";
   check true "open Lui_elements module List = struct let map _ _ = [menu_item []] end let _ = context_menu (List.map (fun _ -> button ~text:{|Action|} []) [1])";
@@ -278,6 +287,11 @@ let () =
   check true "open Lui_elements let _ = column [if_ ~test:source (if_ ~test:source (menu_item []))]";
   check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
   check true "open Lui_elements let f context = let child = if Lui_ui.host context = KotlinHost then dropdown_menu [] else context_menu [] in if Lui_ui.host context = KotlinHost then menu_trigger [child] else button ~text:{|Action|} [child]";
+  check true "open Lui let f context = let child = if Raw.host context = KotlinHost then Elements.dropdown_menu [] else Elements.context_menu [] in if Raw.host context = KotlinHost then Elements.menu_trigger [child] else Elements.button ~text:{|Action|} [child]";
+  check false "open Lui let f context = let child = if Raw.host context = KotlinHost then Elements.context_menu [] else Elements.dropdown_menu [] in if Raw.host context = KotlinHost then Elements.menu_trigger [child] else Elements.button ~text:{|Action|} [child]";
+  check true "let f context = let child = if Lui.Raw.host context = KotlinHost then Lui.Elements.dropdown_menu [] else Lui.Elements.context_menu [] in if Lui.Raw.host context = KotlinHost then Lui.Elements.menu_trigger [child] else Lui.Elements.button ~text:{|Action|} [child]";
+  check true "let f context = let module R = Lui.Raw in let module E = Lui.Elements in let child = if R.host context = KotlinHost then E.dropdown_menu [] else E.context_menu [] in if R.host context = KotlinHost then E.menu_trigger [child] else E.button ~text:{|Action|} [child]";
+  check false "let f context = let module R = Lui.Raw in let module E = Lui.Elements in let child = if R.host context = KotlinHost then E.context_menu [] else E.dropdown_menu [] in if R.host context = KotlinHost then E.menu_trigger [child] else E.button ~text:{|Action|} [child]";
   check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in let same = flag in if not same then button ~text:{|Action|} [child] else menu_trigger [child]";
   check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in match flag with true -> menu_trigger [child] | false -> button ~text:{|Action|} [child]";
   check false "open Lui_elements let f flag other = let child = if flag then dropdown_menu [] else context_menu [] in let flag = other in if flag then menu_trigger [child] else button ~text:{|Action|} [child]";
@@ -342,8 +356,9 @@ let () =
   let view _context model_source _send =
     observed := Some model_source;
     Lui_elements.column [
-      (fun context parent ->
-        Lui_elements.text ~value:(reactive render_value model_source) [] context parent);
+      Lui_elements.custom (fun context parent ->
+        Lui_elements.mount context ?parent
+          (Lui_elements.text ~value:(reactive render_value model_source) []));
       reactive (fun _ ->
         Lui_elements.text ~value:(reactive render_value model_source) []) model_source
     ] in
@@ -668,14 +683,15 @@ let () =
       borrowed := Some rows;
       let child =
         if fully_applied then
-          (fun context parent ->
-            Lui_elements.virtual_rows ~source:(reactive project (Signal.value rows))
-              ~key:(fun row -> row) ~cmp:String.compare
-              ~mount:(fun source -> text ~value_signal:source []) () context parent)
+          Lui_elements.custom (fun context parent ->
+            Lui_elements.mount context ?parent
+              (Lui_elements.virtual_rows ~source:(reactive project (Signal.value rows))
+                ~key:(fun row -> row) ~cmp:String.compare
+                ~mount:(fun source -> text ~value:(reactive source) []) ()))
         else
           virtual_rows ~source:(reactive project (Signal.value rows))
             ~key:(fun row -> row) ~cmp:String.compare
-            ~mount:(fun source -> text ~value_signal:source []) () in
+            ~mount:(fun source -> text ~value:(reactive source) []) () in
       column [if_ ~test:shown (virtual_list ~height:100 ~item_extent:20. [child])] in
     let app = Lui_app.create backend true (fun _ shown -> shown) view in
     ignore (Lui_app.start app); ignore (Lui_app.flush app);
@@ -708,5 +724,160 @@ let () =
       "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
       join(dir, "virtual_source.ml"), "-o", join(dir, "virtual_source")])
     assert.equal(run([join(dir, "virtual_source")]).trim(), "owned")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
+test("public Lui.* facade preserves PPX reactive rewriting and Slot_style scoping", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-facade-ppx-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "facade.ml"), `
+module Opened = struct
+  open Lui
+  let view source =
+    Elements.text ~accessibility_identifier:"opened-text"
+      ~value:(reactive (fun active -> if active then "open-on" else "open-off") source) []
+end
+
+module Aliased = struct
+  module E = Lui.Elements
+  let view source =
+    E.text ~accessibility_identifier:"aliased-text"
+      ~value:(reactive (fun active -> if active then "alias-on" else "alias-off") source) []
+end
+
+let () =
+  let batches = ref [] in
+  let backend = { Lui.Protocol.backend_profile = Lui.Protocol.generic_profile ();
+    apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+  let ops () = List.concat_map (fun (batch : Lui.Protocol.patch_batch) -> batch.ops) (List.rev !batches) in
+  let node label = List.fold_left (fun result -> function
+    | Lui.Protocol.SetProp (id, Lui.Protocol.AccessibilityIdentifier, Lui.Protocol.StringValue value)
+      when value = label -> id
+    | _ -> result) (-1) (ops ()) in
+  let property id prop = List.fold_left (fun result -> function
+    | Lui.Protocol.SetProp (target, key, value) when target = id && key = prop -> Some value
+    | _ -> result) None (ops ()) in
+  let view _context source _send =
+    Lui.Elements.column [
+      Lui.Elements.text ~accessibility_identifier:"qualified-text"
+        ~value:(reactive (fun active -> if active then "qual-on" else "qual-off") source) [];
+      Opened.view source;
+      Aliased.view source;
+      Lui.Elements.button ~accessibility_identifier:"styled-btn" ~text:"Action"
+        ~style:(Lui.Elements.Slot_style.merge
+          (Lui.Elements.Slot_style.merge
+            (Lui.Elements.Slot_style.make
+              ~shadow:(reactive (fun active -> if active then "0 2px 4px black" else "none") source) ())
+            (Lui.Elements.Slot_style.typography
+              ~font_size:(reactive (fun active -> if active then "16px" else "12px") source) ()))
+          (Lui.Elements.Slot_style.text_flow
+            ~white_space:(reactive (fun active -> if active then \`nowrap else \`normal) source) ())) [];
+      Lui.Elements.popover ~accessibility_identifier:"styled-popover"
+        ~target:Lui.Elements.Cover
+        ~style:(Lui.Elements.Slot_style.collision
+          ~collision_padding:(reactive (fun active -> if active then 12. else 4.) source) ()) [];
+      Lui.Ui.form_sheet ~title:"Edit" ~confirm_disabled:true
+        [Lui.Ui.form_section ~title:"Identity"
+          [Lui.Ui.form_row (Lui.Elements.text_field [])]];
+      Lui.Ui.form_sheet ~title:"Edit" ~confirm_disabled:(reactive source)
+        [Lui.Ui.form_section ~title:"Identity"
+          [Lui.Elements.list_item [Lui.Elements.text_field []]]];
+    ] in
+  let app = Lui.App.create backend false (fun _ next -> next) view in
+  assert (Lui.App.start app);
+  ignore (Lui.App.flush app);
+  let verify active =
+    assert (property (node "qualified-text") Lui.Protocol.TextValue =
+      Some (Lui.Protocol.StringValue (if active then "qual-on" else "qual-off")));
+    assert (property (node "opened-text") Lui.Protocol.TextValue =
+      Some (Lui.Protocol.StringValue (if active then "open-on" else "open-off")));
+    assert (property (node "aliased-text") Lui.Protocol.TextValue =
+      Some (Lui.Protocol.StringValue (if active then "alias-on" else "alias-off")));
+    let btn = node "styled-btn" in
+    assert (property btn Lui.Protocol.Shadow =
+      Some (Lui.Protocol.StringValue (if active then "0 2px 4px black" else "none")));
+    assert (property btn Lui.Protocol.FontSize =
+      Some (Lui.Protocol.StringValue (if active then "16px" else "12px")));
+    assert (property btn Lui.Protocol.WhiteSpace =
+      Some (Lui.Protocol.StringValue (if active then "nowrap" else "normal")));
+    assert (property (node "styled-popover") Lui.Protocol.CollisionPadding =
+      Some (Lui.Protocol.FloatValue (if active then 12. else 4.)))
+  in
+  verify false;
+  assert (Lui.App.send app true);
+  ignore (Lui.App.flush app);
+  verify true;
+  assert (Lui.App.dispose app);
+  print_endline "facade"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "facade.ml"), "-o", join(dir, "facade")])
+    assert.equal(run([join(dir, "facade")]).trim(), "facade")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
+test("polymorphic el uniform dynamic combinators accept matching slots and reject mismatches", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-polymorphic-el-"))
+  const run = args => spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+  const success = args => {
+    const result = run(args)
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+  }
+  try {
+    success(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    success(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    const compileWithPpx = ["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
+      "-ppx", `${join(dir, "driver")} --as-ppx`,
+      "-I", "_build/default/src/.lui.objs/byte"]
+    const compileRaw = ["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
+      "-I", "_build/default/src/.lui.objs/byte"]
+
+    writeFileSync(join(dir, "valid.ml"), `open Lui_elements
+let probe (flag : bool Signal.signal)
+    (items : string list Signal.signal)
+    (label_sig : string Signal.signal) =
+  let _ = toolbar ~label:"Actions" [
+    button ~text:"A" [];
+    if_ ~test:flag (button ~text:"B" []);
+    keyed ~source:items ~key:Fun.id ~cmp:String.compare
+      ~mount:(fun s -> button ~text:(reactive s) []);
+    reactive (fun s -> button ~text:s []) label_sig;
+  ] in
+  let _ = dropdown_menu [
+    menu_item ~text:"Open" [];
+    if_ ~test:flag (divider []);
+    keyed ~source:items ~key:Fun.id ~cmp:String.compare
+      ~mount:(fun s -> menu_item ~text:(reactive s) []);
+  ] in
+  ()
+`)
+    success([...compileWithPpx, join(dir, "valid.ml")])
+
+    for (const expression of [
+      'toolbar ~label:"Bad" [column []]',
+      'menu_trigger (if_ ~test:flag (dropdown_menu []))',
+    ]) {
+      writeFileSync(join(dir, "invalid.ml"), `open Lui_elements
+let bad (flag : bool Signal.signal) = ${expression}
+`)
+      for (const cmd of [compileRaw, compileWithPpx]) {
+        const result = run([...cmd, join(dir, "invalid.ml")])
+        assert.notEqual(result.status, 0, expression)
+        assert.match(result.stderr, /Error:/)
+      }
+    }
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })

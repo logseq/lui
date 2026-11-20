@@ -758,18 +758,21 @@ let retire_range ?(drop = true) application segment =
   if !(segment.Lui_runtime.dynamic_segment_active) then begin
     let parent = Lui_runtime.canonical_node application segment.Lui_runtime.dynamic_segment_parent in
     let nodes = if drop then range_nodes application segment else [] in
-    Lui_runtime.resize_dynamic_segment application segment
-      (- !(segment.Lui_runtime.dynamic_segment_size));
+    if !(segment.Lui_runtime.dynamic_segment_size) <> 0 then
+      Lui_runtime.resize_dynamic_segment application segment
+        (- !(segment.Lui_runtime.dynamic_segment_size));
     let current = Option.value
       (Hashtbl.find_opt application.Lui_runtime.dynamic_segments parent) ~default:[] in
     let remaining = List.filter (fun child ->
       if range_contains segment child then begin
-        child.Lui_runtime.dynamic_segment_active := false;
+        Lui_runtime.journal_ref application Lui_runtime.Segment_active
+          child.Lui_runtime.dynamic_segment_id child.Lui_runtime.dynamic_segment_active false;
         decr application.Lui_runtime.runtime_dynamic_segment_count;
         false
       end else true) current in
-    if remaining = [] then Hashtbl.remove application.Lui_runtime.dynamic_segments parent
-    else Hashtbl.replace application.Lui_runtime.dynamic_segments parent remaining;
+    Lui_runtime.journal_list application Lui_runtime.Segment_member
+      application.Lui_runtime.dynamic_segments parent
+      (fun child -> child.Lui_runtime.dynamic_segment_id) remaining;
     List.iter (drop_branch_node application parent) nodes
   end
 
@@ -784,20 +787,77 @@ let range_segment context parent =
   Lui_runtime.register_dynamic_segment ?owner:(range_owner context parent)
     context.Lui_ui.ui_application parent
 
-let mount_range ?name ?(persistent = true) context parent owner mount =
+let register_range_at application parent owner position =
+  let parent = Lui_runtime.canonical_node application parent in
+  let segment = Lui_runtime.register_dynamic_segment ~owner application parent in
+  match position with
+  | `End -> segment
+  | `Start ->
+    let current = Hashtbl.find application.Lui_runtime.dynamic_segments parent in
+    let rec at_start = function
+      | s :: next :: _ when s == segment -> next == owner
+      | _ :: rest -> at_start rest
+      | [] -> false in
+    if at_start current then segment
+    else begin
+      let rec place acc = function
+        | [] -> invalid_arg "dynamic range owner is not registered"
+        | s :: rest when s == segment -> place acc rest
+        | s :: rest when s == owner -> List.rev_append acc (segment :: s :: rest)
+        | s :: rest -> place (s :: acc) rest in
+      let reordered = place [] current in
+      Lui_runtime.journal_ref application Lui_runtime.Segment_base
+        segment.Lui_runtime.dynamic_segment_id segment.Lui_runtime.dynamic_segment_base
+        !(owner.Lui_runtime.dynamic_segment_base);
+      Lui_runtime.journal_list application Lui_runtime.Segment_member
+        application.Lui_runtime.dynamic_segments parent
+        (fun s -> s.Lui_runtime.dynamic_segment_id) reordered;
+      segment
+    end
+  | `After prev ->
+    let current = Hashtbl.find application.Lui_runtime.dynamic_segments parent in
+    let rec already_after = function
+      | s :: next :: _ when s == segment -> range_contains prev next
+      | _ :: rest -> already_after rest
+      | [] -> false in
+    if already_after current then segment
+    else begin
+      let rec place acc = function
+        | [] -> invalid_arg "previous dynamic range is not registered"
+        | s :: rest when s == segment -> place acc rest
+        | (s :: _ as all) when range_contains prev s -> List.rev_append acc (segment :: all)
+        | s :: rest -> place (s :: acc) rest in
+      let reordered = place [] current in
+      let target_base =
+        !(prev.Lui_runtime.dynamic_segment_base) + !(prev.Lui_runtime.dynamic_segment_size) in
+      Lui_runtime.journal_ref application Lui_runtime.Segment_base
+        segment.Lui_runtime.dynamic_segment_id segment.Lui_runtime.dynamic_segment_base
+        target_base;
+      Lui_runtime.journal_list application Lui_runtime.Segment_member
+        application.Lui_runtime.dynamic_segments parent
+        (fun s -> s.Lui_runtime.dynamic_segment_id) reordered;
+      segment
+    end
+
+let create_range ?name ?(persistent = true) ?(position = `End) context parent owner =
   let name = match name with Some name -> name | None -> Lui_ui.owner_name context "dynamic-range" in
   let context = if persistent then Lui_ui.child_context context name else
     { (Lui_ui.context context.Lui_ui.ui_application (Signal.child_scope name context.Lui_ui.ui_scope))
       with Lui_ui.ui_protect = context.Lui_ui.ui_protect } in
-  let segment = Lui_runtime.register_dynamic_segment ~owner context.Lui_ui.ui_application parent in
+  let segment = register_range_at context.Lui_ui.ui_application parent owner position in
   let context = { context with Lui_ui.ui_dynamic_owner = Some segment } in
   Signal.on_unmount context.Lui_ui.ui_scope (fun () ->
     retire_range context.Lui_ui.ui_application segment);
+  { range_segment = segment; range_context = context }
+
+let mount_range ?name ?persistent context parent owner mount =
+  let range = create_range ?name ?persistent context parent owner in
+  let context = range.range_context and segment = range.range_segment in
   (try mount context with failure ->
     (try Signal.dispose_scope context.Lui_ui.ui_scope with _ -> ());
     retire_range context.Lui_ui.ui_application segment;
     raise failure);
-  { range_segment = segment; range_context = context }
+  range
 
 let dispose_range range = Signal.dispose_scope range.range_context.Lui_ui.ui_scope
 
@@ -857,43 +917,154 @@ type 'a range_entry = {
   entry_state : 'a Signal.state;
 }
 
+let weighted_lis ~max_rank ranks weights =
+  let n = Array.length ranks in
+  let in_lis = Array.make n false in
+  if n > 0 && max_rank > 0 then begin
+    let bit_val = Array.make (max_rank + 1) 0 in
+    let bit_idx = Array.make (max_rank + 1) (-1) in
+    let prev = Array.make n (-1) in
+    let best_total = ref 0 and best_end = ref (-1) in
+    for i = 0 to n - 1 do
+      let w = weights.(i) in
+      if w > 0 then begin
+        let r = ranks.(i) in
+        let best_w = ref 0 and best_i = ref (-1) and idx = ref r in
+        while !idx > 0 do
+          if bit_val.(!idx) > !best_w then begin
+            best_w := bit_val.(!idx);
+            best_i := bit_idx.(!idx)
+          end;
+          idx := !idx - (!idx land (- !idx))
+        done;
+        let total = !best_w + w in
+        prev.(i) <- !best_i;
+        let idx = ref (r + 1) in
+        while !idx <= max_rank do
+          if total > bit_val.(!idx) then begin
+            bit_val.(!idx) <- total;
+            bit_idx.(!idx) <- i
+          end;
+          idx := !idx + (!idx land (- !idx))
+        done;
+        if total > !best_total then begin
+          best_total := total;
+          best_end := i
+        end
+      end
+    done;
+    let cur = ref !best_end in
+    while !cur <> -1 do
+      in_lis.(!cur) <- true;
+      cur := prev.(!cur)
+    done
+  end;
+  in_lis
+
 let reorder_ranges application owner ranges =
   let parent = Lui_runtime.canonical_node application owner.Lui_runtime.dynamic_segment_parent in
-  let blocks = List.map (fun range -> range, range_nodes application range) ranges in
-  let positions = Lui_indexed_sequence.of_list (Lui_runtime.children application parent) in
-  let cursor = ref !(owner.Lui_runtime.dynamic_segment_base) in
-  List.iter (fun (_, nodes) -> List.iter (fun node ->
-    let current = Option.get (Lui_indexed_sequence.index positions node) in
-    if current <> !cursor then begin
-      Lui_runtime.move_child_at application parent node current !cursor;
-      Lui_indexed_sequence.move positions node !cursor
-    end;
-    incr cursor) nodes) blocks;
-  let groups = Hashtbl.create (List.length ranges) in
+  let m = Array.length ranges in
+  let groups = Hashtbl.create (max 1 m) in
+  let old_ranks = Hashtbl.create (max 1 m) in
   let rec child_of_owner segment =
     match segment.Lui_runtime.dynamic_segment_owner with
     | Some parent when parent == owner -> Some segment
     | Some parent -> child_of_owner parent
     | None -> None in
   let registered = List.rev (Hashtbl.find application.Lui_runtime.dynamic_segments parent) in
+  let non_empty = ref [] in
+  let next_rank = ref 0 in
   List.iter (fun segment -> Option.iter (fun root ->
     let id = root.Lui_runtime.dynamic_segment_id in
+    if segment == root then begin
+      Hashtbl.replace old_ranks id !next_rank;
+      incr next_rank;
+      if !(root.Lui_runtime.dynamic_segment_size) > 0 then
+        non_empty := root :: !non_empty
+    end;
     let previous = Option.value (Hashtbl.find_opt groups id) ~default:[] in
     Hashtbl.replace groups id (segment :: previous)) (child_of_owner segment)) registered;
+  let ranks = Array.init m (fun i ->
+    Hashtbl.find old_ranks ranges.(i).Lui_runtime.dynamic_segment_id) in
+  let sizes = Array.init m (fun i -> !(ranges.(i).Lui_runtime.dynamic_segment_size)) in
+  let in_lis = weighted_lis ~max_rank:!next_rank ranks sizes in
+  let needs_move = ref false in
+  for i = 0 to m - 1 do
+    if sizes.(i) > 0 && not in_lis.(i) then needs_move := true
+  done;
+  if !needs_move then begin
+    let positions = Lui_indexed_sequence.of_list [] in
+    List.iteri (fun idx seg ->
+      let id = seg.Lui_runtime.dynamic_segment_id in
+      Lui_indexed_sequence.insert positions idx id;
+      Lui_indexed_sequence.set_weight positions id !(seg.Lui_runtime.dynamic_segment_size))
+      (List.rev !non_empty);
+    let owner_base = !(owner.Lui_runtime.dynamic_segment_base) in
+    let owner_size = !(owner.Lui_runtime.dynamic_segment_size) in
+    let anchor = ref None in
+    for i = m - 1 downto 0 do
+      let w = sizes.(i) in
+      if w > 0 then begin
+        let seg = ranges.(i) in
+        let id = seg.Lui_runtime.dynamic_segment_id in
+        if not in_lis.(i) then begin
+          let src_slot = Option.get (Lui_indexed_sequence.index positions id) in
+          let cur_0 = owner_base + Lui_indexed_sequence.prefix_weight positions src_slot in
+          let anchor_slot, anchor_pos = match !anchor with
+            | None -> Lui_indexed_sequence.length positions, owner_base + owner_size
+            | Some anchor_id ->
+              let slot = Option.get (Lui_indexed_sequence.index positions anchor_id) in
+              slot, owner_base + Lui_indexed_sequence.prefix_weight positions slot in
+          if cur_0 + w <> anchor_pos then begin
+            if cur_0 < anchor_pos then begin
+              let target = anchor_pos - 1 in
+              for _ = 0 to w - 1 do
+                let children = Hashtbl.find application.Lui_runtime.runtime_children parent in
+                let node = Lui_sequence.get children cur_0 in
+                Lui_runtime.move_child_at application parent node cur_0 target
+              done;
+              Lui_indexed_sequence.move positions id (anchor_slot - 1);
+              Lui_indexed_sequence.set_weight positions id w
+            end else begin
+              for offset = 0 to w - 1 do
+                let children = Hashtbl.find application.Lui_runtime.runtime_children parent in
+                let from_index = cur_0 + offset in
+                let node = Lui_sequence.get children from_index in
+                Lui_runtime.move_child_at application parent node from_index (anchor_pos + offset)
+              done;
+              Lui_indexed_sequence.move positions id anchor_slot;
+              Lui_indexed_sequence.set_weight positions id w
+            end
+          end
+        end;
+        anchor := Some id
+      end
+    done
+  end;
+  let rec split_at_owner prefix = function
+    | [] -> prefix, []
+    | current :: rest when current == owner -> current :: prefix, rest
+    | current :: rest -> split_at_owner (current :: prefix) rest in
+  let prefix_with_owner_rev, after_owner = split_at_owner [] registered in
   let cursor = ref !(owner.Lui_runtime.dynamic_segment_base) in
-  let ordered = List.concat_map (fun (range, nodes) ->
+  let acc = ref prefix_with_owner_rev in
+  for i = 0 to m - 1 do
+    let range = ranges.(i) in
     let shift = !cursor - !(range.Lui_runtime.dynamic_segment_base) in
-    cursor := !cursor + List.length nodes;
+    cursor := !cursor + sizes.(i);
     let group = List.rev (Hashtbl.find groups range.Lui_runtime.dynamic_segment_id) in
-    List.iter (fun segment -> segment.Lui_runtime.dynamic_segment_base :=
-      !(segment.Lui_runtime.dynamic_segment_base) + shift) group;
-    group) blocks in
-  let rec replace = function
-    | [] -> []
-    | current :: rest when current == owner -> current :: List.rev_append
-        (List.rev ordered) (List.filter (fun segment -> not (range_contains owner segment)) rest)
-    | current :: rest -> current :: replace rest in
-  Hashtbl.replace application.Lui_runtime.dynamic_segments parent (List.rev (replace registered))
+    List.iter (fun segment ->
+      if shift <> 0 then
+        Lui_runtime.journal_ref application Lui_runtime.Segment_base
+          segment.Lui_runtime.dynamic_segment_id segment.Lui_runtime.dynamic_segment_base
+          (!(segment.Lui_runtime.dynamic_segment_base) + shift);
+      acc := segment :: !acc) group
+  done;
+  List.iter (fun segment ->
+    if not (range_contains owner segment) then acc := segment :: !acc) after_owner;
+  Lui_runtime.journal_list application Lui_runtime.Segment_member
+    application.Lui_runtime.dynamic_segments parent
+    (fun s -> s.Lui_runtime.dynamic_segment_id) !acc
 
 let keyed_range (type key) context parent source key compare mount =
   let module Keys = Map.Make (struct
@@ -904,57 +1075,212 @@ let keyed_range (type key) context parent source key compare mount =
   let application = context.Lui_ui.ui_application in
   let owner = range_segment context parent in
   let entries = ref Keys.empty in
+  let ordered = ref [||] in
   Signal.on_unmount context.Lui_ui.ui_scope (fun () -> retire_range application owner);
   let dispose entry = Fun.protect (fun () -> dispose_range entry.entry_range)
     ~finally:(fun () -> Signal.dispose_signal (Signal.value entry.entry_state)) in
+  let dispose_all entries =
+    let failure = ref None in
+    List.iter (fun entry -> try dispose entry with error ->
+      if !failure = None then failure := Some error) entries;
+    match !failure with None -> () | Some error -> raise error in
+  let deliver_updates_and_dispose updates removed =
+    (try
+       List.iter (fun (entry, item) -> Signal.set entry.entry_state item) (List.rev updates)
+     with error ->
+       List.iter (fun entry -> try dispose entry with _ -> ()) removed;
+       raise error);
+    dispose_all removed in
   let reconcile items =
-    if !(owner.Lui_runtime.dynamic_segment_active) then begin
+    if !(owner.Lui_runtime.dynamic_segment_active) && Lui_runtime.node_live application parent then begin
       let items = Array.of_list items in
       let identities = occurrence_keys parent key compare items in
-      let saved = Lui_runtime.checkpoint_subtree application parent parent in
-      let fresh = ref [] in
-      let updates = ref [] in
-      let next = ref Keys.empty in
-      let committed = ref false in
-      try
-        let ordered = Array.mapi (fun index item ->
+      let old = !ordered in
+      let n = Array.length items in
+      let old_len = Array.length old in
+      let same_order = ref (n = old_len) in
+      let idx = ref 0 in
+      while !same_order && !idx < n do
+        let (prev_key, prev_occ), _ = old.(!idx) in
+        let next_key, next_occ = identities.(!idx) in
+        if compare prev_key next_key <> 0 || prev_occ <> next_occ then
+          same_order := false;
+        incr idx
+      done;
+      if !same_order then begin
+        for index = 0 to n - 1 do
+          let _, entry = old.(index) in
+          let item = items.(index) in
+          if item != Signal.get_state entry.entry_state then
+            Signal.set entry.entry_state item
+        done
+      end else begin
+        let old_positions = ref Keys.empty in
+        Array.iteri (fun index (identity, _) ->
+          old_positions := Keys.add identity index !old_positions) old;
+        let desired_set = ref Keys.empty in
+        let fresh_count = ref 0 in
+        let updates = ref [] in
+        let retained_rev = ref [] in
+        let last_old_pos = ref (-1) in
+        let retained_in_order = ref true in
+        for index = 0 to n - 1 do
           let identity = identities.(index) in
-          let entry = match Keys.find_opt identity !entries with
-            | Some entry ->
-              if item != Signal.get_state entry.entry_state then updates := (entry, item) :: !updates;
-              entry
-            | None ->
-              let state = Signal.state context.Lui_ui.ui_scheduler item in
-              let range = try mount_range ~persistent:false context parent owner (fun context ->
-                ignore (mount context (Signal.value state))) with failure ->
-                  Signal.dispose_signal (Signal.value state); raise failure in
-              let entry = {entry_range = range; entry_state = state} in
-              fresh := entry :: !fresh;
-              Signal.mount range.range_context.Lui_ui.ui_scope;
-              entry in
-          next := Keys.add identity entry !next;
-          entry) items in
-        let removed = Keys.fold (fun identity entry removed ->
-          if Keys.mem identity !next then removed else entry :: removed) !entries [] in
-        List.iter (fun entry -> retire_range application entry.entry_range.range_segment) removed;
-        reorder_ranges application owner
-          (Array.to_list (Array.map (fun entry -> entry.entry_range.range_segment) ordered));
-        entries := !next;
-        committed := true;
-        List.iter (fun (entry, item) -> Signal.set entry.entry_state item) (List.rev !updates);
-        List.iter dispose removed
-      with failure ->
-        if not !committed then begin
-          List.iter (fun entry -> retire_range ~drop:false application entry.entry_range.range_segment) !fresh;
-          Lui_runtime.restore application saved;
-          List.iter (fun entry -> try dispose entry with _ -> ()) !fresh
-        end;
-        raise failure
+          desired_set := Keys.add identity index !desired_set;
+          match Keys.find_opt identity !entries with
+          | Some entry ->
+            let item = items.(index) in
+            if item != Signal.get_state entry.entry_state then
+              updates := (entry, item) :: !updates;
+            let pos = Keys.find identity !old_positions in
+            if pos < !last_old_pos then retained_in_order := false;
+            last_old_pos := pos;
+            retained_rev := (pos, entry) :: !retained_rev
+          | None ->
+            incr fresh_count
+        done;
+        let removed_rev = ref [] in
+        for index = 0 to old_len - 1 do
+          let identity, entry = old.(index) in
+          if not (Keys.mem identity !desired_set) then
+            removed_rev := (index, entry) :: !removed_rev
+        done;
+        let removed_with_pos = List.rev !removed_rev in
+        let removed = List.map snd removed_with_pos in
+        if !fresh_count = 0 then begin
+          List.iter (fun entry -> retire_range application entry.entry_range.range_segment) removed;
+          let retained = Array.of_list (List.rev !retained_rev) in
+          let next_entries = ref Keys.empty in
+          let next_ordered = Array.init n (fun index ->
+            let identity = identities.(index) in
+            let _, entry = retained.(index) in
+            next_entries := Keys.add identity entry !next_entries;
+            identity, entry) in
+          if not !retained_in_order then
+            reorder_ranges application owner
+              (Array.map (fun (_, entry) -> entry.entry_range.range_segment) next_ordered);
+          entries := !next_entries;
+          ordered := next_ordered;
+          deliver_updates_and_dispose !updates removed
+        end else begin
+          let canonical_parent = Lui_runtime.canonical_node application parent in
+          let saved = Lui_runtime.checkpoint ~nodes:[canonical_parent] application in
+          let finish_replacements =
+            if removed <> [] &&
+               (Hashtbl.length application.Lui_runtime.runtime_virtual_sources > 0
+                || Hashtbl.length application.Lui_runtime.runtime_virtual_owners > 0) then
+              let retiring = List.concat_map (fun entry ->
+                List.concat_map
+                  (Lui_runtime.collect_subtree_nodes application.Lui_runtime.runtime_children)
+                  (range_nodes application entry.entry_range.range_segment)) removed in
+              replacing_virtual_nodes application retiring
+            else fun () -> () in
+          let fresh = ref [] in
+          let next = ref Keys.empty in
+          let committed = ref false in
+          (try
+             if old_len > 0 && not !retained_in_order then begin
+               let retained = Array.of_list (List.rev !retained_rev) in
+               if removed_with_pos = [] then
+                 reorder_ranges application owner
+                   (Array.map (fun (_, entry) -> entry.entry_range.range_segment) retained)
+               else begin
+                 (* Interleave removed entries before the first LIS-kept retained entry
+                    with a larger old index so removed segments stay stationary and
+                    untouched until after every fresh entry mounts. *)
+                 let r_len = Array.length retained in
+                 let r_ranks = Array.init r_len (fun i -> fst retained.(i)) in
+                 let r_sizes = Array.init r_len (fun i ->
+                   !((snd retained.(i)).entry_range.range_segment.Lui_runtime.dynamic_segment_size)) in
+                 let r_in_lis = weighted_lis ~max_rank:old_len r_ranks r_sizes in
+                 let rem_arr = Array.of_list removed_with_pos in
+                 let rem_len = Array.length rem_arr in
+                 let rem_idx = ref 0 in
+                 let augmented_rev = ref [] in
+                 for i = 0 to r_len - 1 do
+                   let pos, entry = retained.(i) in
+                   if r_in_lis.(i) then
+                     while !rem_idx < rem_len && fst rem_arr.(!rem_idx) < pos do
+                       augmented_rev := (snd rem_arr.(!rem_idx)).entry_range.range_segment :: !augmented_rev;
+                       incr rem_idx
+                     done;
+                   augmented_rev := entry.entry_range.range_segment :: !augmented_rev
+                 done;
+                 while !rem_idx < rem_len do
+                   augmented_rev := (snd rem_arr.(!rem_idx)).entry_range.range_segment :: !augmented_rev;
+                   incr rem_idx
+                 done;
+                 reorder_ranges application owner (Array.of_list (List.rev !augmented_rev))
+               end
+             end;
+             let prev_seg = ref None in
+             let next_ordered_rev = ref [] in
+             for index = 0 to n - 1 do
+               let identity = identities.(index) in
+               let entry = match Keys.find_opt identity !entries with
+                 | Some entry ->
+                   prev_seg := Some entry.entry_range.range_segment;
+                   entry
+                 | None ->
+                   let state = Signal.state context.Lui_ui.ui_scheduler items.(index) in
+                   let position = match !prev_seg with
+                     | None -> `Start
+                     | Some prev -> `After prev in
+                   let range = try create_range ~persistent:false ~position context parent owner
+                     with failure ->
+                       Signal.dispose_signal (Signal.value state);
+                       raise failure in
+                   let entry = { entry_range = range; entry_state = state } in
+                   fresh := entry :: !fresh;
+                   ignore (mount range.range_context (Signal.value state));
+                   Signal.mount range.range_context.Lui_ui.ui_scope;
+                   prev_seg := Some range.range_segment;
+                   entry in
+               next := Keys.add identity entry !next;
+               next_ordered_rev := (identity, entry) :: !next_ordered_rev
+             done;
+             finish_replacements ();
+             List.iter (fun entry -> retire_range application entry.entry_range.range_segment) removed;
+             entries := !next;
+             ordered := Array.of_list (List.rev !next_ordered_rev);
+             committed := true
+           with failure ->
+             finish_replacements ();
+             if not !committed then begin
+               (match Hashtbl.find_opt application.Lui_runtime.dynamic_segments canonical_parent with
+                | Some segments ->
+                  List.iter (fun segment ->
+                    if segment.Lui_runtime.dynamic_segment_id >
+                       saved.Lui_runtime.checkpoint_next_dynamic_segment_id then
+                      segment.Lui_runtime.dynamic_segment_active := false) segments
+                | None -> ());
+               for id = !(application.Lui_runtime.next_node_id)
+                 downto saved.Lui_runtime.checkpoint_next_node_id + 1 do
+                 if Lui_runtime.node_live application id then
+                   Lui_runtime.drop_subtree application id
+               done;
+               Lui_runtime.restore application saved;
+               List.iter (fun entry -> try dispose entry with _ -> ()) !fresh
+             end;
+             raise failure);
+          deliver_updates_and_dispose !updates removed
+        end
+      end
     end in
   reconcile (Signal.sample source);
   let subscription = Signal.subscribe ~emit_initial:false source (fun items ->
     context.Lui_ui.ui_protect (fun () -> reconcile items)) in
   Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
     Signal.dispose_subscription subscription;
-    Fun.protect (fun () -> Keys.iter (fun _ entry -> dispose entry) !entries)
+    let previous = !ordered in
+    ordered := [||];
+    entries := Keys.empty;
+    Fun.protect (fun () ->
+      let failure = ref None in
+      for index = Array.length previous - 1 downto 0 do
+        let _, entry = previous.(index) in
+        try dispose entry with error ->
+          if !failure = None then failure := Some error
+      done;
+      match !failure with None -> () | Some error -> raise error)
       ~finally:(fun () -> retire_range application owner))
