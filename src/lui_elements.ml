@@ -1513,10 +1513,13 @@ let remove_properties context node properties =
   List.iter (Lui_runtime.remove_prop context.Lui_ui.ui_application node) properties
 
 let apply_split_sizing context node sizing =
-  remove_properties context node [ProgressValue; FirstPaneWidth];
   match sizing with
-  | Fraction value -> Lui_ui.float_property context node ProgressValue value
-  | First_width value -> Lui_ui.float_property context node FirstPaneWidth value
+  | Fraction value ->
+      remove_properties context node [FirstPaneWidth];
+      Lui_ui.float_property context node ProgressValue value
+  | First_width value ->
+      remove_properties context node [ProgressValue];
+      Lui_ui.float_property context node FirstPaneWidth value
 
 let apply_popover_target context node target =
   remove_properties context node

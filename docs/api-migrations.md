@@ -577,8 +577,8 @@ split ~sizing:(reactive (fun value -> Fraction value) fraction)
 ```
 
 Omitting sizing now emits **Fraction 0.5**, including on Apple, which requires
-exactly one sizing mode. Reactive mode changes remove the previous sizing
-property. `motion` groups the former `resize_duration`, `resize_easing`, and
+exactly one sizing mode. Reactive mode changes remove only the opposite sizing
+property; publishing an unchanged sizing value emits no patches. `motion` groups the former `resize_duration`, `resize_easing`, and
 `resize_origin`. Omitted motion retains instant resizing (duration 0, implicit
 standard easing, no origin). Positive duration emits the chosen easing and
 optional origin. Non-positive duration means instant resizing: duration is
