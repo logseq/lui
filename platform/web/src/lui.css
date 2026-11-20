@@ -2625,6 +2625,14 @@ body {
     }
   }
 
+  .lui-menu-item:focus-within[style*="--lui-focus-within-bg"]:not(:disabled, [data-disabled], [aria-disabled="true"]) {
+    color: var(--lui-current-hover-fg, inherit);
+  }
+
+  .lui-menu-item[data-variant="destructive"]:focus-within[style*="--lui-focus-within-bg"]:not(:disabled, [data-disabled], [aria-disabled="true"]) {
+    color: var(--lui-current-hover-fg, var(--color-destructive));
+  }
+
 }
 
 /* The typed line-clamp property owns the block formatting contract. */
