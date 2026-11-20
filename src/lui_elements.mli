@@ -94,6 +94,9 @@ type referrer_policy =
 
 type link_target = [ `self_ | `blank ]
 
+type cursor = [ `default | `pointer | `text ]
+type user_select = [ `none | `text ]
+
 type display =
   [ `contents | `none | `block | `inline | `inline_block | `inline_flex ]
 
@@ -1173,6 +1176,30 @@ val bottom_tab :
   ?on_pointer_down:(pointer_detail -> unit) ->
   ?on_pointer_up:(pointer_detail -> unit) -> t list -> bottom_tab_el
 val button_group :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -1211,6 +1238,30 @@ val button_group :
   ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> t
 val toggle_group :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -1765,6 +1816,40 @@ val icon :
 val text :
   ?role:text_role ->
   ?truncate:bool ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2009,6 +2094,50 @@ val kbd :
 (** A text button. [text] is the initial value; [text_signal], when supplied,
     wins. Children remain supported. Use [icon_button] for icon-only content. *)
 val button :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -2077,6 +2206,50 @@ val button :
 (** An icon-only button with a mandatory accessible [label]. Uses the same
     wire kind, defaults, events and children slot as [button]. *)
 val icon_button :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -2140,6 +2313,50 @@ val icon_button :
   ?shortcut_hint_signal:string Signal.signal ->
   ?transition:string -> t list -> t
 val toggle_button :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2195,6 +2412,46 @@ val toggle_button :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val checkbox :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -2247,6 +2504,30 @@ val checkbox :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val switch_ :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2293,6 +2574,46 @@ val switch_ :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val toggle :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2339,6 +2660,30 @@ val toggle :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val radio_group :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2633,6 +2978,46 @@ val separator :
 (* Text-entry constructors can opt into Submit on focus loss with
    [submit_on_blur]. Unfinished composition never submits on blur. *)
 val text_field :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2685,6 +3070,46 @@ val text_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val secure_field :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2737,6 +3162,46 @@ val secure_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val input :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2790,6 +3255,46 @@ val input :
   ?kind:input_kind ->
   ?transition:string -> t list -> t
 val search_field :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2914,6 +3419,46 @@ val input_group_actions :
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) -> t list -> input_group_actions_el
 val select :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -2965,6 +3510,46 @@ val select :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val combobox :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -3026,6 +3611,48 @@ val combobox :
     like {!Lui_elements.popover}, with no DOM anchor required. [~at] and
     [~anchor] are mutually exclusive (rejected at validation). *)
 val dropdown_menu :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?collision_padding:float ->
+  ?collision_padding_signal:float Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -3378,6 +4005,20 @@ val accordion :
   ?on_toggle:(bool -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) -> t list -> t
 val menu_item :
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -3843,6 +4484,50 @@ val themed :
   ?mode_signal:Lui_ui.theme_mode Signal.signal -> t -> t
 
 val toolbar_button :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -3911,6 +4596,50 @@ val toolbar_button :
 (** An icon-only button with a mandatory accessible [label]. Uses the same
     wire kind, defaults, events and children slot as [button]. *)
 val toolbar_icon_button :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -3974,6 +4703,50 @@ val toolbar_icon_button :
   ?shortcut_hint_signal:string Signal.signal ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_toggle_button :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space:white_space ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow:text_overflow ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4029,6 +4802,30 @@ val toolbar_toggle_button :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_button_group :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4067,6 +4864,30 @@ val toolbar_button_group :
   ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_toggle_group :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4105,6 +4926,46 @@ val toolbar_toggle_group :
   ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_checkbox :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4157,6 +5018,30 @@ val toolbar_checkbox :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_switch :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4203,6 +5088,46 @@ val toolbar_switch :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_toggle :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4249,6 +5174,30 @@ val toolbar_toggle :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_radio_group :
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4284,6 +5233,46 @@ val toolbar_radio_group :
   ?on_pointer_leave:(unit -> unit) -> label:string ->
   ?transition:string -> radio_el list -> toolbar_el
 val toolbar_select :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -4335,6 +5324,46 @@ val toolbar_select :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_combobox :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -4396,6 +5425,46 @@ val toolbar_combobox :
     like {!Lui_elements.popover}, with no DOM anchor required. [~at] and
     [~anchor] are mutually exclusive (rejected at validation). *)
 val toolbar_text_field :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4448,6 +5517,46 @@ val toolbar_text_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_secure_field :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4500,6 +5609,46 @@ val toolbar_secure_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_input :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4553,6 +5702,46 @@ val toolbar_input :
   ?kind:input_kind ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_search_field :
+  ?font_size:string ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight:int ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family:string ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style:font_style ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height:string ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing:float ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration:string ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?overflow:overflow ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4605,6 +5794,20 @@ val toolbar_search_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_menu_item :
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4786,6 +5989,40 @@ val toolbar_divider :
 val toolbar_text :
   ?role:text_role ->
   ?truncate:bool ->
+  ?font_size_signal:string Signal.signal ->
+  ?font_weight_signal:int Signal.signal ->
+  ?font_family_signal:string Signal.signal ->
+  ?font_style_signal:font_style Signal.signal ->
+  ?line_height_signal:string Signal.signal ->
+  ?letter_spacing_signal:float Signal.signal ->
+  ?text_decoration_signal:string Signal.signal ->
+  ?white_space_signal:white_space Signal.signal ->
+  ?text_overflow_signal:text_overflow Signal.signal ->
+  ?overflow_signal:overflow Signal.signal ->
+  ?hover_background:string ->
+  ?hover_background_signal:string Signal.signal ->
+  ?hover_foreground:string ->
+  ?hover_foreground_signal:string Signal.signal ->
+  ?focus_within_background:string ->
+  ?focus_within_background_signal:string Signal.signal ->
+  ?focus_within_border:string ->
+  ?focus_within_border_signal:string Signal.signal ->
+  ?focus_shadow:string ->
+  ?focus_shadow_signal:string Signal.signal ->
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4896,6 +6133,20 @@ val toolbar_separator :
 (* Text-entry constructors can opt into Submit on focus loss with
    [submit_on_blur]. Unfinished composition never submits on blur. *)
 val dropdown_menu_item :
+  ?shadow:string ->
+  ?shadow_signal:string Signal.signal ->
+  ?cursor:cursor ->
+  ?cursor_signal:cursor Signal.signal ->
+  ?user_select:user_select ->
+  ?user_select_signal:user_select Signal.signal ->
+  ?disabled_opacity:float ->
+  ?disabled_opacity_signal:float Signal.signal ->
+  ?pressed_opacity:float ->
+  ?pressed_opacity_signal:float Signal.signal ->
+  ?hover_opacity:float ->
+  ?hover_opacity_signal:float Signal.signal ->
+  ?max_height_viewport:float ->
+  ?max_height_viewport_signal:float Signal.signal ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
