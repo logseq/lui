@@ -465,7 +465,6 @@ let () =
     if n > seen then (Hashtbl.replace reqs_seen name n; true)
     else false
   in
-  let toast_since = ref None in
   let poll_driver () =
     if not headless then begin
       let m = Lui_app.model app in
@@ -490,15 +489,6 @@ let () =
         log "a11y: %d nodes — %s" (Lui_a11y.node_count a11y)
           (String.concat ", " names)
       end;
-      (* The toast's [duration] prop is informational on this backend;
-         the driver owns the clock and dismisses after 2.5 s. *)
-      (match m.Demo_app.toast_open, !toast_since with
-       | true, None -> toast_since := Some (perf_s ())
-       | true, Some t0 when perf_s () -. t0 > 2.5 ->
-         ignore (Lui_app.send app (Demo_app.Close Demo_app.P_toast));
-         toast_since := None
-       | false, _ -> toast_since := None
-       | _ -> ())
     end
   in
   let continue () =
@@ -512,7 +502,12 @@ let () =
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
+    let now_ms = t0 *. 1000. in
     drain_events ();
+    ignore (Lui_app.tick_clock app ~now:now_ms);
+    Lui_host.tick host ~now:t0;
+    ignore (Lui_resource.drain_all ());
+    Ui.tick_scrollbars ui ~now_ms;
     (* Patches queued by dispatched events land in the store here;
        the engine re-syncs inside the next repaint. *)
     ignore (Lui_app.flush app);
@@ -570,12 +565,22 @@ let () =
        iteration (no repaint) also sleeps briefly so the poll loop
        does not spin at 100% CPU. *)
     if not headless then begin
+      let now_ms = perf_s () *. 1000. in
+      let wait =
+        fold_wait_ms
+          ~ui_deadline_ms:(Ui.next_input_deadline ui)
+          ~clock_delay_ms:(Lui_clock.next_delay (Lui_app.clock app))
+          ~host_wants_frame:false
+          ~now_ms
+      in
       if dirty then begin
-        let remaining = 16.6 -. ((perf_s () -. t0) *. 1000.) in
+        let remaining = Float.min wait (16.6 -. (now_ms -. t0 *. 1000.)) in
         if remaining > 0.5 then
           Lui_win32.delay_ms (int_of_float remaining)
       end
-      else Lui_win32.delay_ms 4
+      else if wait = Float.infinity then Lui_win32.delay_ms 4
+      else if wait > 0.5 then
+        Lui_win32.delay_ms (int_of_float (Float.ceil wait))
     end
   done;
   stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name;

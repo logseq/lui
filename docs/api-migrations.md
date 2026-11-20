@@ -4069,8 +4069,10 @@ names the wrong parent, and structural ops on missing nodes raise
 `Invalid_argument` with op index and a `describe_op` prefix (`patch op N (...):
 ...`). The store is unchanged so `Lui_host.apply_batch` can return `false` and
 the runtime can resync, matching Web and Android. Property ops on missing
-nodes are still ignored. `apply_op` stays lenient except that inserting a node
-under itself or an ancestor raises to keep `iter_preorder` acyclic.
+nodes are still ignored. `InsertChild`/`MoveChild` whose parent is not a node
+(including the gallery sentinel `parent=-1`) stay a no-op so the child remains
+a root, matching `apply_op`. `apply_op` stays lenient except that inserting a
+node under itself or an ancestor raises to keep `iter_preorder` acyclic.
 
 ```ocaml
 (* Before: InsertChild (2, 1) after InsertChild (1, 2) closed a cycle and
@@ -4083,3 +4085,39 @@ Lui_store.apply_batch store { generation; ops = [ InsertChild (2, 1, 0) ] }
      Lui_host.apply_batch host batch  (* false *)
 *)
 ```
+
+## Native hosts tick the application clock
+
+SDL/native window loops (macOS, Linux, Windows) call
+`Lui_app.tick_clock ~now` every iteration and fold `Lui_clock.next_delay`
+into the event-wait timeout via `Lui_window.fold_wait_ms`. `Lui_ui.after`
+and `Lui_ui.every` therefore fire on native windows, matching Apple,
+Android and Web.
+
+Toast `duration` is applied by the native UI layer: `Ui.store_changed`
+schedules a `Dismiss` at `now + duration` and `Ui.next_input_deadline`
+wakes the host for it. Demo drivers no longer keep a private
+`toast_since` clock.
+
+Native window loops also call `Lui_host.tick ~now` every iteration
+(seconds, matching the host animation clock). That starts
+`resize-duration` split transitions and advances retained popup motion;
+`Lui_host.wants_repaint` already requests frames while those animations
+run.
+
+## Native resource executor and Vulkan frame resize
+
+`Lui_resource.create` now defaults to a bounded worker pool instead of
+one `Domain.spawn` per load. `request`/`reload` mark the entry `Failed`
+when the executor raises (for example past the domain cap) instead of
+leaving it stuck `Loading`. Hosts call `drain_all` every frame and may
+install `set_completion_wake` (SDL hosts use
+`Lui_sdl3.run_on_main_thread`) so completions wake an idle wait.
+
+`Lui_vulkan.resize` recreates only the offscreen frame image and
+framebuffer. Window swapchain presentation remains a follow-up: Linux
+still reads the frame back and uploads damaged rows through
+`Lui_blit`.
+
+Terminal `pump` retries short PTY writes; `flush_pending` is the
+testable helper. `Terminal_pty.close` is idempotent.
