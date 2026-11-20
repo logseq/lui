@@ -2,10 +2,11 @@ open Ppxlib
 module Schema = Lui_nesting_schema
 module Names = Map.Make (String)
 
-type module_kind = Elements | Lists | Standard | Ui | Other
+type module_kind = Lui | Elements | Lists | Standard | Ui | Composites | Other
 
 type scope = {
   opened : bool;
+  opened_ui : bool;
   values : value Names.t;
   modules : module_kind Names.t;
   budget : int ref;
@@ -23,6 +24,7 @@ and value =
 let initial_scope () =
   {
     opened = false;
+    opened_ui = false;
     values = Names.empty;
     modules = Names.empty;
     budget = ref 0;
@@ -105,12 +107,17 @@ let rec module_kind scope = function
         (Names.find_opt name scope.modules)
         ~default:
           (match name with
+          | "Lui" -> Lui
           | "Lui_elements" -> Elements
           | "List" -> Lists
           | "Stdlib" -> Standard
           | "Lui_ui" -> Ui
+          | "Lui_ui_composites" -> Composites
           | _ -> Other)
   | Ldot (parent, "List") when module_kind scope parent = Standard -> Lists
+  | Ldot (parent, "Elements") when module_kind scope parent = Lui -> Elements
+  | Ldot (parent, "Raw") when module_kind scope parent = Lui -> Ui
+  | Ldot (parent, "Ui") when module_kind scope parent = Lui -> Composites
   | _ -> Other
 
 let module_expression scope expression =
@@ -123,25 +130,65 @@ let bind_module scope name kind =
   | Some name -> { scope with modules = Names.add name kind scope.modules }
   | None -> scope
 
+let lui_other_submodules =
+  [
+    "Navigation";
+    "Tokens";
+    "App";
+    "Protocol";
+    "Dynamic";
+    "Runtime";
+    "Wire";
+    "Wire_schema";
+    "Json";
+    "Json_view";
+    "Extension";
+    "Extension_check";
+    "Migration";
+    "Subscriptions";
+    "Resources";
+    "Restart";
+    "Hot_reload";
+    "Devtools";
+  ]
+
 let open_module scope expression =
-  let opened = module_expression scope expression = Elements in
-  let values =
-    if opened then
-      Names.filter (fun name _ -> not (Schema.exports name)) scope.values
-    else Names.empty
-  in
-  let symbols =
-    if opened then
-      Names.filter (fun name _ -> not (Schema.exports name)) scope.symbols
-    else Names.empty
-  in
-  {
-    scope with
-    opened;
-    values;
-    symbols;
-    namespace = (if opened then scope.namespace else fresh scope);
-  }
+  match module_expression scope expression with
+  | Lui ->
+      let modules =
+        List.fold_left
+          (fun modules name -> Names.add name Other modules)
+          scope.modules lui_other_submodules
+        |> Names.add "Elements" Elements
+        |> Names.add "Raw" Ui
+        |> Names.add "Ui" Composites
+      in
+      { scope with modules }
+  | Elements ->
+      let values =
+        Names.filter (fun name _ -> not (Schema.exports name)) scope.values
+      in
+      let symbols =
+        Names.filter (fun name _ -> not (Schema.exports name)) scope.symbols
+      in
+      { scope with opened = true; values; symbols }
+  | Composites ->
+      let values =
+        Names.filter (fun name _ -> Schema.ui_constructor name = None) scope.values
+      in
+      let symbols =
+        Names.filter (fun name _ -> Schema.ui_constructor name = None) scope.symbols
+      in
+      { scope with opened_ui = true; values; symbols }
+  | _ ->
+      {
+        scope with
+        opened = false;
+        opened_ui = false;
+        values = Names.empty;
+        symbols = Names.empty;
+        namespace = fresh scope;
+      }
 
 let symbol scope name =
   match Names.find_opt name scope.symbols with
@@ -240,6 +287,21 @@ let dsl_name scope expression =
     when scope.opened && not (Names.mem name scope.values) ->
       Some name
   | _ -> None
+
+let ui_name scope expression =
+  match expression.pexp_desc with
+  | Pexp_ident { txt = Ldot (parent, name); _ }
+    when module_kind scope parent = Composites ->
+      Some name
+  | Pexp_ident { txt = Lident name; _ }
+    when scope.opened_ui && not (Names.mem name scope.values) ->
+      Some name
+  | _ -> None
+
+let lookup_constructor scope fn =
+  match Option.bind (dsl_name scope fn) Schema.constructor with
+  | Some _ as result -> result
+  | None -> Option.bind (ui_name scope fn) Schema.ui_constructor
 
 let positional args =
   List.filter_map (function Nolabel, value -> Some value | _ -> None) args
@@ -442,6 +504,10 @@ and apply_roots ?(detached = false) fuel scope fn args =
                   (bind_value scope case.pc_lhs (Bound (scope, value)))
                   case.pc_rhs args))
           cases
+    | Pexp_letmodule (name, definition, body) ->
+        apply_roots ~detached fuel
+          (bind_module scope name (module_expression scope definition))
+          body args
     | Pexp_open (declaration, body) ->
         apply_roots ~detached fuel
           (open_module scope declaration.popen_expr)
@@ -449,7 +515,7 @@ and apply_roots ?(detached = false) fuel scope fn args =
     | Pexp_constraint (body, _) | Pexp_coerce (body, _, _) ->
         apply_roots ~detached fuel scope body args
     | _ -> (
-        match Option.bind (dsl_name scope fn) Schema.constructor with
+        match lookup_constructor scope fn with
         | Some (kind, parent, children) ->
             let values = positional args in
             (match (children, values) with
@@ -594,6 +660,11 @@ and list_variants fuel = function
               cases
         | Pexp_let (recursive, bindings, body) ->
             variants (Bound (definitions scope recursive bindings, body))
+        | Pexp_letmodule (name, definition, body) ->
+            variants
+              (Bound
+                 ( bind_module scope name (module_expression scope definition),
+                   body ))
         | Pexp_open (declaration, body) ->
             variants (Bound (open_module scope declaration.popen_expr, body))
         | Pexp_constraint (body, _)
@@ -662,9 +733,8 @@ class checker =
                       scope <-
                         bind_module scope binding.pmb_name
                           (module_expression scope binding.pmb_expr)
-                  | Pstr_include _ ->
-                      scope <-
-                        { scope with opened = false; values = Names.empty }
+                  | Pstr_include declaration ->
+                      scope <- open_module scope declaration.pincl_mod
                   | _ -> ()))
             items)
 
@@ -672,12 +742,14 @@ class checker =
       self#within (bind scope case.pc_lhs) (fun () -> super#case case)
 
     method! class_structure structure =
-      self#within { scope with opened = false; values = Names.empty } (fun () ->
-          super#class_structure structure)
+      self#within
+        { scope with opened = false; opened_ui = false; values = Names.empty }
+        (fun () -> super#class_structure structure)
 
     method! class_expr expression =
-      self#within { scope with opened = false; values = Names.empty } (fun () ->
-          super#class_expr expression)
+      self#within
+        { scope with opened = false; opened_ui = false; values = Names.empty }
+        (fun () -> super#class_expr expression)
 
     method! module_expr expression =
       match expression.pmod_desc with

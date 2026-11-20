@@ -480,12 +480,14 @@ let card_section model_source : t =
         ]
     ; list ~style:`inset_grouped
         [ Lui.Ui.form_section ~title:"Semantic form"
-            [ Lui.Ui.form_field ~label:"Name" ~help:"Your display name"
-                (text_field ~placeholder:"Name" [])
-            ; Lui.Ui.hstack
-                [ text ~role:`caption ~truncate:true ~value:"Single-line caption" []
-                ; button ~text:"Save" ~on_press:noop []
-                ]
+            [ Lui.Ui.form_row
+                (Lui.Ui.form_field ~label:"Name" ~help:"Your display name"
+                   (text_field ~placeholder:"Name" []))
+            ; Lui.Ui.form_row
+                (Lui.Ui.hstack
+                   [ text ~role:`caption ~truncate:true ~value:"Single-line caption" []
+                   ; button ~text:"Save" ~on_press:noop []
+                   ])
             ]
         ]
     ]
@@ -759,8 +761,10 @@ let menu_item_section model_source send : t =
         [ button ~text:"Document actions"
             ~on_press:(press send (Model.OpenPicker "menuitem")) []
         ; if_ ~test:open_
-            (dropdown_menu_view (dropdown_menu ~anchor:`below ~anchor_alignment:`start
-               ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
+            (dropdown_menu_view
+               (dropdown_menu
+                  ~target:(Menu_anchor { side = `below; align = `start; offset = 6.0 })
+                  ~min_width:200 ~on_dismiss:dismiss
                [ dropdown_menu_item ~text:"Rename" ~icon:`edit
                    ~on_press:(press send (Model.PerformContextAction "Rename"))
                    []
@@ -1085,8 +1089,10 @@ let environment_menu model_source send : t =
   let dismiss = press send Model.ClosePicker in
   let production_selected = model_source >|= Model.production_selected in
   let staging_selected = model_source >|= Model.staging_selected in
-  dropdown_menu_view (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
-    ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
+  dropdown_menu_view
+    (dropdown_menu
+       ~target:(Menu_anchor { side = `below; align = `stretch; offset = 6.0 })
+       ~min_width:200 ~on_dismiss:dismiss
     [ dropdown_menu_item ~text:"Production" ~selected:(reactive production_selected)
         ~disabled:(reactive disabled)
         ~on_press:(press send (Model.SelectEnvironment "Production")) []
@@ -1133,8 +1139,10 @@ let combobox_section model_source send : t =
             ~on_press:(press send (Model.OpenPicker "combobox"))
             ~on_dismiss:dismiss []
         ; if_ ~test:open_
-            (dropdown_menu_view (dropdown_menu ~anchor:`below ~anchor_alignment:`stretch
-               ~anchor_offset:6.0 ~min_width:200 ~on_dismiss:dismiss
+            (dropdown_menu_view
+               (dropdown_menu
+                  ~target:(Menu_anchor { side = `below; align = `stretch; offset = 6.0 })
+                  ~min_width:200 ~on_dismiss:dismiss
                [ if_dropdown_menu_item ~test:(reactive Model.production_visible model_source)
                    (dropdown_menu_item ~text:"Production" ~icon:`check
                       ~disabled:(reactive Model.disabled model_source)
@@ -1454,44 +1462,44 @@ let youtube_section : t =
    section stays a plain gallery page on every other platform. *)
 
 let native_extension_section : t =
- fun context parent ->
-  let page =
-    column ~gap:16 ~padding:32
-      [ heading ~level:`h2 ~value:"NativeExtension" []
-      ; paragraph
-          ~value:"apple-map renders a real MapKit map; its marker children stay retained."
-          []
-      ]
-  in
-  let page_id = page context parent in
-  (match Lui_ui.host context with
-   | Lui_protocol.WebHost ->
-       ignore
-         (column ~gap:16
-            [ label ~value:"Map" []
-            ; Extension_schemas.simulator_map ~label:"Map of San Francisco"
-                ~latitude:37.7793 ~longitude:(-122.4193) ~latitude_delta:0.08
-                ~longitude_delta:0.08 ~on_region_change:(fun _ -> ())
-                [
-                  Extension_schemas.simulator_map_marker ~title:"San Francisco"
-                    ~latitude:37.7793 ~longitude:(-122.4193) ();
-                ]
-            ; label ~value:"Camera" []
-            ; Extension_schemas.simulator_camera ~label:"Back camera preview"
-                ~facing:"environment" ~on_state_change:(fun _ -> ())
-                ();
-            ]
-            context (Some page_id))
-   | _ ->
-       ignore
-         (Extension_schemas.apple_map ~latitude:37.3349 ~longitude:(-122.0090)
-            ~latitude_delta:0.02 ~longitude_delta:0.02
-            [
-              Extension_schemas.apple_map_marker ~title:"Apple Park"
-                ~latitude:37.3349 ~longitude:(-122.0090) ();
-            ]
-            context (Some page_id)));
-  page_id
+  custom (fun context parent ->
+    let page =
+      column ~gap:16 ~padding:32
+        [ heading ~level:`h2 ~value:"NativeExtension" []
+        ; paragraph
+            ~value:"apple-map renders a real MapKit map; its marker children stay retained."
+            []
+        ]
+    in
+    let page_id = mount context ?parent page in
+    (match Lui_ui.host context with
+     | Lui_protocol.WebHost ->
+         ignore
+           (mount context ~parent:page_id
+              (column ~gap:16
+                 [ label ~value:"Map" []
+                 ; Extension_schemas.simulator_map ~label:"Map of San Francisco"
+                     ~latitude:37.7793 ~longitude:(-122.4193) ~latitude_delta:0.08
+                     ~longitude_delta:0.08 ~on_region_change:(fun _ -> ())
+                     [
+                       Extension_schemas.simulator_map_marker ~title:"San Francisco"
+                         ~latitude:37.7793 ~longitude:(-122.4193) ();
+                     ]
+                 ; label ~value:"Camera" []
+                 ; Extension_schemas.simulator_camera ~label:"Back camera preview"
+                     ~facing:"environment" ~on_state_change:(fun _ -> ())
+                     ();
+                 ]))
+     | _ ->
+         ignore
+           (mount context ~parent:page_id
+              (Extension_schemas.apple_map ~latitude:37.3349 ~longitude:(-122.0090)
+                 ~latitude_delta:0.02 ~longitude_delta:0.02
+                 [
+                   Extension_schemas.apple_map_marker ~title:"Apple Park"
+                     ~latitude:37.3349 ~longitude:(-122.0090) ();
+                 ])));
+    page_id)
 
 let split_panes_section model_source send : t =
   let pane_body (tab : Lui_split.Model.tab) =
@@ -1519,14 +1527,15 @@ let split_panes_section model_source send : t =
     ]
 
 let tweak_paragraph : t =
- fun context parent ->
-  let node = Lui_ui.platform_tweak context "gallery-accent" in
-  ignore
-    (paragraph
-       ~value:"A registered platform tweak wraps exactly one retained child."
-       [] context (Some node));
-  Lui_elements.attach context parent node;
-  node
+  custom (fun context parent ->
+    let node = Lui_ui.platform_tweak context "gallery-accent" in
+    ignore
+      (mount context ~parent:node
+         (paragraph
+            ~value:"A registered platform tweak wraps exactly one retained child."
+            []));
+    Lui_elements.attach context parent node;
+    node)
 
 let tweak_section : t = section "Tweaks" [ tweak_paragraph ]
 
@@ -1932,13 +1941,13 @@ let event_payload = function
 let event_payloads_section model_source send : t =
   let record event = ignore (send (Model.RecordEvent (event_payload event))) in
   let watch identifier properties build : t =
-    fun context parent ->
-      let node = build context parent in
+    custom (fun context parent ->
+      let node = mount context ?parent build in
       Lui_ui.string_property context node AccessibilityIdentifier identifier;
       List.iter (fun property -> Lui_ui.bool_property context node property true)
         properties;
       Lui_ui.on_event context node record;
-      node
+      node)
   in
   section "Event payloads"
     [ text ~accessibility_identifier:"events-status"

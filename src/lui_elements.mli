@@ -10,7 +10,14 @@ module Tokens = Lui_tokens
 
 type text_role = [ `display | `title | `headline | `subheadline | `body | `caption | `footnote | `code ]
 
-type t = Lui_ui.ui_context -> int option -> int
+type +'kind el
+type general = [ `general ]
+type t = general el
+type list_slot =
+  [ `general | `step | `timeline_item | `bottom_tab | `table_row | `table_cell
+  | `radio | `swipe_action | `dropdown_menu_item | `context_menu_item
+  | `toolbar_item | `list_section_item | `tree_item ]
+type optional_slot = [ list_slot | `input_group_actions ]
 
 type pointer_detail = Lui_protocol.pointer_detail
 type toggle_detail = Lui_event_payloads.toggle_detail = { checked : bool; modifiers : int }
@@ -139,6 +146,15 @@ type popover_target =
       align_offset : float;
     }
 
+type dropdown_target =
+  | Menu_default
+  | Menu_at of float * float
+  | Menu_anchor of {
+      side : anchor;
+      align : anchor_alignment;
+      offset : float;
+    }
+
 type split_sizing = Fraction of float | First_width of float
 
 type split_motion = {
@@ -171,45 +187,33 @@ type icon =
     [table_row], [radio_el] inside [radio_group], and
     [input_group_actions_el] as the optional [~actions] of [input_group]. *)
 
-type step_el
-type timeline_item_el
-type bottom_tab_el
-type table_row_el
-type table_cell_el
-type radio_el
-type input_group_actions_el
-type swipe_action_el
-type dropdown_menu_item_el
-type context_menu_item_el
-type toolbar_el
-type list_section_item_el
-type tree_el
-type dropdown_menu_el
+type step_el = [ `step ] el
+type timeline_item_el = [ `timeline_item ] el
+type bottom_tab_el = [ `bottom_tab ] el
+type table_row_el = [ `table_row ] el
+type table_cell_el = [ `table_cell ] el
+type radio_el = [ `radio ] el
+type input_group_actions_el = [ `input_group_actions ] el
+type swipe_action_el = [ `swipe_action ] el
+type dropdown_menu_item_el = [ `dropdown_menu_item ] el
+type context_menu_item_el = [ `context_menu_item ] el
+type toolbar_el = [ `toolbar_item ] el
+type list_section_item_el = [ `list_section_item ] el
+type tree_el = [ `tree_item ] el
+type dropdown_menu_el = [ `dropdown_menu ] el
 
 (** Empty type: [leaf] constructors take a [nothing list] children slot, so
     [] compiles and any real child is a type error. *)
 type nothing = |
 module Slot_style : sig
-  type t
+  type +'caps t
+  type base = [ `base ]
+  type typography_caps = [ `base | `typography ]
+  type text_caps = [ `base | `typography | `text_flow ]
+  type surface_caps = [ `base | `typography | `collision ]
+
+  val empty : 'caps t
   val make :
-    ?font_size:string ->
-    ?font_size_signal:string Signal.signal ->
-    ?font_weight:int ->
-    ?font_weight_signal:int Signal.signal ->
-    ?font_family:string ->
-    ?font_family_signal:string Signal.signal ->
-    ?font_style:font_style ->
-    ?font_style_signal:font_style Signal.signal ->
-    ?line_height:string ->
-    ?line_height_signal:string Signal.signal ->
-    ?letter_spacing:float ->
-    ?letter_spacing_signal:float Signal.signal ->
-    ?text_decoration:string ->
-    ?text_decoration_signal:string Signal.signal ->
-    ?white_space:white_space ->
-    ?white_space_signal:white_space Signal.signal ->
-    ?text_overflow:text_overflow ->
-    ?text_overflow_signal:text_overflow Signal.signal ->
     ?overflow:overflow ->
     ?overflow_signal:overflow Signal.signal ->
     ?hover_background:string ->
@@ -224,12 +228,8 @@ module Slot_style : sig
     ?focus_shadow_signal:string Signal.signal ->
     ?shadow:string ->
     ?shadow_signal:string Signal.signal ->
-    ?collision_padding:float ->
-    ?collision_padding_signal:float Signal.signal ->
     ?cursor:cursor ->
     ?cursor_signal:cursor Signal.signal ->
-    ?user_select:user_select ->
-    ?user_select_signal:user_select Signal.signal ->
     ?disabled_opacity:float ->
     ?disabled_opacity_signal:float Signal.signal ->
     ?pressed_opacity:float ->
@@ -238,13 +238,42 @@ module Slot_style : sig
     ?hover_opacity_signal:float Signal.signal ->
     ?max_height_viewport:float ->
     ?max_height_viewport_signal:float Signal.signal ->
-    unit -> t
-  val merge : t -> t -> t
-  val scoped : Lui_protocol.property -> (Lui_ui.ui_context -> t) -> t
+    unit -> 'caps t
+  val typography :
+    ?font_size:string ->
+    ?font_size_signal:string Signal.signal ->
+    ?font_weight:int ->
+    ?font_weight_signal:int Signal.signal ->
+    ?font_family:string ->
+    ?font_family_signal:string Signal.signal ->
+    ?font_style:font_style ->
+    ?font_style_signal:font_style Signal.signal ->
+    ?line_height:string ->
+    ?line_height_signal:string Signal.signal ->
+    ?letter_spacing:float ->
+    ?letter_spacing_signal:float Signal.signal ->
+    ?text_decoration:string ->
+    ?text_decoration_signal:string Signal.signal ->
+    ?user_select:user_select ->
+    ?user_select_signal:user_select Signal.signal ->
+    unit -> [> `typography ] t
+  val text_flow :
+    ?white_space:white_space ->
+    ?white_space_signal:white_space Signal.signal ->
+    ?text_overflow:text_overflow ->
+    ?text_overflow_signal:text_overflow Signal.signal ->
+    unit -> [> `text_flow ] t
+  val collision :
+    ?collision_padding:float ->
+    ?collision_padding_signal:float Signal.signal ->
+    unit -> [> `collision ] t
+  val merge : 'caps t -> 'caps t -> 'caps t
+  val scoped : Lui_protocol.property -> (Lui_ui.ui_context -> 'caps t) -> 'caps t
 end
 
-val mount : 'a -> ?parent:'b -> ('a -> 'b option -> 'c) -> 'c
-val scoped : (Lui_ui.ui_context -> t) -> t
+val mount : Lui_ui.ui_context -> ?parent:int -> 'kind el -> int
+val custom : (Lui_ui.ui_context -> int option -> int) -> t
+val scoped : (Lui_ui.ui_context -> 'kind el) -> 'kind el
 val reactive : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val map : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val sample : 'a Signal.signal -> 'a
@@ -276,7 +305,7 @@ type error_diagnostic = {
 val error_boundary : fallback:(error_diagnostic -> t) -> t -> t
 val enable :
   Lui_ui.ui_context -> int -> Lui_protocol.Property_map.key -> unit
-val mount_children : 'a -> 'b -> ('a -> 'b option -> 'c) list -> unit
+val mount_children : Lui_ui.ui_context -> int -> 'kind el list -> unit
 val dynamic : (Lui_ui.ui_context -> int -> 'a) -> t
 
 (** Physical equality followed by structural equality, treating incomparable
@@ -295,11 +324,11 @@ val default_subtree_equal : 'a -> 'a -> bool
     [reactive f s] into this call — write [reactive f s ~equal:eq]
     instead of calling [dyn] directly. *)
 val dyn :
-  ?equal:('a -> 'a -> bool) -> ('a -> t) -> 'a Signal.signal -> t
+  ?equal:('a -> 'a -> bool) -> ('a -> 'kind el) -> 'a Signal.signal -> 'kind el
 
 (** [if_ ~test child] mounts [child] under the parent while
     [test] publishes [true] and removes it on [false]. *)
-val if_ : test:bool Signal.signal -> t -> t
+val if_ : test:bool Signal.signal -> ([< optional_slot ] as 'kind) el -> 'kind el
 
 (** [keyed ~source ~key ~cmp ~mount] renders one mounted child
     per item of [source], keyed by [key item] and diffed with
@@ -309,7 +338,7 @@ val keyed :
   source:'a list Signal.signal ->
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
-  mount:('a Signal.signal -> t) -> t
+  mount:('a Signal.signal -> ([< list_slot ] as 'kind) el) -> 'kind el
 
 (** A viewport-managed keyed source. Use as the sole child of
     {!virtual_list}. Business data remains in [source]; only the requested
@@ -483,7 +512,7 @@ val row :
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
   ?flex_wrap:flex_wrap ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `tree_item ] el
 val column :
   ?as_:list_container_tag ->
   ?key:string ->
@@ -537,7 +566,7 @@ val column :
   ?display:display ->
   ?display_signal:display Signal.signal ->
   ?flex_wrap:flex_wrap ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `tree_item ] el
 val grid :
   ?key:string ->
   ?gap:int ->
@@ -805,7 +834,7 @@ val panel :
   ?on_pointer_leave:(unit -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `tree_item ] el
 val card :
   ?key:string ->
   ?gap:int ->
@@ -847,7 +876,7 @@ val card :
   ?on_pointer_leave:(unit -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `tree_item ] el
 val alert :
   ?key:string ->
   ?grow:float ->
@@ -988,7 +1017,7 @@ val box :
   ?flex_wrap:flex_wrap ->
   ?inert:bool ->
   ?inert_signal:bool Signal.signal ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `tree_item ] el
 val scroll :
   ?virtual_owner:Lui_virtual.owner ->
   ?key:string ->
@@ -1153,7 +1182,7 @@ val virtual_list :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `tree_item ] el
 val tabs :
   ?key:string ->
   ?gap:int ->
@@ -1230,7 +1259,7 @@ val bottom_tab :
   ?on_pointer_down:(pointer_detail -> unit) ->
   ?on_pointer_up:(pointer_detail -> unit) -> t list -> bottom_tab_el
 val button_group :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -1267,9 +1296,9 @@ val button_group :
   ?on_appear:(unit -> unit) ->
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) -> ?label:string ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val toggle_group :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -1306,7 +1335,7 @@ val toggle_group :
   ?on_appear:(unit -> unit) ->
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) -> ?label:string ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val breadcrumb :
   ?key:string ->
   ?gap:int ->
@@ -1739,7 +1768,7 @@ val spacer :
   ?on_appear:(unit -> unit) ->
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> nothing list -> [< `general | `toolbar_item ] el
 val spinner :
   ?key:string ->
   ?grow:float ->
@@ -1824,7 +1853,7 @@ val icon :
 val text :
   ?role:text_role ->
   ?truncate:bool ->
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -1879,7 +1908,7 @@ val text :
   ?on_pointer_down:(pointer_detail -> unit) ->
   ?on_pointer_up:(pointer_detail -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val heading :
   ?role:text_role ->
   ?truncate:bool ->
@@ -2069,7 +2098,7 @@ val kbd :
 (** A text button. [text] is the initial value; [text_signal], when supplied,
     wins. Children remain supported. Use [icon_button] for icon-only content. *)
 val button :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -2133,12 +2162,12 @@ val button :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 
 (** An icon-only button with a mandatory accessible [label]. Uses the same
     wire kind, defaults, events and children slot as [button]. *)
 val icon_button :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -2200,9 +2229,9 @@ val icon_button :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val toggle_button :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2256,9 +2285,9 @@ val toggle_button :
   ?on_toggle:(bool -> unit) ->
   ?on_long_press:(unit -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val checkbox :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -2309,9 +2338,9 @@ val checkbox :
   ?on_toggle:(bool -> unit) ->
   ?on_toggle_detail:(toggle_detail -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val switch_ :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2356,9 +2385,9 @@ val switch_ :
   ?disabled_signal:bool Signal.signal ->
   ?on_toggle:(bool -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val toggle :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2403,9 +2432,9 @@ val toggle :
   ?disabled_signal:bool Signal.signal ->
   ?on_toggle:(bool -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val radio_group :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2439,7 +2468,7 @@ val radio_group :
   ?on_appear:(unit -> unit) ->
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) -> label:string ->
-  ?transition:string -> radio_el list -> t
+  ?transition:string -> radio_el list -> [< `general | `toolbar_item ] el
 val radio :
   ?key:string ->
   ?gap:int ->
@@ -2659,7 +2688,7 @@ val divider :
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> nothing list -> [< `general | `toolbar_item | `dropdown_menu_item ] el
 val separator :
   ?key:string ->
   ?grow:float ->
@@ -2695,12 +2724,12 @@ val separator :
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) ->
   ?orientation:orientation ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> nothing list -> [< `general | `toolbar_item | `dropdown_menu_item ] el
 
 (* Text-entry constructors can opt into Submit on focus loss with
    [submit_on_blur]. Unfinished composition never submits on blur. *)
 val text_field :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2751,9 +2780,9 @@ val text_field :
   ?on_submit:(unit -> unit) ->
   ?on_navigate:(navigation -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val secure_field :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2804,9 +2833,9 @@ val secure_field :
   ?on_submit:(unit -> unit) ->
   ?on_navigate:(navigation -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val input :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2858,9 +2887,9 @@ val input :
   ?on_navigate:(navigation -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
   ?kind:input_kind ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val search_field :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -2911,7 +2940,7 @@ val search_field :
   ?on_submit:(unit -> unit) ->
   ?on_navigate:(navigation -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val textarea :
   ?key:string ->
   ?grow:float ->
@@ -2985,7 +3014,7 @@ val input_group_actions :
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) -> t list -> input_group_actions_el
 val select :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -3035,9 +3064,9 @@ val select :
   ?on_pointer_down:(pointer_detail -> unit) ->
   ?on_pointer_up:(pointer_detail -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 val combobox :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -3090,7 +3119,7 @@ val combobox :
   ?on_pointer_down:(pointer_detail -> unit) ->
   ?on_pointer_up:(pointer_detail -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item ] el
 
 (** Menu surface mounted in the popup portal. Anchoring is either implicit
     — the element under the menu's retained parent ([~anchor],
@@ -3099,7 +3128,7 @@ val combobox :
     like {!Lui_elements.popover}, with no DOM anchor required. [~at] and
     [~anchor] are mutually exclusive (rejected at validation). *)
 val dropdown_menu :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.surface_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -3136,13 +3165,10 @@ val dropdown_menu :
   ?on_appear:(unit -> unit) ->
   ?on_pointer_enter:(unit -> unit) ->
   ?on_pointer_leave:(unit -> unit) ->
-  ?at:float * float ->
-  ?at_signal:(float * float) Signal.signal ->
-  ?anchor:anchor ->
-  ?anchor_alignment:anchor_alignment ->
-  ?anchor_offset:float ->
+  ?target:dropdown_target ->
+  ?target_signal:dropdown_target Signal.signal ->
   ?on_dismiss:(unit -> unit) ->
-  ?transition:string -> dropdown_menu_item_el list -> dropdown_menu_el
+  ?transition:string -> dropdown_menu_item_el list -> [< `general | `dropdown_menu ] el
 val context_menu :
   ?key:string ->
   ?accessibility_identifier:string ->
@@ -3166,8 +3192,9 @@ val menu_trigger :
   ?icon_signal:icon Signal.signal ->
   ?label:string ->
   ?disabled:bool ->
-  ?disabled_signal:bool Signal.signal -> dropdown_menu_el -> t
+  ?disabled_signal:bool Signal.signal -> dropdown_menu_el -> [< `general | `toolbar_item | `dropdown_menu_item ] el
 val menu :
+  ?style:Slot_style.surface_caps Slot_style.t ->
   ?key:string ->
   ?accessibility_identifier:string ->
   ?foreground:string ->
@@ -3181,15 +3208,16 @@ val menu :
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> t
+  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> [< `general | `toolbar_item ] el
 val submenu :
+  ?style:Slot_style.surface_caps Slot_style.t ->
   ?key:string ->
   ?text:string ->
   ?icon:icon ->
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> t
+  ?on_dismiss:(unit -> unit) -> dropdown_menu_item_el list -> [< `general | `dropdown_menu_item ] el
 val dialog :
   ?key:string ->
   ?gap:int ->
@@ -3368,6 +3396,7 @@ val file_picker :
     covers data-keep-selection). [~on_dismiss] fires on outside-press or
     Escape while open. *)
 val popover :
+  ?style:Slot_style.surface_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -3452,7 +3481,7 @@ val accordion :
   ?on_toggle:(bool -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) -> t list -> t
 val menu_item :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -3513,7 +3542,7 @@ val menu_item :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `toolbar_item | `dropdown_menu_item ] el
 val list_item :
   ?key:string ->
   ?main:main_alignment ->
@@ -3577,7 +3606,7 @@ val list_item :
   ?on_pointer_up:(pointer_detail -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
   ?list_marker:list_marker ->
-  ?transition:string -> t list -> t
+  ?transition:string -> t list -> [< `general | `list_section_item | `tree_item ] el
 
 (** A named group of rows inside a {!list}: [~header]/[~footer] take any
     element and mount it in a dedicated slot node, [~key] sets both the
@@ -3888,7 +3917,7 @@ val themed :
   ?mode_signal:Lui_ui.theme_mode Signal.signal -> t -> t
 
 val toolbar_button :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -3957,7 +3986,7 @@ val toolbar_button :
 (** An icon-only button with a mandatory accessible [label]. Uses the same
     wire kind, defaults, events and children slot as [button]. *)
 val toolbar_icon_button :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4021,7 +4050,7 @@ val toolbar_icon_button :
   ?shortcut_hint_signal:string Signal.signal ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_toggle_button :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4077,7 +4106,7 @@ val toolbar_toggle_button :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_button_group :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4116,7 +4145,7 @@ val toolbar_button_group :
   ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_toggle_group :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4155,7 +4184,7 @@ val toolbar_toggle_group :
   ?on_pointer_leave:(unit -> unit) -> ?label:string ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_checkbox :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4208,7 +4237,7 @@ val toolbar_checkbox :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_switch :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4255,7 +4284,7 @@ val toolbar_switch :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_toggle :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4302,7 +4331,7 @@ val toolbar_toggle :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_radio_group :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.base Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4338,7 +4367,7 @@ val toolbar_radio_group :
   ?on_pointer_leave:(unit -> unit) -> label:string ->
   ?transition:string -> radio_el list -> toolbar_el
 val toolbar_select :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -4390,7 +4419,7 @@ val toolbar_select :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_combobox :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?grow:float ->
@@ -4452,7 +4481,7 @@ val toolbar_combobox :
     like {!Lui_elements.popover}, with no DOM anchor required. [~at] and
     [~anchor] are mutually exclusive (rejected at validation). *)
 val toolbar_text_field :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4505,7 +4534,7 @@ val toolbar_text_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_secure_field :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4558,7 +4587,7 @@ val toolbar_secure_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_input :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4612,7 +4641,7 @@ val toolbar_input :
   ?kind:input_kind ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_search_field :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.typography_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4665,7 +4694,7 @@ val toolbar_search_field :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_menu_item :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -4817,7 +4846,7 @@ val toolbar_divider :
 val toolbar_text :
   ?role:text_role ->
   ?truncate:bool ->
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?grow:float ->
   ?padding:int ->
@@ -4874,6 +4903,7 @@ val toolbar_text :
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> toolbar_el
 val toolbar_menu :
+  ?style:Slot_style.surface_caps Slot_style.t ->
   ?key:string ->
   ?accessibility_identifier:string ->
   ?foreground:string ->
@@ -4928,7 +4958,7 @@ val toolbar_separator :
 (* Text-entry constructors can opt into Submit on focus loss with
    [submit_on_blur]. Unfinished composition never submits on blur. *)
 val dropdown_menu_item :
-  ?style:Slot_style.t ->
+  ?style:Slot_style.text_caps Slot_style.t ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -5007,6 +5037,7 @@ val dropdown_menu_trigger :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal -> dropdown_menu_el -> dropdown_menu_item_el
 val dropdown_menu_submenu :
+  ?style:Slot_style.surface_caps Slot_style.t ->
   ?key:string ->
   ?text:string ->
   ?icon:icon ->
@@ -5469,9 +5500,7 @@ val tree_list_item :
   ?list_marker:list_marker ->
   ?transition:string -> t list -> tree_el
 
-(** A named group of rows inside a {!list}: [~header]/[~footer] take any
-    element and mount it in a dedicated slot node, [~key] sets both the
-    reload key and the wire [key] identity used by scroll targeting. *)
+(** Virtualized tree container alias for {!virtual_list}. *)
 val tree_virtual_list :
   ?viewport:Lui_virtual.source ->
   ?key:string ->

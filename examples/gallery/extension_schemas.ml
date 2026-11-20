@@ -373,9 +373,9 @@ let registry () =
   registry
 
 let apple_map ?key ~latitude ~longitude ~latitude_delta ~longitude_delta ?latitude_signal ?longitude_signal ?latitude_delta_signal ?longitude_delta_signal (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "apple-map" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "apple-map" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "latitude"
@@ -417,16 +417,14 @@ let apple_map ?key ~latitude ~longitude ~latitude_delta ~longitude_delta ?latitu
          (Signal.map (fun value -> FloatValue value) signal))
     longitude_delta_signal;
 
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+    node)
 
 let apple_map_marker ?key ~title ~latitude ~longitude ?title_signal ?latitude_signal ?longitude_signal () : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "apple-map-marker" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "apple-map-marker" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "title"
@@ -458,16 +456,14 @@ let apple_map_marker ?key ~title ~latitude ~longitude ?title_signal ?latitude_si
          (Signal.map (fun value -> FloatValue value) signal))
     longitude_signal;
 
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
 
-  node
+    node)
 
 let simulator_map ?key ~label ~latitude ~longitude ~latitude_delta ~longitude_delta ?label_signal ?latitude_signal ?longitude_signal ?latitude_delta_signal ?longitude_delta_signal ?on_region_change (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "simulator-map" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "simulator-map" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "label"
@@ -525,16 +521,14 @@ let simulator_map ?key ~label ~latitude ~longitude ~latitude_delta ~longitude_de
          | Some event -> handler event
          | None -> ()))
     on_region_change;
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+    node)
 
 let simulator_map_marker ?key ~title ~latitude ~longitude ?title_signal ?latitude_signal ?longitude_signal () : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "simulator-map-marker" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "simulator-map-marker" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "title"
@@ -566,16 +560,14 @@ let simulator_map_marker ?key ~title ~latitude ~longitude ?title_signal ?latitud
          (Signal.map (fun value -> FloatValue value) signal))
     longitude_signal;
 
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
 
-  node
+    node)
 
 let simulator_camera ?key ~label ~facing ?label_signal ?facing_signal ?on_state_change () : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "simulator-camera" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "simulator-camera" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "label"
@@ -603,16 +595,14 @@ let simulator_camera ?key ~label ~facing ?label_signal ?facing_signal ?on_state_
          | Some event -> handler event
          | None -> ()))
     on_state_change;
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
 
-  node
+    node)
 
 let native_card ?key ~title ?title_signal () : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "native-card" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "native-card" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "title"
@@ -624,16 +614,14 @@ let native_card ?key ~title ?title_signal () : Lui_elements.t =
          (Signal.map (fun value -> StringValue value) signal))
     title_signal;
 
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
 
-  node
+    node)
 
 let split_view ?key ?divider_thickness ?animation ?accessibility_identifier ?divider_thickness_signal ?animation_signal ?accessibility_identifier_signal (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "split-view" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "split-view" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "divider-thickness"
@@ -665,16 +653,14 @@ let split_view ?key ?divider_thickness ?animation ?accessibility_identifier ?div
          (Signal.map (fun value -> StringValue value) signal))
     accessibility_identifier_signal;
 
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+    node)
 
 let split_branch ?key ~orientation ~ratio ?orientation_signal ?ratio_signal ?on_ratio_changed (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "split-branch" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "split-branch" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "orientation"
@@ -702,16 +688,14 @@ let split_branch ?key ~orientation ~ratio ?orientation_signal ?ratio_signal ?on_
          | Some event -> handler event
          | None -> ()))
     on_ratio_changed;
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+    node)
 
 let split_pane ?key ~pane_id ?selected ?focused ?accessibility_identifier ?pane_id_signal ?selected_signal ?focused_signal ?accessibility_identifier_signal ?on_tab_selected ?on_tab_closed ?on_tab_moved ?on_pane_focused ?on_navigate ?on_split_requested ?on_split_drop ?on_pane_closed (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "split-pane" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "split-pane" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "pane-id"
@@ -808,16 +792,14 @@ let split_pane ?key ~pane_id ?selected ?focused ?accessibility_identifier ?pane_
          | Some event -> handler event
          | None -> ()))
     on_pane_closed;
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+    node)
 
 let split_tab ?key ~tab_id ~title ?icon ?dirty ?closable ?accessibility_identifier ?tab_id_signal ?title_signal ?icon_signal ?dirty_signal ?closable_signal ?accessibility_identifier_signal (children : Lui_elements.t list) : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "split-tab" in
-  Option.iter (Lui_ui.key context node) key;
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "split-tab" in
+    Option.iter (Lui_ui.key context node) key;
   Option.iter
     (fun value ->
        Lui_ui.extension_property context node "tab-id"
@@ -879,8 +861,6 @@ let split_tab ?key ~tab_id ~title ?icon ?dirty ?closable ?accessibility_identifi
          (Signal.map (fun value -> StringValue value) signal))
     accessibility_identifier_signal;
 
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
+    Lui_elements.attach context parent node;
   Lui_elements.mount_children context node children;
-  node
+    node)

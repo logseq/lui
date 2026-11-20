@@ -16,28 +16,43 @@ test('menu-item styling preserves slot capabilities and reactive properties', ()
     assert.equal(result.status, 0, result.stdout + result.stderr);
   };
   const props = [
-    ['font_size', 'FontSize', '"14px"', 'StringValue "14px"'],
-    ['font_weight', 'FontWeight', '500', 'IntValue 500'],
-    ['font_family', 'FontFamily', '"sans-serif"', 'StringValue "sans-serif"'],
-    ['font_style', 'FontStyle', '`italic', 'StringValue "italic"'],
-    ['line_height', 'LineHeight', '"20px"', 'StringValue "20px"'],
-    ['letter_spacing', 'LetterSpacing', '0.5', 'FloatValue 0.5'],
-    ['text_decoration', 'TextDecoration', '"underline"', 'StringValue "underline"'],
-    ['white_space', 'WhiteSpace', '`nowrap', 'StringValue "nowrap"'],
-    ['text_overflow', 'TextOverflow', '`ellipsis', 'StringValue "ellipsis"'],
-    ['overflow', 'Overflow', '`hidden', 'StringValue "hidden"'],
-    ['hover_background', 'HoverBackground', '"red"', 'StringValue "red"'],
-    ['hover_foreground', 'HoverForeground', '"blue"', 'StringValue "blue"'],
-    ['focus_within_background', 'FocusWithinBackground', '"green"', 'StringValue "green"'],
-    ['focus_within_border', 'FocusWithinBorder', '"black"', 'StringValue "black"'],
-    ['focus_shadow', 'FocusShadow', '"inset 0 0 0 2px blue"', 'StringValue "inset 0 0 0 2px blue"'],
+    ['font_size', 'FontSize', '"14px"', 'StringValue "14px"', 'typography'],
+    ['font_weight', 'FontWeight', '500', 'IntValue 500', 'typography'],
+    ['font_family', 'FontFamily', '"sans-serif"', 'StringValue "sans-serif"', 'typography'],
+    ['font_style', 'FontStyle', '`italic', 'StringValue "italic"', 'typography'],
+    ['line_height', 'LineHeight', '"20px"', 'StringValue "20px"', 'typography'],
+    ['letter_spacing', 'LetterSpacing', '0.5', 'FloatValue 0.5', 'typography'],
+    ['text_decoration', 'TextDecoration', '"underline"', 'StringValue "underline"', 'typography'],
+    ['white_space', 'WhiteSpace', '`nowrap', 'StringValue "nowrap"', 'text_flow'],
+    ['text_overflow', 'TextOverflow', '`ellipsis', 'StringValue "ellipsis"', 'text_flow'],
+    ['overflow', 'Overflow', '`hidden', 'StringValue "hidden"', 'make'],
+    ['hover_background', 'HoverBackground', '"red"', 'StringValue "red"', 'make'],
+    ['hover_foreground', 'HoverForeground', '"blue"', 'StringValue "blue"', 'make'],
+    ['focus_within_background', 'FocusWithinBackground', '"green"', 'StringValue "green"', 'make'],
+    ['focus_within_border', 'FocusWithinBorder', '"black"', 'StringValue "black"', 'make'],
+    ['focus_shadow', 'FocusShadow', '"inset 0 0 0 2px blue"', 'StringValue "inset 0 0 0 2px blue"', 'make'],
   ];
+  const buildStyle = (entries, formatArg, extraByCtor = {}) => {
+    const groups = new Map();
+    for (const [ctor, args] of Object.entries(extraByCtor)) {
+      groups.set(ctor, [...args]);
+    }
+    for (const entry of entries) {
+      const ctor = entry[4];
+      if (!groups.has(ctor)) groups.set(ctor, []);
+      groups.get(ctor).push(formatArg(entry));
+    }
+    const parts = [...groups.entries()].map(
+      ([ctor, args]) => `(Slot_style.${ctor} ${args.join(' ')} ())`
+    );
+    return `~style:${parts.reduce((acc, part) => `(Slot_style.merge ${acc} ${part})`)}`;
+  };
   try {
     success(['dune', 'build', 'ppx/lui_ppx.cmxa', 'src/lui.cmxa']);
     writeFileSync(join(dir, 'driver.ml'), 'let () = Ppxlib.Driver.standalone ()\n');
     success(['ocamlfind', 'ocamlopt', '-package', 'ppxlib', '-linkpkg', '-linkall',
       '_build/default/ppx/lui_ppx.cmxa', join(dir, 'driver.ml'), '-o', join(dir, 'driver')]);
-    const staticProps = '~style:(Slot_style.make ' + props.map(([name, , value]) => `~${name}:(${value})`).join(' ') + ' ())';
+    const staticProps = buildStyle(props, ([name, , value]) => `~${name}:(${value})`);
     const initial = {
       font_size: ['"12px"', 'StringValue "12px"'],
       font_weight: ['400', 'IntValue 400'],
@@ -55,8 +70,12 @@ test('menu-item styling preserves slot capabilities and reactive properties', ()
       focus_within_border: ['"gray"', 'StringValue "gray"'],
       focus_shadow: ['"none"', 'StringValue "none"'],
     };
-    const reactiveProps = '~style:(Slot_style.make ~font_size:"999px" ' + props.map(([name, , value]) =>
-      `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`).join(' ') + ' ())';
+    const reactiveProps = buildStyle(
+      props,
+      ([name, , value]) =>
+        `~${name}:(reactive (fun active -> if active then ${value} else ${initial[name][0]}) source)`,
+      { typography: ['~font_size:"999px"'] }
+    );
     const checks = props.map(([name, wire, , value]) =>
       `check label (property node ${wire} = Some (if reactive && not active then ${initial[name][1]} else ${value}));`).join('\n');
     const jsonProps = props.map(([name, , , wire]) => {
@@ -129,9 +148,13 @@ let () =
     assert.equal(executed.status, 0, executed.stdout + executed.stderr);
     for (const expression of [
       'dropdown_menu_item ~font_weight:500 []',
-      'dropdown_menu_item ~style:(Slot_style.make ~font_weight:"bold" ()) []',
+      'dropdown_menu_item ~style:(Slot_style.typography ~font_weight:"bold" ()) []',
+      'dropdown_menu_item ~style:(Slot_style.make ~font_weight:500 ()) []',
+      'dropdown_menu_item ~style:(Slot_style.typography ~font_style:`invalid ()) []',
       'dropdown_menu_item ~font_style:`invalid []',
       'dropdown_menu [menu_item ~font_size:"14px" []]',
+      'dropdown_menu_item ~style:(Slot_style.collision ~collision_padding:5. ()) []',
+      'menu_item ~style:(Slot_style.collision ~collision_padding:5. ()) []',
     ]) {
       writeFileSync(join(dir, 'invalid.ml'), `open Lui_elements\nlet _ = ${expression}\n`);
       const result = run([...compile, '-c', join(dir, 'invalid.ml')]);

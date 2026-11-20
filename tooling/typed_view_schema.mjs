@@ -68,24 +68,132 @@ export function typedViewFunctions(signature) {
   return new Map(declarations.map(([, name, body]) => [name, split(body, '->')]));
 }
 
+export function parseSlotStyleBucket(type) {
+  const match = /^Slot_style\.(\w+)\s+Slot_style\.t$/.exec(type);
+  return match ? match[1] : null;
+}
+
+export function parseSlotStyle(signature) {
+  const source = uncomment(signature);
+  const block = source.match(/^module Slot_style : sig\b([\s\S]*?)^end\b/m);
+  if (!block) return null;
+  const body = block[1];
+  const buckets = new Map();
+  for (const [, name, members] of body.matchAll(/^\s*type (\w+)\s*=\s*\[([^\]]+)\]/gm)) {
+    const tags = split(members, '|').map((member) => {
+      const tag = /^`(\w+)$/.exec(member);
+      if (!tag) throw new Error(`unknown Slot_style capability tag in ${name}: ${member}`);
+      return tag[1];
+    });
+    buckets.set(name, tags);
+  }
+  const builders = new Map();
+  for (const [, name, decl] of body.matchAll(/^\s*val (\w+)\s*:\s*([\s\S]*?)(?=^\s*(?:val|type|module|end)\b|$(?![\s\S]))/gm)) {
+    const parts = split(decl, '->');
+    const args = parts.filter((arg) => arg.startsWith('?'));
+    if (!args.length) continue;
+    const result = parts.at(-1);
+    let tag;
+    if (name === 'make' && result === "'caps t") {
+      tag = 'base';
+    } else {
+      const cap = /^\[>\s*`(\w+)\s*\]\s*t$/.exec(result);
+      if (!cap) throw new Error(`unknown Slot_style builder return type ${name}: ${result}`);
+      tag = cap[1];
+    }
+    const properties = [];
+    const seen = new Set();
+    for (const arg of args) {
+      const match = /^\?(\w+):(.*)$/.exec(arg);
+      if (!match) throw new Error(`invalid Slot_style argument ${name}: ${arg}`);
+      const prop = match[1].replace(/_signal$/, '').replaceAll('_', '-');
+      if (!seen.has(prop)) {
+        seen.add(prop);
+        properties.push(prop);
+      }
+    }
+    builders.set(tag, { name, args, properties });
+  }
+  const bucketArgs = new Map();
+  const bucketProperties = new Map();
+  for (const [bucket, tags] of buckets) {
+    const args = [];
+    const properties = [];
+    for (const tag of tags) {
+      const builder = builders.get(tag);
+      if (!builder) throw new Error(`missing Slot_style builder for capability ${tag} in ${bucket}`);
+      args.push(...builder.args);
+      properties.push(...builder.properties);
+    }
+    bucketArgs.set(bucket, args);
+    bucketProperties.set(bucket, properties);
+  }
+  return { buckets, builders, bucketArgs, bucketProperties };
+}
+
+export function parseElementTypes(signature) {
+  const source = uncomment(signature).replace(/Lui_elements\.t\b/g, 't');
+  const results = new Set(['t']);
+  const tagToAlias = new Map([['general', 't']]);
+  for (const [, alias, tag] of source.matchAll(/^type (\w+_el)\s*=\s*\[\s*`(\w+)\s*\]\s*el\s*$/gm)) {
+    results.add(alias);
+    tagToAlias.set(tag, alias);
+  }
+  for (const [, alias] of source.matchAll(/^type (\w+_el)\s*$/gm)) {
+    results.add(alias);
+  }
+  return { results, tagToAlias };
+}
+
+export function resolveElementResult(result, elementTypes) {
+  if (elementTypes.results.has(result)) {
+    return { primary: result, slots: [], polymorphic: false };
+  }
+  const match = /^\[<\s*([^\]]+)\]\s*el$/.exec(result);
+  if (!match) return null;
+  const tags = split(match[1], '|').map((member) => {
+    const tag = /^`(\w+)$/.exec(member);
+    if (!tag) throw new Error(`unknown polymorphic element tag: ${member}`);
+    return tag[1];
+  });
+  const aliases = tags.map((tag) => {
+    const alias = elementTypes.tagToAlias.get(tag);
+    if (!alias) throw new Error(`unknown element slot tag: \`${tag}`);
+    return alias;
+  });
+  const primary = tags.includes('general') ? 't' : aliases[0];
+  const slots = aliases.filter((alias) => alias !== primary);
+  return { primary, slots, polymorphic: true };
+}
+
 export function typedViewSchema(schema, signature, implementation, {extension = false, admission} = {}) {
   const source = uncomment(signature).replace(/Lui_elements\.t\b/g, 't');
   const functions = typedViewFunctions(signature);
+  const elementTypes = parseElementTypes(signature);
+  const slotStyle = parseSlotStyle(signature);
+  if (!extension && !slotStyle) throw new Error('missing Slot_style module signature');
   const types = new Map([...source.matchAll(/^type (\w+)\s*=\s*(\[[\s\S]*?\])/gm)]
     .map(([, name, body]) => [name, split(body.slice(1, -1), '|')]));
   const converters = new Map([...uncomment(implementation).matchAll(/\blet \w+\s*:\s*(\w+)\s*->\s*string\s*=\s*function\b([\s\S]*?)(?=^let\b|$(?![\s\S]))/gm)]
     .map(([, type, body]) => [type, new Map([...body.matchAll(/\|\s*`(\w+)\s*->\s*"([^"\\]*)"/g)].map(([, tag, value]) => [tag, value]))]));
   const domains = new Map();
-  const styleSignature = source.match(/module Slot_style : sig[\s\S]*?val make :([\s\S]*?)\n\s*val merge/);
-  const styleArguments = styleSignature ? split(styleSignature[1], '->').filter(arg => arg.startsWith('?')) : [];
   function expandStyle(args, wire) {
     return args.flatMap(arg => {
-      if (arg !== '?style:Slot_style.t') return [arg];
-      if (!admission?.kinds[wire]) throw new Error(`missing style admission for ${wire}`);
-      return styleArguments.filter(argument => {
-        const name = /^\?(\w+):/.exec(argument)?.[1].replace(/_signal$/, '').replaceAll('_', '-');
-        return admission.kinds[wire].includes(name);
-      });
+      if (!arg.startsWith('?style:Slot_style.')) return [arg];
+      const bucket = parseSlotStyleBucket(arg.slice(7));
+      if (!bucket || !slotStyle?.bucketArgs.has(bucket)) {
+        throw new Error(`unknown Slot_style capability bucket for ${wire}: ${arg}`);
+      }
+      if (admission) {
+        const admitted = admission.kinds[wire];
+        if (!admitted) throw new Error(`missing style admission for ${wire}`);
+        for (const prop of slotStyle.bucketProperties.get(bucket)) {
+          if (!admitted.includes(prop)) {
+            throw new Error(`Slot_style.${bucket} property ${prop} unsupported on ${wire}`);
+          }
+        }
+      }
+      return slotStyle.bucketArgs.get(bucket);
     });
   }
   function enumValues(type, stack = []) {
@@ -159,7 +267,12 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
     }).concat(children);
   }
   const properties = new Map(schema.properties.map(({wire, lg}) => [wire, lg]));
-  const results = new Set(['t', ...[...source.matchAll(/^type (\w+_el)\s*$/gm)].map(([, name]) => name)]);
+  const { results } = elementTypes;
+  const capabilities = new Map();
+  const addCapability = (slot, kind) => {
+    if (!capabilities.has(slot)) capabilities.set(slot, new Set());
+    capabilities.get(slot).add(kind);
+  };
   const contracts = [];
   for (const {wire, lg} of schema.nodeKinds) {
     if (!extension && ['root', 'list-section-header', 'list-section-footer'].includes(wire)) {
@@ -169,8 +282,10 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
     const name = wire === 'switch' ? 'switch_' : wire.replace(/-/g, '_');
     const args = constructorArguments(name, wire);
     if (!args) throw new Error(`no typed constructor for ${wire}`);
-    const result = args.at(-1);
-    if (!results.has(result)) throw new Error(`unknown result type ${wire}: ${result}`);
+    const resolved = resolveElementResult(args.at(-1), elementTypes);
+    if (!resolved) throw new Error(`unknown result type ${wire}: ${args.at(-1)}`);
+    const result = resolved.primary;
+    for (const slot of resolved.slots) addCapability(slot, lg);
     const props = new Map(), events = new Set(), slots = [], children = [];
     for (const argument of args.slice(0, -1)) {
       const match = /^(\??)(\w+):(.*)$/.exec(argument);
@@ -234,6 +349,8 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
           ['anchor-target', 'ViewString'], ['anchor-rect', '(ViewFloatTuple 4)'],
           ['anchor-alignment', domain('anchor_alignment')], ['anchor-offset', 'ViewFloat'],
           ['anchor-alignment-offset', 'ViewFloat']],
+        dropdown_target: () => [['x', 'ViewFloat'], ['y', 'ViewFloat'], ['anchor', domain('anchor')],
+          ['anchor-alignment', domain('anchor_alignment')], ['anchor-offset', 'ViewFloat']],
         split_sizing: () => [['value', 'ViewFloat'], ['first-pane-width', 'ViewFloat']],
         split_motion: () => [['resize-duration', 'ViewInt'], ['resize-easing', domain('resize_easing')],
           ['resize-origin', 'ViewFloat']],
@@ -275,15 +392,13 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
       view_slots = ${list(slots)};
     }`);
   }
-  const capabilities = new Map();
   for (const {constructor, result} of Object.values(schema.slotConstructors ?? {})) {
     const canonical = schema.constructorAliases?.[constructor] ?? constructor;
     const wire = {separator: 'divider', menu: 'menu-trigger', submenu: 'menu-trigger'}[canonical]
       ?? canonical.replace(/_$/, '').replaceAll('_', '-');
     const kind = schema.nodeKinds.find(kind => kind.wire === wire)?.lg;
     if (!kind) throw new Error(`unknown capability constructor ${constructor}`);
-    if (!capabilities.has(result)) capabilities.set(result, new Set());
-    capabilities.get(result).add(kind);
+    addCapability(result, kind);
   }
   return `${extension ? '' : typedViewSignature}
 ${[...domains].map(([name, value]) => `let view_${name} = ${value}`).join('\n')}
@@ -293,7 +408,6 @@ ${contracts.join('\n')}
 ${extension ? '  | _ -> None\n' : ''}
 ${extension ? '' : `
 let view_slot_accepts slot kind = match slot, kind with
-  | "t", DropdownMenu -> true
 ${[...capabilities].map(([slot, kinds]) => `  | ${quote(slot)}, (${[...kinds].join(' | ')}) -> true`).join('\n')}
   | _ -> false
 `}

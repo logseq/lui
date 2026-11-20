@@ -20,17 +20,19 @@ let text_values app =
     | Some (StringValue value) -> value :: values
     | _ -> values) app.Lui_runtime.runtime_properties []
 
-let partial_view context parent =
-  ignore (Lui_elements.text ~value:"partial" [] context parent);
-  failwith "view failed"
+let partial_view : Lui_elements.t =
+  Lui_elements.custom (fun context parent ->
+    ignore (Lui_elements.mount context ?parent (Lui_elements.text ~value:"partial" []));
+    failwith "view failed")
 
 let boundary_initial_mount () =
   let app, scope, context, emitted = boundary_fixture () in
   let sibling = Lui_ui.text context "sibling" in
   let diagnostic = ref None in
-  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
-    diagnostic := Some error;
-    Lui_elements.text ~value:"fallback" []) partial_view context None);
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary ~fallback:(fun error ->
+      diagnostic := Some error;
+      Lui_elements.text ~value:"fallback" []) partial_view));
   ignore (Lui_runtime.flush app);
   Alcotest.(check bool) "failed mount reports its exception and phase" true
     (match !diagnostic with
@@ -49,16 +51,18 @@ let boundary_shared_publication_work () =
   let measure count =
     let app, scope, context, _ = boundary_fixture () in
     let source = Signal.state context.ui_scheduler "before" in
-    let child context parent =
-      let container = Lui_ui.column context in
-      Lui_elements.attach context parent container;
-      for _ = 1 to count do
-        let node = Lui_ui.text_signal context (Signal.value source) in
-        Lui_elements.attach context (Some container) node
-      done;
-      container in
-    ignore (Lui_elements.error_boundary
-      ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" []) child context None);
+    let child =
+      Lui_elements.custom (fun context parent ->
+        let container = Lui_ui.column context in
+        Lui_elements.attach context parent container;
+        for _ = 1 to count do
+          let node = Lui_ui.text_signal context (Signal.value source) in
+          Lui_elements.attach context (Some container) node
+        done;
+        container) in
+    ignore (Lui_elements.mount context
+      (Lui_elements.error_boundary
+        ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" []) child));
     Signal.mount scope;
     ignore (Lui_runtime.flush app);
     Gc.full_major ();
@@ -83,27 +87,29 @@ let boundary_publication_rollback () =
     let outside = Lui_ui.text context "outside" in
     let source = Signal.state context.ui_scheduler "before" in
     let inner_errors = ref 0 and outer_errors = ref 0 in
-    let child context parent =
-      let first = Lui_ui.map context (fun value ->
-        if value = "bad" then begin
-          Lui_ui.string_property context outside TextValue "partial";
-          "partial"
-        end else value) (Signal.value source) in
-      let node = Lui_ui.text_signal context first in
-      Lui_elements.attach context parent node;
-      let second = Lui_ui.map context (fun value ->
-        if value = "bad" then failwith "late publication failure" else value)
-          (Signal.value source) in
-      let node = Lui_ui.text_signal context second in
-      Lui_elements.attach context parent node;
-      node in
+    let child =
+      Lui_elements.custom (fun context parent ->
+        let first = Lui_ui.map context (fun value ->
+          if value = "bad" then begin
+            Lui_ui.string_property context outside TextValue "partial";
+            "partial"
+          end else value) (Signal.value source) in
+        let node = Lui_ui.text_signal context first in
+        Lui_elements.attach context parent node;
+        let second = Lui_ui.map context (fun value ->
+          if value = "bad" then failwith "late publication failure" else value)
+            (Signal.value source) in
+        let node = Lui_ui.text_signal context second in
+        Lui_elements.attach context parent node;
+        node) in
     let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
       incr inner_errors;
       if broken_fallback then partial_view else Lui_elements.text ~value:"inner" []) child in
-    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
-      incr outer_errors;
-      Lui_elements.text ~value:"outer" [])
-      (Lui_elements.column [Lui_elements.text ~value:"stable" []; inner]) context None);
+    ignore (Lui_elements.mount context
+      (Lui_elements.error_boundary ~fallback:(fun _ ->
+        incr outer_errors;
+        Lui_elements.text ~value:"outer" [])
+        (Lui_elements.column [Lui_elements.text ~value:"stable" []; inner])));
     Signal.mount scope;
     ignore (Lui_runtime.flush app);
     Signal.set source "successful";
@@ -134,15 +140,17 @@ let boundary_interleaved_fallbacks () =
     Lui_elements.attach context parent node;
     node in
   let fail value = if value = "bad" then failwith "interleaved failure" else value in
-  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
-    incr second_errors; Lui_elements.text ~value:"second fallback" [])
-    (fun context parent ->
-      let node = bind context parent Fun.id in
-      deferred := (fun () -> ignore (bind context parent fail));
-      node) context None);
-  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
-    incr first_errors; Lui_elements.text ~value:"first fallback" [])
-    (fun context parent -> bind context parent fail) context None);
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr second_errors; Lui_elements.text ~value:"second fallback" [])
+      (Lui_elements.custom (fun context parent ->
+        let node = bind context parent Fun.id in
+        deferred := (fun () -> ignore (bind context parent fail));
+        node))));
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary ~fallback:(fun _ ->
+      incr first_errors; Lui_elements.text ~value:"first fallback" [])
+      (Lui_elements.custom (fun context parent -> bind context parent fail))));
   !deferred ();
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
@@ -164,9 +172,10 @@ let boundary_sibling_mount_work () =
     Gc.full_major ();
     let allocated = Gc.allocated_bytes () and started = Sys.time () in
     for _ = 1 to count do
-      ignore (Lui_elements.error_boundary
-        ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" [])
-        (Lui_elements.text ~value:"child" []) context None)
+      ignore (Lui_elements.mount context
+        (Lui_elements.error_boundary
+          ~fallback:(fun _ -> Lui_elements.text ~value:"unexpected" [])
+          (Lui_elements.text ~value:"child" [])))
     done;
     Signal.mount scope;
     ignore (Lui_runtime.flush app);
@@ -192,18 +201,20 @@ let boundary_committed_outer_recovery () =
     Lui_elements.attach context parent node;
     node in
   let fail value = if value = "bad" then failwith "outer publication" else value in
-  let inner = Lui_elements.error_boundary ~fallback:(fun _ context parent ->
-    Lui_ui.string_property context outside ForegroundValue "#334455";
-    Lui_elements.text ~value:"inner fallback" [] context parent)
-    (fun context parent -> bind context parent fail) in
-  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
-    Lui_elements.text ~value:"outer fallback" [])
-    (fun context parent ->
-      ignore (bind context parent (fun value ->
-        if value = "bad" then Lui_ui.string_property context outside TextValue "partial";
-        value));
-      ignore (inner context parent);
-      bind context parent fail) context None);
+  let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
+    Lui_elements.custom (fun context parent ->
+      Lui_ui.string_property context outside ForegroundValue "#334455";
+      Lui_elements.mount context ?parent (Lui_elements.text ~value:"inner fallback" [])))
+    (Lui_elements.custom (fun context parent -> bind context parent fail)) in
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary ~fallback:(fun _ ->
+      Lui_elements.text ~value:"outer fallback" [])
+      (Lui_elements.custom (fun context parent ->
+        ignore (bind context parent (fun value ->
+          if value = "bad" then Lui_ui.string_property context outside TextValue "partial";
+          value));
+        ignore (Lui_elements.mount context ?parent inner);
+        bind context parent fail))));
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
   Signal.set source "bad";
@@ -261,12 +272,13 @@ let boundary_nested_mount_rollback () =
   let app, scope, context, emitted = boundary_fixture () in
   let inner = Lui_elements.error_boundary ~fallback:(fun _ ->
     Lui_elements.text ~value:"inner fallback" [])
-    (fun _ _ -> failwith "inner mount") in
-  ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
-    Lui_elements.text ~value:"outer fallback" [])
-    (fun context parent ->
-      ignore (inner context parent);
-      failwith "outer mount") context None);
+    (Lui_elements.custom (fun _ _ -> failwith "inner mount")) in
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary ~fallback:(fun _ ->
+      Lui_elements.text ~value:"outer fallback" [])
+      (Lui_elements.custom (fun context parent ->
+        ignore (Lui_elements.mount context ?parent inner);
+        failwith "outer mount"))));
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
   Alcotest.(check (list string)) "only enclosing fallback remains"
@@ -423,11 +435,12 @@ let anchorless_host_tweak_order () =
   List.iter (fun shape -> List.iter (fun initially_visible ->
     let app, scope, context, verify = rollback_host_fixture () in
     let visible = Signal.state context.ui_scheduler initially_visible in
-    let wrap child context parent =
-      let tweak = Lui_ui.platform_tweak context "boundary-tweak" in
-      ignore (child context (Some tweak));
-      Lui_elements.attach context parent tweak;
-      tweak in
+    let wrap child =
+      Lui_elements.custom (fun context parent ->
+        let tweak = Lui_ui.platform_tweak context "boundary-tweak" in
+        ignore (Lui_elements.mount context ~parent:tweak child);
+        Lui_elements.attach context parent tweak;
+        tweak) in
     let content = match shape with
       | `Main -> wrap (Lui_elements.column [
           wrap (Lui_elements.text ~value:"content" [])])
@@ -445,7 +458,7 @@ let anchorless_host_tweak_order () =
     let parent = Lui_ui.column context in
     let language = Signal.state context.ui_scheduler 0 in
     ignore (Lui_dynamic.switch_range context parent (Signal.value language) Int.equal
-      (fun context _ -> wrap view context (Some parent)));
+      (fun context _ -> ignore (Lui_elements.mount context ~parent (wrap view))));
     Signal.mount scope;
     ignore (Lui_runtime.flush app);
     verify ();
@@ -518,22 +531,24 @@ let boundary_reactive_update () =
   let app, scope, context, emitted = boundary_fixture () in
   let source = Signal.state context.ui_scheduler 0 in
   let mounts = ref 0 and failures = ref 0 in
-  let child context parent =
-    let parent = Option.get parent in
-    ignore (Lui_dynamic.switch context parent (Signal.value source) Int.equal
-      (fun context value ->
-        incr mounts;
-        if value = 1 then partial_view context None
-        else begin
-          let node = Lui_ui.text context (string_of_int value) in
-          Lui_ui.on_event context node (fun _ -> ());
-          node
-        end));
-    parent in
-  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
-    incr failures;
-    Alcotest.(check bool) "update diagnostic" true (error.phase = `Update);
-    Lui_elements.text ~value:"fallback" []) child context None);
+  let child =
+    Lui_elements.custom (fun context parent ->
+      let parent = Option.get parent in
+      ignore (Lui_dynamic.switch context parent (Signal.value source) Int.equal
+        (fun context value ->
+          incr mounts;
+          if value = 1 then Lui_elements.mount context partial_view
+          else begin
+            let node = Lui_ui.text context (string_of_int value) in
+            Lui_ui.on_event context node (fun _ -> ());
+            node
+          end));
+      parent) in
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary ~fallback:(fun error ->
+      incr failures;
+      Alcotest.(check bool) "update diagnostic" true (error.phase = `Update);
+      Lui_elements.text ~value:"fallback" []) child));
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
   Alcotest.(check (list string)) "successful initial view" ["0"] (text_values app);
@@ -562,9 +577,10 @@ let boundary_nested () =
       incr inner_errors;
       if broken_fallback then partial_view
       else Lui_elements.text ~value:"inner" []) partial_view in
-    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
-      incr outer_errors;
-      Lui_elements.text ~value:"outer" []) inner context None);
+    ignore (Lui_elements.mount context
+      (Lui_elements.error_boundary ~fallback:(fun _ ->
+        incr outer_errors;
+        Lui_elements.text ~value:"outer" []) inner));
     ignore (Lui_runtime.flush app);
     Alcotest.(check int) "nearest boundary handles the child" 1 !inner_errors;
     Alcotest.(check int) "fallback failure reaches enclosing boundary"
@@ -576,14 +592,16 @@ let boundary_nested () =
 let boundary_property_projection () =
   let app, scope, context, _ = boundary_fixture () in
   let source = Signal.state context.ui_scheduler "ok" in
-  let child context parent =
-    let projected = Lui_ui.map context (fun value ->
-      if value = "bad" then failwith "projection failed" else value) (Signal.value source) in
-    let node = Lui_ui.text_signal context projected in
-    Lui_elements.attach context parent node;
-    node in
-  ignore (Lui_elements.error_boundary
-    ~fallback:(fun _ -> Lui_elements.text ~value:"fallback" []) child context None);
+  let child =
+    Lui_elements.custom (fun context parent ->
+      let projected = Lui_ui.map context (fun value ->
+        if value = "bad" then failwith "projection failed" else value) (Signal.value source) in
+      let node = Lui_ui.text_signal context projected in
+      Lui_elements.attach context parent node;
+      node) in
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary
+      ~fallback:(fun _ -> Lui_elements.text ~value:"fallback" []) child));
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
   Signal.set source "bad";
@@ -597,10 +615,11 @@ let boundary_reactive_attributes () =
   let failures = ref 0 in
   let child = Lui_elements.row ~data_attrs_signal:(Signal.value attributes)
     [Lui_elements.text ~value:"child" []] in
-  ignore (Lui_elements.error_boundary ~fallback:(fun error ->
-    incr failures;
-    Alcotest.(check bool) "attribute update diagnostic" true (error.phase = `Update);
-    Lui_elements.text ~value:"fallback" []) child context None);
+  ignore (Lui_elements.mount context
+    (Lui_elements.error_boundary ~fallback:(fun error ->
+      incr failures;
+      Alcotest.(check bool) "attribute update diagnostic" true (error.phase = `Update);
+      Lui_elements.text ~value:"fallback" []) child));
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
   Alcotest.(check (list string)) "empty attributes mount" ["child"] (text_values app);
@@ -625,20 +644,22 @@ let boundary_retained_rows () =
     let app, scope, context, _ = boundary_fixture () in
     let source = Signal.state context.ui_scheduler [1, "ok"] in
     let failures = ref 0 in
-    let mount item_source context parent =
-      let projected = Lui_ui.map context (fun (_, value) ->
-        if value = "bad" then failwith "row projection failed" else value) item_source in
-      let node = Lui_ui.text_signal context projected in
-      Lui_elements.attach context parent node;
-      node in
+    let mount item_source =
+      Lui_elements.custom (fun context parent ->
+        let projected = Lui_ui.map context (fun (_, value) ->
+          if value = "bad" then failwith "row projection failed" else value) item_source in
+        let node = Lui_ui.text_signal context projected in
+        Lui_elements.attach context parent node;
+        node) in
     let source = Signal.value source, source in
     let rows = if virtualized then
         Lui_elements.virtual_list [Lui_elements.virtual_rows ~source:(fst source)
           ~key:fst ~cmp:Int.compare ~mount ()]
       else Lui_elements.column [Lui_elements.keyed ~source:(fst source)
         ~key:fst ~cmp:Int.compare ~mount] in
-    ignore (Lui_elements.error_boundary ~fallback:(fun _ ->
-      incr failures; Lui_elements.text ~value:"fallback" []) rows context None);
+    ignore (Lui_elements.mount context
+      (Lui_elements.error_boundary ~fallback:(fun _ ->
+        incr failures; Lui_elements.text ~value:"fallback" []) rows));
     Signal.mount scope;
     ignore (Lui_runtime.flush app);
     Alcotest.(check (list string)) "initial row" ["ok"] (text_values app);
@@ -855,9 +876,10 @@ let subscription_failure () =
   Lui_subscriptions.dispose coordinator;
   Alcotest.(check int) "started subscription cancelled" 1 !cancelled
 
-let view ?(mount_failure=false) label _context _model _send context _parent =
-  if mount_failure then Signal.on_mount context.Lui_ui.ui_scope (fun () -> failwith "mount failed");
-  Lui_ui.text context label
+let view ?(mount_failure=false) label _context _model _send =
+  Lui_elements.custom (fun context _parent ->
+    if mount_failure then Signal.on_mount context.Lui_ui.ui_scope (fun () -> failwith "mount failed");
+    Lui_ui.text context label)
 
 let check_resync mirror application =
   let restored = Drive.Model.create () in
@@ -1076,7 +1098,7 @@ let anchorless_restricted_ranges () =
   let parts = Signal.state context.ui_scheduler ["a"; "b"] in
   let visible = Signal.state context.ui_scheduler true in
   let open Lui_elements in
-  let parent = toolbar ~label:"Actions"
+  let parent = mount context (toolbar ~label:"Actions"
     [ toolbar_text ~value:"before" [];
       keyed_toolbar ~source:(Signal.value items) ~key:Fun.id ~cmp:Int.compare
         ~mount:(fun item ->
@@ -1085,7 +1107,7 @@ let anchorless_restricted_ranges () =
               ~mount:(fun part -> toolbar_button
                 ~text:(string_of_int (Signal.sample item) ^ Signal.sample part)
                 ~on_press:(fun () -> ()) [])));
-      toolbar_text ~value:"after" [] ] context None in
+      toolbar_text ~value:"after" [] ]) in
   Signal.mount scope;
   let flush expected =
     ignore (Lui_runtime.flush app);
@@ -1141,10 +1163,10 @@ let anchorless_boundary_rollback () =
             ~mount:(fun item -> toolbar_button
               ~text:(if value = 2 then "partial" else string_of_int (value + Signal.sample item))
               ~on_press:(fun () -> ()) [])))) (Signal.value source)] in
-  ignore (error_boundary ~fallback:(fun diagnostic ->
+  ignore (mount context (error_boundary ~fallback:(fun diagnostic ->
     incr failures;
     Alcotest.(check bool) "update failure" true (diagnostic.phase = `Update);
-    text ~value:"recovered" []) child context None);
+    text ~value:"recovered" []) child));
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
   Signal.set source 1;
@@ -1184,7 +1206,7 @@ let anchorless_static_sibling () =
   let parent = Lui_ui.column context in
   let visible = Signal.state context.ui_scheduler true in
   let revision = Signal.state context.ui_scheduler 0 in
-  let text context value = ignore (Lui_elements.text ~value [] context (Some parent)) in
+  let text context value = ignore (Lui_elements.mount context ~parent (Lui_elements.text ~value [])) in
   text context "prefix";
   Lui_dynamic.switch_range context parent (Signal.value revision) Int.equal
     (fun branch _ ->
@@ -1227,10 +1249,9 @@ let anchorless_virtual_replacement () =
     (fun branch value ->
       if value = 2 then Signal.on_mount branch.Lui_ui.ui_scope (fun () -> failwith "reject virtual range");
       let open Lui_elements in
-      ignore (scroll ~virtual_owner:owner
+      ignore (mount branch ~parent (scroll ~virtual_owner:owner
         [virtual_list ~viewport:source [virtual_rows ~source:items ~key:Fun.id ~cmp:String.compare
-          ~scroll_key:Fun.id ~mount:(fun item -> text ~value:(Signal.sample item) []) ()]]
-        branch (Some parent)));
+          ~scroll_key:Fun.id ~mount:(fun item -> text ~value:(Signal.sample item) []) ()]])));
   Signal.mount scope;
   ignore (Lui_runtime.flush app);
   let binding () = Option.get (Signal.sample (Lui_virtual.binding source)) in
@@ -1738,7 +1759,7 @@ let phase4_rows_are_not_disclosures () =
   List.iter (fun build ->
     List.iter (fun row ->
       let app, scope, context, _ = boundary_fixture () in
-      let root = build row context None in
+      let root = Lui_elements.mount context (build row) in
       let rec check node =
         let children = Lui_runtime.children app node in
         if Lui_runtime.require_standard_node_kind app node = ListItem then
@@ -1749,19 +1770,19 @@ let phase4_rows_are_not_disclosures () =
       in
       check root;
       Signal.dispose_scope scope)
-      [Lui_element_combine.settings_row ~label:"Setting" ();
-       Lui_elements.list_item ~text:"Item" []])
+      [Lui.Ui.form_row (Lui_element_combine.settings_row ~label:"Setting" ());
+       Lui_elements.list_item ~text:"Item" [];
+       Lui.Ui.form_row (Lui_elements.list_item ~text:"Wrapped item" [])])
     [(fun row -> Lui.Ui.form_section [row]);
      (fun row -> Lui.Ui.data_list ~label:"Rows" [row])]
 
 let phase4_form_sheet_sections () =
   let app, scope, context, _ = boundary_fixture () in
-  let sheet = Lui.Ui.form_sheet ~title:"Edit"
+  let sheet = Lui_elements.mount context (Lui.Ui.form_sheet ~title:"Edit"
     [Lui.Ui.form_section ~title:"Identity" ~footer:"Required"
-       [Lui.Ui.form_field ~label:"Name" (Lui_elements.text_field []);
-        Lui_elements.toggle ~text:"Enabled" []];
-     Lui.Ui.form_section ~title:"Other" [Lui_elements.text_field []]]
-    context None in
+       [Lui.Ui.form_row (Lui.Ui.form_field ~label:"Name" (Lui_elements.text_field []));
+        Lui.Ui.form_row (Lui_elements.toggle ~text:"Enabled" [])];
+     Lui.Ui.form_section ~title:"Other" [Lui.Ui.form_row (Lui_elements.text_field [])]]) in
   let form = List.hd (Lui_runtime.children app sheet) in
   let list = List.hd (Lui_runtime.children app form) in
   Alcotest.(check bool) "explicit sections have an admitted list parent" true
@@ -1784,13 +1805,12 @@ let phase4_form_sheet_sections () =
 
 let phase4_authoring_contract () =
   let app, scope, context, _ = boundary_fixture () in
-  let module Compatible : module type of struct include Lui_ui end = Lui.Ui in
-  let raw = Compatible.text context "raw compatibility" in
+  let raw = Lui.Raw.text context "raw compatibility" in
   Lui.Raw.padding context raw 3;
   Alcotest.(check bool) "raw aliases share context and nodes" true
     (property_value app raw PaddingValue = IntValue 3);
-  let text = Lui_elements.text ~role:`caption ~truncate:true
-    ~style_class:"application" ~value:"long" [] context None in
+  let text = Lui_elements.mount context (Lui_elements.text ~role:`caption ~truncate:true
+    ~style_class:"application" ~value:"long" []) in
   List.iter (fun (property, expected) ->
     Alcotest.(check bool) "truncation and role emit admitted properties" true
       (property_value app text property = expected))
@@ -1798,42 +1818,42 @@ let phase4_authoring_contract () =
      Overflow, StringValue "hidden"; LineClamp, IntValue 1;
      MinWidth, IntValue 0; StyleClass, StringValue "caption single-line application"];
   List.iter (fun view ->
-    let node = view context None in
+    let node = Lui_elements.mount context view in
     Alcotest.(check bool) "every text family supports roles and truncation" true
       (property_value app node StyleClass = StringValue "body single-line"
        && property_value app node LineClamp = IntValue 1))
     [Lui_elements.heading ~role:`body ~truncate:true ~value:"Heading" [];
      Lui_elements.paragraph ~role:`body ~truncate:true ~value:"Paragraph" [];
      Lui_elements.label ~role:`body ~truncate:true ~value:"Label" []];
-  let plain = Lui_elements.text ~truncate:false ~value:"" [] context None in
+  let plain = Lui_elements.mount context (Lui_elements.text ~truncate:false ~value:"" []) in
   Alcotest.(check bool) "empty untruncated text retains existing overflow" false
     (Property_map.mem WhiteSpace (Hashtbl.find app.Lui_runtime.runtime_properties plain));
-  let row = Lui.Ui.hstack [] context None in
-  let column = Lui.Ui.vstack ~gap:`none [] context None in
+  let row = Lui_elements.mount context (Lui.Ui.hstack []) in
+  let column = Lui_elements.mount context (Lui.Ui.vstack ~gap:`none []) in
   Alcotest.(check bool) "stack defaults and explicit overrides" true
     (property_value app row Gap = IntValue 8
      && property_value app row CrossAlignment = StringValue "center"
      && property_value app row MinWidth = IntValue 0
      && property_value app column Gap = IntValue 0
      && property_value app column MinHeight = IntValue 0);
-  List.iter (fun view -> ignore (view context None))
+  List.iter (fun view -> ignore (Lui_elements.mount context view))
     [Lui.Ui.page ~title:"Page" []; Lui.Ui.form_sheet ~title:"Form" [];
      Lui.Ui.form_section ~title:"Section" [];
      Lui.Ui.form_field ~label:"Name" (Lui_elements.text_field []);
      Lui.Ui.form_field ~label:"Invalid" ~help:"hidden help" ~error:"validation error"
        (Lui_elements.text_field []);
      Lui.Ui.data_list ~label:"Rows" [];
-     Lui.Ui.data_list ~label:"Rows" ~empty:(Lui_elements.text ~value:"empty rows" []) [];
+     Lui.Ui.data_list ~label:"Rows" ~empty:(Lui.Ui.data_row (Lui_elements.text ~value:"empty rows" [])) [];
      Lui.Ui.nav_bar ~title:"Navigation" ()];
   Alcotest.(check bool) "validation error takes precedence over help" true
     (List.mem "validation error" (text_values app) && not (List.mem "hidden help" (text_values app)));
   let errors = Signal.state context.ui_scheduler None in
   let control = ref None in
-  ignore (Lui.Ui.form_field ~label:"Reactive name" ~help:"live help"
+  ignore (Lui_elements.mount context (Lui.Ui.form_field ~label:"Reactive name" ~help:"live help"
     ~error_signal:(Signal.value errors)
-    (fun context parent ->
-      let node = Lui_elements.text_field ~text:"editing" [] context parent in
-      control := Some node; node) context None);
+    (Lui_elements.custom (fun context parent ->
+      let node = Lui_elements.mount context ?parent (Lui_elements.text_field ~text:"editing" []) in
+      control := Some node; node))));
   let mounted_control = !control in
   ignore (Lui_runtime.flush app);
   Signal.set errors (Some "live error");
@@ -1854,6 +1874,764 @@ let phase4_authoring_contract () =
     (List.map Lui_tokens.space_value [`none;`xs;`sm;`md;`lg;`xl;`page]);
   Alcotest.(check (list int)) "radius scale and negative escape" [0;4;6;8;12;9999;0]
     (List.map Lui_tokens.radius_value [`none;`sm;`md;`lg;`xl;`full;`px (-1)]);
+  Signal.dispose_scope scope
+
+let adr0008_popover_target_diff () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let open Lui_elements in
+  let target =
+    Signal.state context.Lui_ui.ui_scheduler
+      (Anchor
+         {
+           side = `below;
+           source = Target "trigger-a";
+           align = `start;
+           offset = 4.;
+           align_offset = 0.;
+         })
+  in
+  let node = mount context (popover ~target_signal:(Signal.value target) []) in
+  Signal.mount scope;
+  let removed_props ops =
+    List.filter_map
+      (function RemoveProp (id, prop) when id = node -> Some prop | _ -> None)
+      ops
+  in
+  let set_props ops =
+    List.filter_map
+      (function SetProp (id, prop, value) when id = node -> Some (prop, value) | _ -> None)
+      ops
+  in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "initial mount emits zero RemoveProp" 0
+    (List.length (removed_props !emitted));
+  Alcotest.(check bool) "initial Anchor sets AnchorTarget" true
+    (property_value app node AnchorTarget = StringValue "trigger-a");
+  (* Anchor -> Anchor with same source kind emits zero RemoveProp *)
+  emitted := [];
+  Signal.set target
+    (Anchor
+       {
+         side = `above;
+         source = Target "trigger-b";
+         align = `end_;
+         offset = 8.;
+         align_offset = 2.;
+       });
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "Anchor -> Anchor (same source) emits zero RemoveProp" 0
+    (List.length (removed_props !emitted));
+  Alcotest.(check bool) "Anchor updates AnchorValue and AnchorTarget" true
+    (property_value app node AnchorValue = StringValue "above"
+     && property_value app node AnchorTarget = StringValue "trigger-b");
+  (* Anchor Target -> Anchor Rect removes only AnchorTarget *)
+  emitted := [];
+  Signal.set target
+    (Anchor
+       {
+         side = `below;
+         source = Rect { x = 10.; y = 20.; width = 30.; height = 40. };
+         align = `center;
+         offset = 6.;
+         align_offset = 0.;
+       });
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "Anchor Target -> Rect removes only AnchorTarget" true
+    (removed_props !emitted = [ AnchorTarget ]);
+  (* Anchor Rect -> At removes only stale anchor props and sets PopupX/PopupY *)
+  emitted := [];
+  Signal.set target (At (120., 240.));
+  ignore (Lui_runtime.flush app);
+  let removed = removed_props !emitted in
+  List.iter
+    (fun prop ->
+      Alcotest.(check bool) "Anchor -> At removes stale anchor prop" true
+        (List.mem prop removed))
+    [ AnchorValue; AnchorAlignmentValue; AnchorOffset; AnchorAlignmentOffset; AnchorRect ];
+  Alcotest.(check int) "Anchor -> At removes only the 5 stale anchor props" 5
+    (List.length removed);
+  let sets = set_props !emitted in
+  Alcotest.(check bool) "Anchor -> At sets PopupX and PopupY" true
+    (List.mem (PopupX, FloatValue 120.) sets && List.mem (PopupY, FloatValue 240.) sets);
+  (* At -> Cover removes only PopupX and PopupY *)
+  emitted := [];
+  Signal.set target Cover;
+  ignore (Lui_runtime.flush app);
+  let removed_cover = removed_props !emitted in
+  Alcotest.(check int) "At -> Cover removes only PopupX and PopupY" 2
+    (List.length removed_cover);
+  Alcotest.(check bool) "At -> Cover removes PopupX and PopupY" true
+    (List.mem PopupX removed_cover && List.mem PopupY removed_cover);
+  Signal.dispose_scope scope
+
+let adr0008_dropdown_menu_target_diff () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let open Lui_elements in
+  let target =
+    Signal.state context.Lui_ui.ui_scheduler
+      (Menu_anchor { side = `below; align = `start; offset = 4. })
+  in
+  let node =
+    mount context
+      (dropdown_menu ~target_signal:(Signal.value target)
+         [ menu_item ~text:"One" [] ])
+  in
+  Signal.mount scope;
+  let removed_props ops =
+    List.filter_map
+      (function RemoveProp (id, prop) when id = node -> Some prop | _ -> None)
+      ops
+  in
+  let set_props ops =
+    List.filter_map
+      (function SetProp (id, prop, value) when id = node -> Some (prop, value) | _ -> None)
+      ops
+  in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "initial Menu_anchor emits zero RemoveProp" 0
+    (List.length (removed_props !emitted));
+  (* Menu_anchor -> Menu_anchor emits zero RemoveProp *)
+  emitted := [];
+  Signal.set target (Menu_anchor { side = `above; align = `stretch; offset = 10. });
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "Menu_anchor -> Menu_anchor emits zero RemoveProp" 0
+    (List.length (removed_props !emitted));
+  Alcotest.(check bool) "Menu_anchor updates properties in place" true
+    (property_value app node AnchorValue = StringValue "above"
+     && property_value app node AnchorAlignmentValue = StringValue "stretch"
+     && property_value app node AnchorOffset = FloatValue 10.);
+  (* Menu_anchor -> Menu_at removes only AnchorValue/AnchorAlignmentValue/AnchorOffset *)
+  emitted := [];
+  Signal.set target (Menu_at (32., 64.));
+  ignore (Lui_runtime.flush app);
+  let removed = removed_props !emitted in
+  Alcotest.(check int) "Menu_anchor -> Menu_at removes 3 anchor props" 3
+    (List.length removed);
+  List.iter
+    (fun prop ->
+      Alcotest.(check bool) "Menu_anchor -> Menu_at removes stale anchor prop" true
+        (List.mem prop removed))
+    [ AnchorValue; AnchorAlignmentValue; AnchorOffset ];
+  let sets = set_props !emitted in
+  Alcotest.(check bool) "Menu_anchor -> Menu_at sets PopupX/PopupY" true
+    (List.mem (PopupX, FloatValue 32.) sets && List.mem (PopupY, FloatValue 64.) sets);
+  (* Menu_at -> Menu_default removes only PopupX/PopupY *)
+  emitted := [];
+  Signal.set target Menu_default;
+  ignore (Lui_runtime.flush app);
+  let removed_default = removed_props !emitted in
+  Alcotest.(check int) "Menu_at -> Menu_default removes 2 props" 2
+    (List.length removed_default);
+  Alcotest.(check bool) "Menu_at -> Menu_default removes PopupX/PopupY" true
+    (List.mem PopupX removed_default && List.mem PopupY removed_default);
+  Signal.dispose_scope scope
+
+let adr0008_split_sizing_diff () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let open Lui_elements in
+  let sizing = Signal.state context.Lui_ui.ui_scheduler (First_width 240.) in
+  let node =
+    mount context
+      (split ~sizing_signal:(Signal.value sizing) (column []) (column []))
+  in
+  Signal.mount scope;
+  let removed_props ops =
+    List.filter_map
+      (function RemoveProp (id, prop) when id = node -> Some prop | _ -> None)
+      ops
+  in
+  let set_props ops =
+    List.filter_map
+      (function SetProp (id, prop, value) when id = node -> Some (prop, value) | _ -> None)
+      ops
+  in
+  ignore (Lui_runtime.flush app);
+  let initial_sets = set_props !emitted in
+  Alcotest.(check int) "initial split sizing_signal emits zero RemoveProp" 0
+    (List.length (removed_props !emitted));
+  Alcotest.(check bool) "initial First_width emits FirstPaneWidth" true
+    (List.mem (FirstPaneWidth, FloatValue 240.) initial_sets);
+  Alcotest.(check bool) "initial First_width never emits spurious ProgressValue" false
+    (List.exists (fun (prop, _) -> prop = ProgressValue) initial_sets);
+  (* First_width -> First_width emits zero RemoveProp *)
+  emitted := [];
+  Signal.set sizing (First_width 320.);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "First_width -> First_width emits zero RemoveProp" 0
+    (List.length (removed_props !emitted));
+  Alcotest.(check bool) "First_width updates in place" true
+    (property_value app node FirstPaneWidth = FloatValue 320.);
+  (* First_width -> Fraction removes FirstPaneWidth and sets ProgressValue *)
+  emitted := [];
+  Signal.set sizing (Fraction 0.35);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "First_width -> Fraction removes only FirstPaneWidth" true
+    (removed_props !emitted = [ FirstPaneWidth ]);
+  Alcotest.(check bool) "First_width -> Fraction sets ProgressValue" true
+    (List.mem (ProgressValue, FloatValue 0.35) (set_props !emitted));
+  (* Fraction -> First_width removes ProgressValue and sets FirstPaneWidth *)
+  emitted := [];
+  Signal.set sizing (First_width 180.);
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "Fraction -> First_width removes only ProgressValue" true
+    (removed_props !emitted = [ ProgressValue ]);
+  Alcotest.(check bool) "Fraction -> First_width sets FirstPaneWidth" true
+    (List.mem (FirstPaneWidth, FloatValue 180.) (set_props !emitted));
+  Signal.dispose_scope scope
+
+let adr0008_text_truncate_style_precedence () =
+  let app, scope, context, _ = boundary_fixture () in
+  let open Lui_elements in
+  let check_truncated label node =
+    List.iter
+      (fun (prop, expected) ->
+        Alcotest.(check bool)
+          (Printf.sprintf "%s truncate precedence" label)
+          true
+          (property_value app node prop = expected))
+      [
+        WhiteSpace, StringValue "nowrap";
+        TextOverflow, StringValue "ellipsis";
+        Overflow, StringValue "hidden";
+        LineClamp, IntValue 1;
+        MinWidth, IntValue 0;
+      ]
+  in
+  let conflicting_style =
+    Slot_style.merge
+      (Slot_style.make ~overflow:`visible ())
+      (Slot_style.text_flow ~white_space:`normal ~text_overflow:`clip ())
+  in
+  let t_node =
+    mount context
+      (text ~truncate:true ~style:conflicting_style ~min_width:40 ~line_clamp:3
+         ~value:"long" [])
+  in
+  check_truncated "text" t_node;
+  let h_node =
+    mount context
+      (heading ~truncate:true ~white_space:`normal ~text_overflow:`clip
+         ~overflow:`visible ~min_width:40 ~line_clamp:3 ~value:"long heading" [])
+  in
+  check_truncated "heading" h_node;
+  let p_node =
+    mount context
+      (paragraph ~truncate:true ~white_space:`normal ~text_overflow:`clip
+         ~overflow:`visible ~min_width:40 ~line_clamp:3 ~value:"long paragraph" [])
+  in
+  check_truncated "paragraph" p_node;
+  let l_node =
+    mount context
+      (label ~truncate:true ~white_space:`normal ~text_overflow:`clip
+         ~overflow:`visible ~min_width:40 ~line_clamp:3 ~value:"long label" [])
+  in
+  check_truncated "label" l_node;
+  Alcotest.(check bool) "all truncated text nodes flush cleanly" true
+    (Lui_runtime.flush app);
+  Signal.dispose_scope scope
+
+let adr0008_protocol_numeric_and_json_enums () =
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun (input, expected) ->
+          Alcotest.(check bool) "float property normalized" true
+            (normalize_property_value prop (FloatValue input) = FloatValue expected))
+        [ -5.0, 0.; nan, 0.; infinity, 0.; neg_infinity, 0.; 0., 0.; 12.5, 12.5 ])
+    [ CollisionPadding; FirstPaneWidth; AvailableHeight; GrowValue; ShrinkValue ];
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check bool) "TreeLevel normalized" true
+        (normalize_property_value TreeLevel (IntValue input) = IntValue expected))
+    [ -3, 1; 0, 1; 1, 1; 4, 4 ];
+  let app, scope, context, _ = boundary_fixture () in
+  let open Lui_json_view in
+  let on_event ~id:_ ~kind:_ ~fields:_ = () in
+  let json_tree =
+    Obj
+      [
+        "kind", Str "column";
+        "cursor", Str "bogus";
+        "overflow", Str "bogus";
+        "children",
+        Arr
+          [
+            Obj
+              [
+                "kind", Str "text";
+                "value", Str "hello";
+                "white-space", Str "bogus";
+                "text-overflow", Str "bogus";
+                "overflow", Str "bogus";
+                "font-style", Str "bogus";
+              ];
+            Obj
+              [
+                "kind", Str "heading";
+                "value", Str "title";
+                "level", Num 99.;
+              ];
+            Obj
+              [
+                "kind", Str "toolbar";
+                "label", Str "Tools";
+                "placement", Str "bogus";
+                "children", Arr [];
+              ];
+            Obj
+              [
+                "kind", Str "sheet";
+                "text", Str "Details";
+                "sizing", Str "bogus";
+                "children", Arr [];
+              ];
+          ];
+      ]
+  in
+  let rendered = render ~on_event json_tree in
+  let root = Lui_elements.mount context rendered in
+  Alcotest.(check bool) "unknown JSON enums render and flush cleanly" true
+    (Lui_runtime.node_live app root && Lui_runtime.flush app);
+  Alcotest.(check int) "all JSON children mounted despite unknown enums" 4
+    (List.length (Lui_runtime.children app root));
+  (* Nested JSON menu surfaces forward Slot_style onto the inner dropdown_menu. *)
+  let surface_collision root =
+    match Lui_runtime.children app root with
+    | [ trigger ] -> (
+        match Lui_runtime.children app trigger with
+        | [ surface ] -> property_value app surface CollisionPadding
+        | _ -> Alcotest.fail "expected nested dropdown-menu surface")
+    | _ -> Alcotest.fail "expected one menu trigger child"
+  in
+  let surface_menu =
+    render ~on_event
+      (Obj
+         [
+           "kind", Str "dropdown-menu";
+           "children",
+           Arr
+             [
+               Obj
+                 [
+                   "kind", Str "submenu";
+                   "text", Str "More";
+                   "collision-padding", Num 9.;
+                   "children", Arr [];
+                 ];
+             ];
+         ])
+  in
+  let menu_root = Lui_elements.mount context surface_menu in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "JSON dropdown_menu_submenu applies collision-padding" true
+    (surface_collision menu_root = FloatValue 9.);
+  let toolbar_surface =
+    render ~on_event
+      (Obj
+         [
+           "kind", Str "toolbar";
+           "label", Str "Actions";
+           "children",
+           Arr
+             [
+               Obj
+                 [
+                   "kind", Str "menu";
+                   "text", Str "File";
+                   "collision-padding", Num 11.;
+                   "children", Arr [];
+                 ];
+             ];
+         ])
+  in
+  let toolbar_root = Lui_elements.mount context toolbar_surface in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "JSON toolbar_menu applies collision-padding" true
+    (surface_collision toolbar_root = FloatValue 11.);
+  Signal.dispose_scope scope
+
+let adr0008_keyed_range_optimizations () =
+  let app, scope, context, emitted = boundary_fixture () in
+  let parent = Lui_ui.column context in
+  let items = Signal.state context.Lui_ui.ui_scheduler [ (1, "a"); (2, "b"); (3, "c") ] in
+  Lui_dynamic.keyed_range context parent (Signal.value items) fst Int.compare
+    (fun row item ->
+      let label = Lui_ui.map row snd item in
+      let node = Lui_ui.text_signal row label in
+      Lui_ui.append row parent node);
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  let count_ops pred ops = List.length (List.filter pred ops) in
+  let is_insert = function InsertChild (p, _, _) -> p = parent | _ -> false in
+  let is_move = function MoveChild (p, _, _) -> p = parent | _ -> false in
+  (* 1. Unchanged-order update emits zero InsertChild and zero MoveChild *)
+  emitted := [];
+  Signal.set items [ (1, "a2"); (2, "b2"); (3, "c2") ];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "unchanged order emits zero InsertChild" 0
+    (count_ops is_insert !emitted);
+  Alcotest.(check int) "unchanged order emits zero MoveChild" 0
+    (count_ops is_move !emitted);
+  (* 2. Pure insertion (prepend, middle, append) emits InsertChild with zero MoveChild *)
+  emitted := [];
+  Signal.set items
+    [ (0, "pre"); (1, "a2"); (15, "mid"); (2, "b2"); (3, "c2"); (4, "app") ];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "pure insertion emits 3 InsertChild" 3
+    (count_ops is_insert !emitted);
+  Alcotest.(check int) "pure insertion emits zero MoveChild" 0
+    (count_ops is_move !emitted);
+  let texts () =
+    List.map
+      (fun id ->
+        match property_value app id TextValue with StringValue s -> s | _ -> "")
+      (Lui_runtime.children app parent)
+  in
+  Alcotest.(check (list string)) "pure insertion lands at final positions"
+    [ "pre"; "a2"; "mid"; "b2"; "c2"; "app" ]
+    (texts ());
+  (* 3. Single-item move in a 10-item list emits <= 1 MoveChild *)
+  let ten = List.init 10 (fun i -> (i, Printf.sprintf "i%d" i)) in
+  Signal.set items ten;
+  ignore (Lui_runtime.flush app);
+  let ids_before = Lui_runtime.children app parent in
+  emitted := [];
+  (* Move item 9 to the front: [9; 0; 1; 2; 3; 4; 5; 6; 7; 8] *)
+  let moved =
+    (9, "i9") :: List.init 9 (fun i -> (i, Printf.sprintf "i%d" i))
+  in
+  Signal.set items moved;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "moving 1 of 10 items emits <= 1 MoveChild" true
+    (count_ops is_move !emitted <= 1);
+  Alcotest.(check (list int)) "moving 1 of 10 preserves ids in new order"
+    (List.nth ids_before 9 :: List.filteri (fun i _ -> i < 9) ids_before)
+    (Lui_runtime.children app parent);
+  Signal.dispose_scope scope;
+  (* 4. Multi-node segment reorder emits minimal MoveChild ops (<= moved nodes) *)
+  let app2, scope2, ctx2, emitted2 = boundary_fixture () in
+  let parent2 = Lui_ui.column ctx2 in
+  let seg_items = Signal.state ctx2.Lui_ui.ui_scheduler [ 0; 1; 2; 3; 4 ] in
+  Lui_dynamic.keyed_range ctx2 parent2 (Signal.value seg_items) Fun.id Int.compare
+    (fun row item ->
+      let key = Signal.sample item in
+      Lui_ui.append row parent2 (Lui_ui.text row (Printf.sprintf "%da" key));
+      Lui_ui.append row parent2 (Lui_ui.text row (Printf.sprintf "%db" key)));
+  Signal.mount scope2;
+  ignore (Lui_runtime.flush app2);
+  let seg_ids_before = Lui_runtime.children app2 parent2 in
+  emitted2 := [];
+  (* Move 2-node segment 4 to index 0 *)
+  Signal.set seg_items [ 4; 0; 1; 2; 3 ];
+  ignore (Lui_runtime.flush app2);
+  let seg_moves =
+    List.length
+      (List.filter (function MoveChild (p, _, _) -> p = parent2 | _ -> false) !emitted2)
+  in
+  Alcotest.(check bool) "moving 2-node segment in 5-item list emits <= 2 MoveChild" true
+    (seg_moves <= 2);
+  let seg_texts =
+    List.map
+      (fun id ->
+        match property_value app2 id TextValue with StringValue s -> s | _ -> "")
+      (Lui_runtime.children app2 parent2)
+  in
+  Alcotest.(check (list string)) "multi-node segment lands in order"
+    [ "4a"; "4b"; "0a"; "0b"; "1a"; "1b"; "2a"; "2b"; "3a"; "3b" ]
+    seg_texts;
+  Alcotest.(check (list int)) "multi-node segment preserves all node ids"
+    (List.sort Int.compare seg_ids_before)
+    (List.sort Int.compare (Lui_runtime.children app2 parent2));
+  Signal.dispose_scope scope2;
+  (* 5. Scoped rollback preserves unrelated sibling subtrees and existing keyed items *)
+  let app3, scope3, ctx3, _ = boundary_fixture () in
+  let parent3 = Lui_ui.column ctx3 in
+  let prefix_box = Lui_ui.column ctx3 in
+  let prefix_leaf = Lui_ui.text ctx3 "prefix-leaf" in
+  Lui_ui.append ctx3 prefix_box prefix_leaf;
+  Lui_ui.append ctx3 parent3 prefix_box;
+  let roll_items = Signal.state ctx3.Lui_ui.ui_scheduler [ 1; 2 ] in
+  Lui_dynamic.keyed_range ctx3 parent3 (Signal.value roll_items) Fun.id Int.compare
+    (fun row item ->
+      let key = Signal.sample item in
+      let node = Lui_ui.text row (Printf.sprintf "item-%d" key) in
+      Lui_ui.append row parent3 node;
+      if key = 99 then failwith "fresh item mount failed");
+  let suffix_box = Lui_ui.column ctx3 in
+  let suffix_leaf = Lui_ui.text ctx3 "suffix-leaf" in
+  Lui_ui.append ctx3 suffix_box suffix_leaf;
+  Lui_ui.append ctx3 parent3 suffix_box;
+  Signal.mount scope3;
+  ignore (Lui_runtime.flush app3);
+  let before_children = Lui_runtime.children app3 parent3 in
+  Signal.set roll_items [ 1; 3; 99; 2 ];
+  check_failure "failing fresh item aborts update"
+    (attempt (fun () -> ignore (Lui_runtime.flush app3)));
+  Alcotest.(check (list int)) "rollback restores parent child list"
+    before_children (Lui_runtime.children app3 parent3);
+  Alcotest.(check bool) "prefix sibling subtree stays live" true
+    (Lui_runtime.node_live app3 prefix_box
+     && Lui_runtime.node_live app3 prefix_leaf
+     && Lui_runtime.children app3 prefix_box = [ prefix_leaf ]);
+  Alcotest.(check bool) "suffix sibling subtree stays live" true
+    (Lui_runtime.node_live app3 suffix_box
+     && Lui_runtime.node_live app3 suffix_leaf
+     && Lui_runtime.children app3 suffix_box = [ suffix_leaf ]);
+  (* Subsequent valid update still succeeds *)
+  Signal.set roll_items [ 1; 2; 4 ];
+  ignore (Lui_runtime.flush app3);
+  Alcotest.(check int) "valid update after rollback succeeds" 5
+    (List.length (Lui_runtime.children app3 parent3));
+  Signal.dispose_scope scope3
+
+let adr0008_polymorphic_el_and_collision_style () =
+  let app, scope, context, _ = boundary_fixture () in
+  let open Lui_elements in
+  let show = Signal.state context.Lui_ui.ui_scheduler true in
+  let items = Signal.state context.Lui_ui.ui_scheduler [ "K1"; "K2" ] in
+  let dyn_label = Signal.state context.Lui_ui.ui_scheduler "D1" in
+  let tb =
+    mount context
+      (toolbar ~label:"T"
+         [
+           button ~text:"A" [];
+           if_ ~test:(Signal.value show) (button ~text:"B" []);
+           keyed_toolbar ~source:(Signal.value items) ~key:Fun.id
+             ~cmp:String.compare
+             ~mount:(fun s -> button ~text:(Signal.sample s) []);
+           reactive_toolbar (fun s -> button ~text:s []) (Signal.value dyn_label);
+         ])
+  in
+  let dm_show = Signal.state context.Lui_ui.ui_scheduler true in
+  let dm_items = Signal.state context.Lui_ui.ui_scheduler [ "M1"; "M2" ] in
+  (* dropdown_menu mounts directly as general t without dropdown_menu_view *)
+  let dm_view : t =
+    dropdown_menu
+      [
+        menu_item ~text:"A" [];
+        if_ ~test:(Signal.value dm_show) (divider []);
+        keyed_dropdown_menu_item ~source:(Signal.value dm_items) ~key:Fun.id
+          ~cmp:String.compare
+          ~mount:(fun s -> menu_item ~text:(Signal.sample s) []);
+      ]
+  in
+  let dm = mount context dm_view in
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  let child_texts parent =
+    List.map
+      (fun id ->
+        match Property_map.find_opt TextValue (Hashtbl.find app.runtime_properties id) with
+        | Some (StringValue s) -> s
+        | _ -> "")
+      (Lui_runtime.children app parent)
+  in
+  Alcotest.(check (list string)) "toolbar initial children"
+    [ "A"; "B"; "K1"; "K2"; "D1" ] (child_texts tb);
+  Signal.set show false;
+  Signal.set items [ "K2"; "K3" ];
+  Signal.set dyn_label "D2";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "toolbar updated children"
+    [ "A"; "K2"; "K3"; "D2" ] (child_texts tb);
+  Alcotest.(check (list string)) "dropdown_menu initial children"
+    [ "A"; ""; "M1"; "M2" ] (child_texts dm);
+  Signal.set dm_show false;
+  Signal.set dm_items [ "M2" ];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list string)) "dropdown_menu updated children"
+    [ "A"; "M2" ] (child_texts dm);
+  (* CollisionPadding via Slot_style.collision on popover, menu, and submenu *)
+  let pop =
+    mount context
+      (popover ~target:Cover
+         ~style:(Slot_style.collision ~collision_padding:12. ()) [])
+  in
+  let m =
+    mount context
+      (menu ~text:"File"
+         ~style:(Slot_style.collision ~collision_padding:10. ()) [])
+  in
+  let sub =
+    mount context
+      (submenu ~text:"More"
+         ~style:(Slot_style.collision ~collision_padding:6. ()) [])
+  in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "popover emits CollisionPadding 12." true
+    (property_value app pop CollisionPadding = FloatValue 12.);
+  let menu_dropdown = List.hd (Lui_runtime.children app m) in
+  Alcotest.(check bool) "menu dropdown emits CollisionPadding 10." true
+    (property_value app menu_dropdown CollisionPadding = FloatValue 10.);
+  let sub_dropdown = List.hd (Lui_runtime.children app sub) in
+  Alcotest.(check bool) "submenu dropdown emits CollisionPadding 6." true
+    (property_value app sub_dropdown CollisionPadding = FloatValue 6.);
+  Signal.dispose_scope scope
+
+let adr0008_ui_composites_and_tokens () =
+  let app, scope, context, _ = boundary_fixture () in
+  let find_button_by_text root label =
+    let rec walk node =
+      if
+        Lui_runtime.require_standard_node_kind app node = Button
+        && Property_map.find_opt TextValue (Hashtbl.find app.runtime_properties node)
+           = Some (StringValue label)
+      then Some node
+      else List.find_map walk (Lui_runtime.children app node)
+    in
+    match walk root with
+    | Some id -> id
+    | None -> Alcotest.failf "button %S not found" label
+  in
+  (* 1. Ui.form_sheet ~confirm_disabled and ~confirm_disabled_signal *)
+  let static_sheet =
+    Lui_elements.mount context
+      (Lui.Ui.form_sheet ~title:"Edit" ~confirm:("SaveStatic", ignore)
+         ~confirm_disabled:true [])
+  in
+  let save_static = find_button_by_text static_sheet "SaveStatic" in
+  let disabled_sig = Signal.state context.Lui_ui.ui_scheduler true in
+  let reactive_sheet =
+    Lui_elements.mount context
+      (Lui.Ui.form_sheet ~title:"Edit" ~confirm:("SaveReactive", ignore)
+         ~confirm_disabled_signal:(Signal.value disabled_sig) [])
+  in
+  let save_reactive = find_button_by_text reactive_sheet "SaveReactive" in
+  Signal.mount scope;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "static confirm_disabled sets Enabled=false" true
+    (property_value app save_static Enabled = BoolValue false);
+  Alcotest.(check bool) "reactive confirm_disabled starts Enabled=false" true
+    (property_value app save_reactive Enabled = BoolValue false);
+  Signal.set disabled_sig false;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "reactive confirm_disabled updates to Enabled=true" true
+    (property_value app save_reactive Enabled = BoolValue true);
+  (* 2. Dynamic if_ and keyed_list_section_item inside form_section & data_list *)
+  let show_row = Signal.state context.Lui_ui.ui_scheduler true in
+  let dyn_rows = Signal.state context.Lui_ui.ui_scheduler [ "r1"; "r2" ] in
+  let count_list_items root =
+    let rec walk node =
+      let self =
+        if Lui_runtime.require_standard_node_kind app node = ListItem then 1 else 0
+      in
+      self + List.fold_left (fun acc c -> acc + walk c) 0 (Lui_runtime.children app node)
+    in
+    walk root
+  in
+  let fsec =
+    Lui_elements.mount context
+      (Lui.Ui.form_section ~title:"Dynamic"
+         [
+           Lui_elements.if_ ~test:(Signal.value show_row)
+             (Lui.Ui.form_row (Lui_elements.text ~value:"conditional" []));
+           Lui_elements.keyed_list_section_item ~source:(Signal.value dyn_rows)
+             ~key:Fun.id ~cmp:String.compare
+             ~mount:(fun s ->
+               Lui.Ui.form_row (Lui_elements.text ~value:(Signal.sample s) []));
+         ])
+  in
+  let dlist =
+    Lui_elements.mount context
+      (Lui.Ui.data_list ~label:"Items"
+         [
+           Lui_elements.if_ ~test:(Signal.value show_row)
+             (Lui.Ui.data_row (Lui_elements.text ~value:"conditional" []));
+           Lui_elements.keyed_list_section_item ~source:(Signal.value dyn_rows)
+             ~key:Fun.id ~cmp:String.compare
+             ~mount:(fun s ->
+               Lui.Ui.data_row (Lui_elements.text ~value:(Signal.sample s) []));
+         ])
+  in
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "form_section starts with 3 ListItem rows" 3 (count_list_items fsec);
+  Alcotest.(check int) "data_list starts with 3 ListItem rows" 3 (count_list_items dlist);
+  Signal.set show_row false;
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "form_section drops conditional row with zero empty shells" 2
+    (count_list_items fsec);
+  Alcotest.(check int) "data_list drops conditional row with zero empty shells" 2
+    (count_list_items dlist);
+  Signal.set dyn_rows [];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "form_section empties with zero ListItem shells" 0
+    (count_list_items fsec);
+  Alcotest.(check int) "data_list empties with zero ListItem shells" 0
+    (count_list_items dlist);
+  (* 3. Typed token parameters on hstack, vstack, page, section *)
+  let hs =
+    Lui_elements.mount context
+      (Lui.Ui.hstack ~background:`card ~foreground:`foreground
+         ~border_color:`border ~corner_radius:`md ~gap:`lg ~padding:`sm [])
+  in
+  let vs =
+    Lui_elements.mount context
+      (Lui.Ui.vstack ~background:`surface ~foreground:`primary
+         ~border_color:`ring ~corner_radius:`xl ~gap:`xs ~padding:`lg [])
+  in
+  let pg =
+    Lui_elements.mount context
+      (Lui.Ui.page ~background:`background ~foreground:`foreground ~gap:`xl
+         ~padding:`page ~title:"P" [])
+  in
+  let sec =
+    Lui_elements.mount context
+      (Lui.Ui.section ~background:`surface_raised ~foreground:`muted_foreground
+         ~border_color:`input ~corner_radius:`lg ~gap:`sm ~padding:`md ~title:"S" [])
+  in
+  ignore (Lui_runtime.flush app);
+  List.iter
+    (fun (label, node, prop, expected) ->
+      Alcotest.(check bool) label true (property_value app node prop = expected))
+    [
+      "hstack background", hs, BackgroundValue, StringValue "card";
+      "hstack foreground", hs, ForegroundValue, StringValue "foreground";
+      "hstack border", hs, BorderColorValue, StringValue "border";
+      "hstack radius", hs, CornerRadius, IntValue 6;
+      "hstack gap", hs, Gap, IntValue 16;
+      "hstack padding", hs, PaddingValue, IntValue 8;
+      "vstack background", vs, BackgroundValue, StringValue "surface";
+      "vstack foreground", vs, ForegroundValue, StringValue "primary";
+      "vstack border", vs, BorderColorValue, StringValue "ring";
+      "vstack radius", vs, CornerRadius, IntValue 12;
+      "vstack gap", vs, Gap, IntValue 4;
+      "vstack padding", vs, PaddingValue, IntValue 16;
+      "page background", pg, BackgroundValue, StringValue "background";
+      "page foreground", pg, ForegroundValue, StringValue "foreground";
+      "page gap", pg, Gap, IntValue 24;
+      "page padding", pg, PaddingValue, IntValue 16;
+      "section background", sec, BackgroundValue, StringValue "surface-raised";
+      "section foreground", sec, ForegroundValue, StringValue "muted-foreground";
+      "section border", sec, BorderColorValue, StringValue "input";
+      "section radius", sec, CornerRadius, IntValue 8;
+      "section gap", sec, Gap, IntValue 8;
+      "section padding", sec, PaddingValue, IntValue 12;
+    ];
+  (* 4. Platform-adaptive spacing *)
+  let scale = [ `none; `xs; `sm; `md; `lg; `xl; `page ] in
+  Alcotest.(check (list int)) "MacOS spacing scale" [ 0; 4; 8; 12; 16; 24; 16 ]
+    (List.map (Lui.Tokens.space_value_for MacOS) scale);
+  Alcotest.(check (list int)) "IOS spacing scale" [ 0; 4; 10; 16; 20; 28; 20 ]
+    (List.map (Lui.Tokens.space_value_for IOS) scale);
+  Alcotest.(check (list int)) "AndroidOS spacing scale" [ 0; 4; 10; 16; 20; 28; 20 ]
+    (List.map (Lui.Tokens.space_value_for AndroidOS) scale);
+  let check_hstack_gap os host expected_gap =
+    let os_app =
+      Lui_runtime.create (Signal.scheduler ())
+        { backend_profile = profile os host; apply_batch = (fun _ -> true) }
+    in
+    let os_scope = Signal.scope "os-gap" in
+    let os_ctx = Lui_ui.context os_app os_scope in
+    let row = Lui_elements.mount os_ctx (Lui.Ui.hstack []) in
+    ignore (Lui_runtime.flush os_app);
+    Alcotest.(check bool) "platform-adaptive hstack gap" true
+      (property_value os_app row Gap = IntValue expected_gap);
+    Signal.dispose_scope os_scope
+  in
+  check_hstack_gap IOS SwiftUIHost 10;
+  check_hstack_gap AndroidOS KotlinHost 10;
+  check_hstack_gap MacOS SwiftUIHost 8;
+  check_hstack_gap GenericOS GenericHost 8;
   Signal.dispose_scope scope
 
 let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case name `Quick test)
@@ -1877,4 +2655,12 @@ let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case na
    "property binding diamond", property_binding_diamond;
    "Phase 4 row visibility", phase4_rows_are_not_disclosures;
    "Phase 4 native form sections", phase4_form_sheet_sections;
-   "Phase 4 authoring contract", phase4_authoring_contract]
+   "Phase 4 authoring contract", phase4_authoring_contract;
+   "ADR 0008 popover target diff", adr0008_popover_target_diff;
+   "ADR 0008 dropdown_menu target diff", adr0008_dropdown_menu_target_diff;
+   "ADR 0008 split sizing diff", adr0008_split_sizing_diff;
+   "ADR 0008 text truncate style precedence", adr0008_text_truncate_style_precedence;
+   "ADR 0008 protocol numeric and JSON enums", adr0008_protocol_numeric_and_json_enums;
+   "ADR 0008 keyed_range optimizations", adr0008_keyed_range_optimizations;
+   "ADR 0008 polymorphic el and collision style", adr0008_polymorphic_el_and_collision_style;
+   "ADR 0008 Ui composites and tokens", adr0008_ui_composites_and_tokens]

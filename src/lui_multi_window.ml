@@ -104,8 +104,8 @@ let open_window ?view t backend =
      replaceable, matching the reloadable-app layout. *)
   let root = Lui_runtime.create_node runtime Lui_protocol.Root in
   let view_node =
-    (view surface context (Signal.value t.app_model) send_action)
-      context None
+    Lui_elements.mount context
+      (view surface context (Signal.value t.app_model) send_action)
   in
   Lui_runtime.insert_child runtime root view_node 0;
   surface.surface_root <- root;

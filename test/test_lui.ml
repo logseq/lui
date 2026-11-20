@@ -788,7 +788,7 @@ let ext_dyn_view _context model_source _send =
            Lui_elements.column
              [
                Lui_elements.text ~value:"before" [];
-               (fun context parent ->
+               Lui_elements.custom (fun context parent ->
                  let node = Lui_ui.extension context "web-view" in
                  Lui_ui.extension_property context node "url"
                    (Lui_protocol.StringValue m.ex_url);
@@ -859,7 +859,7 @@ let drawer_view _context model_source _send =
                           | Some url ->
                             Lui_elements.column
                               [
-                                (fun context parent ->
+                                Lui_elements.custom (fun context parent ->
                                   let node =
                                     Lui_ui.extension context "web-view"
                                   in
@@ -1088,10 +1088,10 @@ let test_dyn_remount_swaps_incompatible_kind () =
   ignore (Lui_app.dispose app)
 
 let capture_node cell element : Lui_elements.t =
- fun context parent ->
-  let node = element context parent in
-  cell := node;
-  node
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_elements.mount context ?parent element in
+    cell := node;
+    node)
 
 (* Drive-backed sessions mount the app against a replayed node tree, so
    behavior tests dispatch semantic events and assert on the tree a host
@@ -1129,19 +1129,20 @@ let drive_press s sel =
   Drive.Session.press s (drive_node s sel).Drive.Model.id
 
 let test_dynamic_root_key ?(keyed_child = false) old_key next_key retain () =
-  let view _context source _send context parent =
-    let host = Lui_ui.column context in
-    Option.iter (fun parent -> Lui_ui.append context parent host) parent;
-    ignore (Lui_dynamic.switch context host source ( = )
-      (fun branch (key, value) ->
-        let root = Lui_ui.scroll branch in
-        Option.iter (Lui_ui.key branch root) key;
-        let child = Lui_ui.create branch Lui_protocol.Text in
-        if keyed_child then Lui_ui.key branch child "stable-content";
-        Lui_ui.string_property branch child Lui_protocol.TextValue value;
-        Lui_ui.append branch root child;
-        root));
-    host
+  let view _context source _send =
+    Lui_elements.custom (fun context parent ->
+      let host = Lui_ui.column context in
+      Option.iter (fun parent -> Lui_ui.append context parent host) parent;
+      ignore (Lui_dynamic.switch context host source ( = )
+        (fun branch (key, value) ->
+          let root = Lui_ui.scroll branch in
+          Option.iter (Lui_ui.key branch root) key;
+          let child = Lui_ui.create branch Lui_protocol.Text in
+          if keyed_child then Lui_ui.key branch child "stable-content";
+          Lui_ui.string_property branch child Lui_protocol.TextValue value;
+          Lui_ui.append branch root child;
+          root));
+      host)
   in
   let session = drive_mount ~initial:(old_key, "first")
     ~reducer:(fun _ next -> next) ~view () in
@@ -1893,10 +1894,11 @@ let test_shrink_contract () =
     let backend = { (recording_backend ()) with
       backend_profile = profile GenericOS host } in
     Lui_app.create backend () (fun model () -> model)
-      (fun _ _ _ context parent ->
-        let node = Lui_elements.row ?shrink [] context parent in
-        configure context node;
-        node)
+      (fun _ _ _ ->
+        Lui_elements.custom (fun context parent ->
+          let node = Lui_elements.mount context ?parent (Lui_elements.row ?shrink []) in
+          configure context node;
+          node))
   in
   List.iter (fun host ->
     let set = ref (fun () -> ()) and remove = ref (fun () -> ()) in
@@ -2891,9 +2893,10 @@ let test_vocab_batch2 () =
       (fun _context _model_source _send ->
          Lui_elements.column
            [ capture_node menu_node
-               (Lui_elements.dropdown_menu_view (Lui_elements.dropdown_menu ~at:(48.0, 96.0)
-                  ~on_dismiss:(fun _event -> ())
-                  [ Lui_elements.dropdown_menu_item ~text:"Item" [] ])) ])
+               (Lui_elements.dropdown_menu_view
+                  (Lui_elements.dropdown_menu ~target:(Lui_elements.Menu_at (48.0, 96.0))
+                     ~on_dismiss:(fun _event -> ())
+                     [ Lui_elements.dropdown_menu_item ~text:"Item" [] ])) ])
   in
   ignore (Lui_app.start menu_app);
   flush_app menu_app;
@@ -3155,8 +3158,8 @@ let test_visual_appearance_props () =
                   ~line_height:"1.4" ~letter_spacing:(-0.5)
                   ~white_space:`nowrap ~text_overflow:`ellipsis
                   ~overflow:`hidden []);
-             capture_node row_node (fun context parent ->
-                let node = Lui_elements.row ~grow:1.0 [] context parent in
+             capture_node row_node (Lui_elements.custom (fun context parent ->
+                let node = Lui_elements.mount context ?parent (Lui_elements.row ~grow:1.0 []) in
                 Lui_ui.string_property context node Position "absolute";
                 Lui_ui.float_property context node Inset 0.0;
                 Lui_ui.int_property context node ZIndex 40;
@@ -3172,7 +3175,7 @@ let test_visual_appearance_props () =
                   "inset 0 0 0 1px var(--color-primary)";
                 Lui_ui.float_property context node DisabledOpacity 0.5;
                 Lui_ui.float_property context node MaxHeightViewport 0.65;
-                node) ])
+                node)) ])
   in
   ignore (Lui_app.start app);
   flush_app app;
@@ -4247,23 +4250,25 @@ let navigation_fixture ?host_profile ?(apple=true) ?(accept=true) ?(reenter=fals
   in
   let label_slot = Signal.state_slot "navigation-root-label" in
   let view _context source send =
-    let root context parent =
-      let label = Signal.state_at context.Lui_ui.ui_scheduler
-          context.Lui_ui.ui_state_scope label_slot "before" in
-      edit := Some (fun value -> Signal.set label value);
-      incr root_mounts;
-      Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr root_disposes);
-      Lui_elements.list [Lui_elements.list_item
-        [Lui_elements.text ~value_signal:(Signal.value label) []]] context parent
+    let root =
+      Lui_elements.scoped (fun context ->
+        let label = Signal.state_at context.Lui_ui.ui_scheduler
+            context.Lui_ui.ui_state_scope label_slot "before" in
+        edit := Some (fun value -> Signal.set label value);
+        incr root_mounts;
+        Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr root_disposes);
+        Lui_elements.list [Lui_elements.list_item
+          [Lui_elements.text ~value_signal:(Signal.value label) []]])
     in
     Lui_navigation.navigation_stack ~path_signal:source
       ~on_path_change:(fun path ->
         incr callback_count;
         if accept then ignore (send (if reenter then Lui_navigation.Path.push "replacement" path else path)))
-      ~destination:(fun entry context parent ->
-        incr destination_mounts;
-        Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr destination_disposes);
-        Lui_elements.text ~value:entry.Lui_navigation.route [] context parent)
+      ~destination:(fun entry ->
+        Lui_elements.scoped (fun context ->
+          incr destination_mounts;
+          Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr destination_disposes);
+          Lui_elements.text ~value:entry.Lui_navigation.route []))
       ~root ()
   in
   let s =
@@ -4411,10 +4416,11 @@ let test_navigation_entry_state () =
       ~view:(fun _ source send ->
     navigation_stack ~path_signal:source ~on_path_change:(fun path -> ignore (send path))
       ~root:(Lui_elements.box [])
-      ~destination:(fun entry context parent ->
-        let local = Signal.state_at context.Lui_ui.ui_scheduler context.Lui_ui.ui_state_scope slot 0 in
-        Hashtbl.add states entry.id (local, context.Lui_ui.ui_state_scope);
-        Lui_elements.text ~value_signal:(Signal.map string_of_int (Signal.value local)) [] context parent) ()) ()
+      ~destination:(fun entry ->
+        Lui_elements.scoped (fun context ->
+          let local = Signal.state_at context.Lui_ui.ui_scheduler context.Lui_ui.ui_state_scope slot 0 in
+          Hashtbl.add states entry.id (local, context.Lui_ui.ui_state_scope);
+          Lui_elements.text ~value_signal:(Signal.map string_of_int (Signal.value local)) [])) ()) ()
   in
   let a = Path.push (fun () -> "same") Path.empty in
   let b = Path.push (fun () -> "same") a in
@@ -4569,9 +4575,10 @@ let test_choice_label_opacity () =
     let backend={backend_profile=profile MacOS GenericHost;
       apply_batch=(fun batch -> batches:=batch::!batches;true)} in
     let app=Lui_app.create backend () (fun model () -> model)
-      (fun _ _ _ ctx parent ->
-        let node=Lui_elements.checkbox ~text:"Caption café 中文 😀" [] ctx parent in
-        Lui_ui.float_property ctx node property 0.7;node) in
+      (fun _ _ _ ->
+        Lui_elements.custom (fun ctx parent ->
+          let node=Lui_elements.mount ctx ?parent (Lui_elements.checkbox ~text:"Caption café 中文 😀" []) in
+          Lui_ui.float_property ctx node property 0.7;node)) in
     Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
       ignore (Lui_app.start app);
       ignore (Lui_app.flush app);
@@ -4730,16 +4737,17 @@ let fixture ?(host = WebHost) ?(count = 100_000) ?height
          ?scroll_key:(if resolver then Some (fun row -> string_of_int row.identity)
                      else None)
          ~source ~key:(fun row -> row.identity) ~cmp:Int.compare
-         ~mount:(fun item_source -> fun context parent ->
-           let row = Signal.sample item_source in
-           if !fail_row = Some row.identity then failwith "row constructor failed";
-           incr mounts;
-           Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr disposals);
-           let text = Signal.own_signal context.Lui_ui.ui_scope
-             (Signal.map (fun row -> row.text) item_source) in
-           Lui_elements.text_field ~text_signal:text
-             ~on_input:(fun text ->
-               ignore (send (Edit (row.identity, text)))) [] context parent)
+         ~mount:(fun item_source ->
+           Lui_elements.scoped (fun context ->
+             let row = Signal.sample item_source in
+             if !fail_row = Some row.identity then failwith "row constructor failed";
+             incr mounts;
+             Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr disposals);
+             let text = Signal.own_signal context.Lui_ui.ui_scope
+               (Signal.map (fun row -> row.text) item_source) in
+             Lui_elements.text_field ~text_signal:text
+               ~on_input:(fun text ->
+                 ignore (send (Edit (row.identity, text)))) []))
          ()] in
   let app = Lui_app.create backend (rows count) reducer view in
   ignore (Lui_app.start app);
@@ -5173,7 +5181,7 @@ let test_shared_retention_handoff () =
             (fun () -> failwith "shared candidate rejected");
           Signal.on_dispose context.Lui_ui.ui_scope (fun () ->
             if value = 0 && !reject_retirement then failwith "shared retirement failed");
-          make value context None)) in
+          Lui_elements.mount context (make value))) in
       column [if mode = `Source_only then
         capture_node mounted_owner (scroll ~virtual_owner:owner_a [
           branch (fun value -> lists value source_a)])
@@ -5433,10 +5441,11 @@ let test_extension_roots_need_no_wrapper_or_foreign_properties () =
   let view _context source _send =
     Lui_elements.virtual_list ~height:100 ~item_extent:20. ~overscan:2
       [Lui_elements.virtual_rows ~source ~key:(fun row -> row.identity)
-         ~cmp:Int.compare ~mount:(fun _source -> fun context parent ->
-           let node = Lui_ui.extension context "virtual-test-row" in
-           Option.iter (fun parent -> Lui_ui.append context parent node) parent;
-           node) ()] in
+         ~cmp:Int.compare ~mount:(fun _source ->
+           Lui_elements.custom (fun context parent ->
+             let node = Lui_ui.extension context "virtual-test-row" in
+             Option.iter (fun parent -> Lui_ui.append context parent node) parent;
+             node)) ()] in
   let app = Lui_app.create_with_extensions backend registry (rows 100_000) reducer view in
   Fun.protect (fun () ->
     ignore (Lui_app.start app); ignore (Lui_app.flush app);
@@ -5555,16 +5564,15 @@ let test_final_sparse_metadata_matches_committed_children () =
   let backend = { backend_profile = profile WebOS WebHost;
     apply_batch = (fun batch -> batches := batch :: !batches; true) } in
   let view _context _source _send =
-    fun context parent ->
-      let node = Lui_elements.virtual_list
-        [Lui_elements.text ~value:"first" []; Lui_elements.text ~value:"second" []]
-        context parent in
+    Lui_elements.custom (fun context parent ->
+      let node = Lui_elements.mount context ?parent (Lui_elements.virtual_list
+        [Lui_elements.text ~value:"first" []; Lui_elements.text ~value:"second" []]) in
       list := node;
       List.iter (fun (property,value) ->
         Lui_runtime.set_prop context.Lui_ui.ui_application node property value)
         [VirtualTotalCount, IntValue 100; VirtualGeneration, IntValue 1;
          VirtualIndices, StringValue "[0,99]"; VirtualScrollIndex, IntValue (-1)];
-      node in
+      node) in
   let app = Lui_app.create backend () (fun model _ -> model) view in
   Fun.protect (fun () ->
     ignore (Lui_app.start app); ignore (Lui_app.flush app);
@@ -5763,20 +5771,21 @@ type startup_constructor = Startup_plain | Startup_extensions
   | Startup_reloadable | Startup_reloadable_extensions
 
 let startup_view ~with_extension ~observed_profile ~probe _context source _send =
-  fun context parent ->
+  Lui_elements.scoped (fun context ->
     observed_profile := Some context.Lui_ui.ui_profile;
-    let extension context parent =
-      let node = Lui_ui.extension context "startup-host-probe" in
-      probe := Some node;
-      Option.iter (fun parent -> Lui_ui.append context parent node) parent;
-      node in
+    let extension =
+      Lui_elements.custom (fun context parent ->
+        let node = Lui_ui.extension context "startup-host-probe" in
+        probe := Some node;
+        Option.iter (fun parent -> Lui_ui.append context parent node) parent;
+        node) in
     Lui_elements.column
       (Lui_elements.virtual_list ~height:100 ~item_extent:20. ~overscan:2
         [Lui_elements.virtual_rows ~source ~key:(fun row -> row.identity)
            ~cmp:Int.compare ~mount:(fun source ->
              let row = Signal.sample source in
              Lui_elements.text_field ~key:(string_of_int row.identity) ~text:row.text []) ()]
-       :: if with_extension then [extension] else []) context parent
+       :: if with_extension then [extension] else []))
 
 let startup_application ?virtual_rows ~backend ~count constructor =
   let observed_profile = ref None and probe = ref None in
@@ -5977,8 +5986,9 @@ let test_runtime_constructor_capability_is_immutable_and_owned () =
       let context = Lui_ui.context runtime scope in
       let source = Signal.state scheduler (rows count) in
       let observed_profile = ref None and probe = ref None in
-      let root = (startup_view ~with_extension ~observed_profile ~probe context
-        (Signal.value source) (fun _ -> false)) context None in
+      let root = Lui_elements.mount context
+        (startup_view ~with_extension ~observed_profile ~probe context
+           (Signal.value source) (fun _ -> false)) in
       Fun.protect (fun () ->
         Signal.mount scope; ignore (Lui_runtime.flush runtime);
         let list = startup_list runtime in

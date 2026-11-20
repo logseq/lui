@@ -5,7 +5,12 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { typedViewFunctions, typedViewSchema } from '../typed_view_schema.mjs';
+import {
+  parseSlotStyle,
+  parseSlotStyleBucket,
+  typedViewFunctions,
+  typedViewSchema,
+} from '../typed_view_schema.mjs';
 import { callbackContract, renderEventPayloads } from '../event_payload_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -14,9 +19,16 @@ const generator = join(repository, 'tooling/generate_component_schema.mjs');
 test('element constructors expose only admitted properties and events', () => {
   const schema = JSON.parse(readFileSync(join(repository, 'schema/components.json'), 'utf8'));
   const admission = JSON.parse(readFileSync(join(repository, 'schema/apple-property-admission.json'), 'utf8'));
-  const functions = typedViewFunctions(readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8'));
+  const signature = readFileSync(join(repository, 'src/lui_elements.mli'), 'utf8');
+  const functions = typedViewFunctions(signature);
+  const slotStyle = parseSlotStyle(signature);
+  assert.ok(slotStyle, 'missing Slot_style module signature');
+  assert.equal(slotStyle.bucketProperties.get('base')?.length, 12);
+  assert.equal(slotStyle.bucketProperties.get('typography_caps')?.length, 20);
+  assert.equal(slotStyle.bucketProperties.get('text_caps')?.length, 22);
+  assert.equal(slotStyle.bucketProperties.get('surface_caps')?.length, 21);
   const nesting = readFileSync(join(repository, 'ppx/lui_nesting_schema.ml'), 'utf8');
-  const mapping = nesting.match(/let constructor = function([\s\S]*?)\nlet exports/)[1];
+  const mapping = nesting.match(/let constructor = function([\s\S]*?)\nlet mandatory_labels/)[1];
   const kinds = new Map(schema.nodeKinds.map(({ lg, wire }) => [lg, wire]));
   const constructors = [...mapping.matchAll(/^\s*\| (.+?) -> Some \((\w+), (\w+),/gm)]
     .flatMap(([, names, root, children]) => [...names.matchAll(/"(\w+)"/g)]
@@ -59,7 +71,20 @@ test('element constructors expose only admitted properties and events', () => {
       if (!match) continue;
       const [, parameter, type] = match;
       const base = parameter.replace(/_signal$/, '');
-      if (base === 'style' && type === 'Slot_style.t') continue;
+      if (base === 'style' && type.startsWith('Slot_style.')) {
+        const bucket = parseSlotStyleBucket(type);
+        assert.ok(bucket && slotStyle.bucketProperties.has(bucket),
+          `un-indexed or unknown Slot_style capability on ${constructor}.${parameter}: ${type}`);
+        const styleKind = ['menu', 'submenu'].includes(original) ? childKind : kind;
+        for (const property of slotStyle.bucketProperties.get(bucket)) {
+          assert.ok(schema.properties.some(({ wire }) => wire === property),
+            `unknown Slot_style property ${constructor}.${parameter}: ${property}`);
+          if (!admission.kinds[styleKind].includes(property)) {
+            violations.push(`${constructor}.${parameter} (Slot_style.${bucket}): ${property} unsupported on ${styleKind}`);
+          }
+        }
+        continue;
+      }
       if (base === 'key' || /^(t|\w+_el)( list)?$/.test(type)) continue;
       if (constructor === 'scroll' && base === 'virtual_owner' && type === 'Lui_virtual.owner') continue;
       if (original === 'virtual_list' && base === 'viewport' && type === 'Lui_virtual.source') continue;
@@ -85,6 +110,11 @@ test('element constructors expose only admitted properties and events', () => {
         : aliases[base] ?? [base.replaceAll('_', '-')];
       if (constructor === 'popover' && base === 'target') properties =
         ['x', 'y', 'anchor', 'anchor-target', 'anchor-rect', 'anchor-alignment', 'anchor-offset', 'anchor-alignment-offset'];
+      if (constructor === 'dropdown_menu' && base === 'target') {
+        assert.ok(type === 'dropdown_target' || type === 'dropdown_target Signal.signal',
+          `unexpected dropdown_menu.${parameter} type: ${type}`);
+        properties = ['x', 'y', 'anchor', 'anchor-alignment', 'anchor-offset'];
+      }
       if (constructor === 'split' && base === 'sizing') properties = ['value', 'first-pane-width'];
       if (constructor === 'split' && base === 'motion') properties = ['resize-duration', 'resize-easing', 'resize-origin'];
       if (['text', 'heading', 'paragraph', 'label'].includes(original) && base === 'role') properties = ['style-class'];
@@ -116,6 +146,32 @@ test('raw constructor callbacks and schema payload drift are rejected', () => {
   const changed = structuredClone(schema);
   changed.events.find(event => event.lg === 'ValueChanged').fields[1] = ':int';
   assert.throws(() => renderEventPayloads(changed), /incompatible callback scalar on_resize/);
+  const unindexedStyle = signature.replace('?style:Slot_style.base Slot_style.t', '?style:Slot_style.t');
+  assert.notEqual(unindexedStyle, signature);
+  assert.throws(() => typedViewSchema(schema, unindexedStyle, implementation, {admission}),
+    /unknown Slot_style capability bucket/);
+  const overbroadStyle = signature.replace(
+    /val switch_ :\n\s*\?style:Slot_style\.base Slot_style\.t/,
+    'val switch_ :\n  ?style:Slot_style.text_caps Slot_style.t',
+  );
+  assert.notEqual(overbroadStyle, signature);
+  assert.throws(() => typedViewSchema(schema, overbroadStyle, implementation, {admission}),
+    /Slot_style\.text_caps property .* unsupported on switch/);
+});
+
+test('nesting schema registers Ui.form_section and polymorphic scoped adapters', () => {
+  const nesting = readFileSync(join(repository, 'ppx/lui_nesting_schema.ml'), 'utf8');
+  const scopedSection = nesting.match(/let scoped_adapter = function([\s\S]*?)\nlet dynamic_adapter/)[1];
+  for (const polymorphic of ['button', 'row', 'dropdown_menu', 'menu_item', 'divider', 'list_item']) {
+    assert.equal(scopedSection.includes(`"${polymorphic}"`), false,
+      `${polymorphic} should fall through to polymorphic "scoped" adapter`);
+  }
+  assert.ok(scopedSection.includes('"scoped_dropdown_menu" -> "scoped_dropdown_menu"'));
+  assert.ok(scopedSection.includes('"scoped_toolbar" -> "scoped_toolbar"'));
+  assert.ok(scopedSection.includes('| _ -> "scoped"'));
+  const uiSection = nesting.match(/let ui_constructor = function([\s\S]*?)$/)[1];
+  assert.ok(uiSection.includes('| "form_section" -> Some (ListSection, ListSection, Children_list)'));
+  assert.ok(uiSection.includes('| "form_sheet" -> Some (Sheet, ListContainer, Children_list)'));
 });
 
 test('validation and rendering reject unknown callback events', () => {

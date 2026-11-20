@@ -66,7 +66,7 @@ type retained_page = { node : int; context : Lui_ui.ui_context }
 
 let navigation_stack ?key ~path_signal ~on_path_change ~destination ~root () :
     Lui_elements.t =
- fun outer parent ->
+ Lui_elements.custom (fun outer parent ->
   let apple = Lui_ui.host outer = SwiftUIHost in
   let node =
     if apple then Lui_ui.extension outer "navigation-stack"
@@ -106,7 +106,7 @@ let navigation_stack ?key ~path_signal ~on_path_change ~destination ~root () :
     if apple then
       Lui_ui.extension_property page_context page "entry-id" (StringValue id);
     (* A real wrapper gives even empty roots/destinations a stable child slot. *)
-    ignore (Lui_elements.box ~grow:1. [ content ] page_context (Some page));
+    ignore (Lui_elements.mount page_context ~parent:page (Lui_elements.box ~grow:1. [ content ]));
     if apple then Lui_ui.append context node page;
     let value = { node = page; context = page_context } in
     Signal.mount page_context.Lui_ui.ui_scope;
@@ -207,7 +207,7 @@ let navigation_stack ?key ~path_signal ~on_path_change ~destination ~root () :
         []
     in
     (* Put the affordance outside the changing content slot. *)
-    let back_node = back context None in
+    let back_node = Lui_elements.mount context back in
     Lui_runtime.insert_child application node back_node 0
   end;
   render ~force:true !current;
@@ -237,4 +237,4 @@ let navigation_stack ?key ~path_signal ~on_path_change ~destination ~root () :
       Hashtbl.clear retained;
       release root_page;
       Lui_runtime.unregister_dynamic_segment application segment);
-  node
+  node)

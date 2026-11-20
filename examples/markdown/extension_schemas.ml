@@ -46,29 +46,27 @@ let registry () =
 
 let markdown_editor ?key ?text ?text_signal ?placeholder ?readonly ~on_event ()
     : Lui_elements.t =
- fun context parent ->
-  let node = Lui_ui.extension context "markdown-editor" in
-  Option.iter (Lui_ui.key context node) key;
-  Option.iter
-    (fun value ->
-       Lui_ui.extension_property context node "text" (StringValue value))
-    text;
-  Option.iter
-    (fun signal ->
-       Lui_ui.extension_property_signal context node "text"
-         (Signal.map (fun value -> StringValue value) signal))
-    text_signal;
-  Option.iter
-    (fun value ->
-       Lui_ui.extension_property context node "placeholder"
-         (StringValue value))
-    placeholder;
-  Option.iter
-    (fun value ->
-       Lui_ui.extension_property context node "readonly" (BoolValue value))
-    readonly;
-  (match parent with
-   | Some parent -> Lui_ui.append context parent node
-   | None -> ());
-  Lui_ui.on_event context node on_event;
-  node
+  Lui_elements.custom (fun context parent ->
+    let node = Lui_ui.extension context "markdown-editor" in
+    Option.iter (Lui_ui.key context node) key;
+    Option.iter
+      (fun value ->
+         Lui_ui.extension_property context node "text" (StringValue value))
+      text;
+    Option.iter
+      (fun signal ->
+         Lui_ui.extension_property_signal context node "text"
+           (Signal.map (fun value -> StringValue value) signal))
+      text_signal;
+    Option.iter
+      (fun value ->
+         Lui_ui.extension_property context node "placeholder"
+           (StringValue value))
+      placeholder;
+    Option.iter
+      (fun value ->
+         Lui_ui.extension_property context node "readonly" (BoolValue value))
+      readonly;
+    Lui_elements.attach context parent node;
+    Lui_ui.on_event context node on_event;
+    node)
