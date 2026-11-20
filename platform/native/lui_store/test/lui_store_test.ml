@@ -235,6 +235,31 @@ let test_ops_on_missing_are_ignored () =
       DropNode 99 ];
   check int "still empty" 0 (Lui_store.node_count t)
 
+(* H2: RemoveChild(parent, child) when child is not in that parent's
+   list must not add the child to the root set. Doing so duplicates it
+   in preorder (parent(3)=1 still, but 3 is also a root). *)
+let bounded_preorder t =
+  let ids = ref [] in
+  let n = ref 0 in
+  (try
+     Lui_store.iter_preorder t (fun id ->
+       incr n;
+       if !n > 32 then failwith "preorder loop";
+       ids := id :: !ids)
+   with Failure _ -> ());
+  List.rev !ids
+
+let test_stale_remove_child_keeps_real_parent () =
+  let t = Lui_store.create () in
+  apply t
+    [ CreateNode (1, Column); CreateNode (2, Column); CreateNode (3, Text);
+      InsertChild (1, 3, 0) ];
+  Lui_store.apply_op t (RemoveChild (2, 3));
+  check (option int) "parent of 3 stays 1" (Some 1) (Lui_store.parent t 3);
+  check (list int) "child stays under 1" [3] (Lui_store.child_ids t 1);
+  check (list int) "roots do not gain 3" [1; 2] (Lui_store.root_ids t);
+  check (list int) "preorder visits 3 once" [1; 3; 2] (bounded_preorder t)
+
 (* Recreate must drop the previous subtree: otherwise children of the
    old node stay in the table with parent=Some id while the replacement
    starts empty. *)
@@ -425,6 +450,8 @@ let () =
          test_case "recreate drops subtree" `Quick
            test_create_replaces_drops_subtree;
          test_case "roots" `Quick test_root_ids;
+         test_case "stale RemoveChild keeps real parent" `Quick
+           test_stale_remove_child_keeps_real_parent;
          test_case "preorder allocation" `Quick test_preorder_allocation;
          test_case "streamed preorder order" `Quick test_iter_preorder_order;
          test_case "kind lookup allocation" `Quick test_kind_lookup_allocation;

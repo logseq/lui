@@ -499,40 +499,51 @@ let apply_op t = function
   | RemoveChild (parent, child) as op -> (
     match (Hashtbl.find_opt t.nodes parent, Hashtbl.find_opt t.nodes child) with
     | Some p, Some c ->
-      if c.parent = Some parent then (
-        unlink p c;
-        c.parent <- None)
-      else begin
-        (* Defensive scan: the child claims a different parent but the
-           op names this one — walk the list and cut any matching link
-           so a stale record cannot leave the id listed twice. Only
-           clear the parent link when a link was actually cut: when the
-           child is not in this list at all it still sits in its real
-           parent's list, and dropping [c.parent] would leave it
-           reachable both there and as a root. *)
-        let rec scan prev cur =
-          match cur with
-          | None -> ()
-          | Some c' ->
-            if c'.id = child then (
-              let next = c'.next_sib in
-              (match prev with
-               | Some s -> s.next_sib <- next
-               | None -> p.first_child <- next);
-              (match next with
-               | Some s -> s.prev_sib <- prev
-               | None -> p.last_child <- prev);
-              p.child_count <- p.child_count - 1;
-              c'.prev_sib <- None;
-              c'.next_sib <- None;
-              c'.parent <- None)
-            else scan cur c'.next_sib
-        in
-        scan None p.first_child
-      end;
-      Hashtbl.replace t.roots child ();
-      mark_dirty_mask t parent (d_structure lor d_layout lor d_paint);
-      mark_dirty_mask t child (d_structure lor d_paint)
+      let unlinked =
+        if c.parent = Some parent then (
+          unlink p c;
+          c.parent <- None;
+          true)
+        else begin
+          (* Defensive scan: the child claims a different parent but the
+             op names this one — walk the list and cut any matching link
+             so a stale record cannot leave the id listed twice. Only
+             clear the parent link when a link was actually cut: when the
+             child is not in this list at all it still sits in its real
+             parent's list, and dropping [c.parent] would leave it
+             reachable both there and as a root. *)
+          let cut = ref false in
+          let rec scan prev cur =
+            match cur with
+            | None -> ()
+            | Some c' ->
+              if c'.id = child then (
+                let next = c'.next_sib in
+                (match prev with
+                 | Some s -> s.next_sib <- next
+                 | None -> p.first_child <- next);
+                (match next with
+                 | Some s -> s.prev_sib <- prev
+                 | None -> p.last_child <- prev);
+                p.child_count <- p.child_count - 1;
+                c'.prev_sib <- None;
+                c'.next_sib <- None;
+                c'.parent <- None;
+                cut := true)
+              else scan cur c'.next_sib
+          in
+          scan None p.first_child;
+          !cut
+        end
+      in
+      (* H2: a stale RemoveChild that unlinked nothing must not promote
+         the child to the forest roots — that duplicates it in preorder
+         while parent(child) still names the real parent. *)
+      if unlinked then begin
+        Hashtbl.replace t.roots child ();
+        mark_dirty_mask t parent (d_structure lor d_layout lor d_paint);
+        mark_dirty_mask t child (d_structure lor d_paint)
+      end
     | _ -> ());
     journal_push t op
 
