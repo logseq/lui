@@ -46,6 +46,7 @@
   lui_gl
   lui_vulkan
   lui_sdl3
+  lui_resource
   ocaml-signal
   unix))
 

@@ -70,8 +70,19 @@ type executor = (unit -> unit) -> unit
 val executor_immediate : executor
 
 (* Runs each job on a fresh {!Domain}. Loaders' C stubs that release
-   the runtime system (e.g. libcurl) run truly in parallel. *)
+   the runtime system (e.g. libcurl) run truly in parallel. Prefer
+   {!executor_pool} for production hosts: unbounded spawn can raise
+   past the domain cap. *)
 val executor_domain : executor
+
+(* [executor_pool ~workers ()] is a bounded worker pool. The default
+   worker count is [min 4 (recommended_domains - 1)], at least 1. *)
+val executor_pool : ?workers:int -> unit -> executor
+
+(* Hosts install a wake so a worker completion unblocks the event
+   loop (typically [Lui_sdl3.run_on_main_thread]). Completions still
+   publish only inside {!drain}. *)
+val set_completion_wake : (unit -> unit) -> unit
 
 (* [executor_queued ()] is [(exec, pump)]: [exec] queues jobs and
    [pump] runs every queued job, returning how many it ran. For tests
@@ -81,7 +92,7 @@ val executor_queued : unit -> executor * (unit -> int)
 type 'value t
 
 (* [create ?executor ?retire ()] is an empty cache. [executor] defaults
-   to {!executor_domain}. [retire v] releases a discarded value on the
+   to a bounded {!executor_pool}. [retire v] releases a discarded value on the
    foreground — called for stale/cancelled completions, for a [Ready]
    value replaced by a newer publish, and for [Ready] values dropped by
    {!invalidate}/{!clear}/scope dispose; use it to free external

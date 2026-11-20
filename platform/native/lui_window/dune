@@ -33,6 +33,7 @@
   lui_blit
   lui_text
   lui_sdl3
+  lui_resource
   ocaml-signal
   unix)
  (preprocess (pps lui_ppx))

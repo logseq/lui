@@ -47,6 +47,50 @@ type executor = (unit -> unit) -> unit
 let executor_immediate job = job ()
 let executor_domain job = ignore (Domain.spawn job)
 
+(* Completions are published on the foreground via {!drain}; this hook
+   wakes the host loop so drain runs promptly. Hosts install
+   [Lui_sdl3.run_on_main_thread] (or equivalent). *)
+let completion_wake = ref (fun () -> ())
+let set_completion_wake f = completion_wake := f
+let wake_completion () = try !completion_wake () with _ -> ()
+
+let rec pool_worker q m c stop () =
+  Mutex.lock m;
+  let rec wait () =
+    if Atomic.get stop then Mutex.unlock m
+    else
+      match Queue.take_opt q with
+      | Some job ->
+        Mutex.unlock m;
+        (try job () with _ -> ());
+        pool_worker q m c stop ()
+      | None ->
+        Condition.wait c m;
+        wait ()
+  in
+  wait ()
+
+let executor_pool ?(workers = 4) () : executor =
+  let workers = max 1 workers in
+  let q = Queue.create () in
+  let m = Mutex.create () in
+  let c = Condition.create () in
+  let stop = Atomic.make false in
+  let _ =
+    Array.init workers (fun _ -> Domain.spawn (pool_worker q m c stop))
+  in
+  fun job ->
+    Mutex.lock m;
+    Queue.push job q;
+    Condition.signal c;
+    Mutex.unlock m
+
+let default_pool_workers () =
+  let n = Domain.recommended_domain_count () in
+  max 1 (min 4 (max 1 (n - 1)))
+
+let default_executor = lazy (executor_pool ~workers:(default_pool_workers ()) ())
+
 let executor_queued () =
   let q = Queue.create () in
   let m = Mutex.create () in
@@ -158,7 +202,7 @@ let drain c =
   List.iter (publish c) batch;
   List.length batch
 
-let create ?(executor = executor_domain) ?(retire = fun _ -> ()) () =
+let create ?(executor = Lazy.force default_executor) ?(retire = fun _ -> ()) () =
   incr last_cache_id;
   let c =
     {
@@ -188,17 +232,24 @@ let spawn c e load =
     }
   in
   let generation = e.generation in
-  c.executor (fun () ->
-      let result =
-        try load task
-        with exn -> Error (Printexc.to_string exn)
-      in
-      Mutex.lock c.mutex;
-      Queue.push
-        { comp_entry = e; comp_generation = generation; comp_result = result }
-        c.mailbox;
-      Mutex.unlock c.mutex);
-  Some task
+  let run () =
+    let result =
+      try load task
+      with exn -> Error (Printexc.to_string exn)
+    in
+    Mutex.lock c.mutex;
+    Queue.push
+      { comp_entry = e; comp_generation = generation; comp_result = result }
+      c.mailbox;
+    Mutex.unlock c.mutex;
+    wake_completion ()
+  in
+  try
+    c.executor run;
+    Some task
+  with exn ->
+    e.state <- Failed (Printexc.to_string exn);
+    None
 
 let add_watcher e scope = function
   | None -> ()

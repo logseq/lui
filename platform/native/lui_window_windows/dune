@@ -41,7 +41,8 @@
   lui_shell_windows
   lui_text_dwrite
   lui_raster
-  lui_d3d11))
+  lui_d3d11
+  lui_resource))
 
 (rule
  (target c_libs.sexp)
