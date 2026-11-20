@@ -106,6 +106,7 @@ import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.LaunchedEffect
@@ -314,15 +315,28 @@ private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boun
 
 @Composable
 private fun LuiColumn(
+    backend: LuiBackend,
+    children: List<Long>,
     modifier: Modifier = Modifier,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     content: @Composable ColumnScope.(Boolean) -> Unit,
 ) {
-    BoxWithConstraints(modifier, propagateMinConstraints = true) {
-        val boundedHeight = constraints.hasBoundedHeight
-        Column(verticalArrangement = verticalArrangement, horizontalAlignment = horizontalAlignment) {
-            content(boundedHeight)
+    // Weight needs bounded height. A naturally sized column can be measured by
+    // its parent directly and does not need a nested composition.
+    val hasGrowingChild by remember(backend, children) {
+        derivedStateOf { children.any { (backend.node(it)?.prop("grow")?.numberValue ?: 0.0) > 0 } }
+    }
+    if (hasGrowingChild) {
+        BoxWithConstraints(modifier, propagateMinConstraints = true) {
+            val boundedHeight = constraints.hasBoundedHeight
+            Column(verticalArrangement = verticalArrangement, horizontalAlignment = horizontalAlignment) {
+                content(boundedHeight)
+            }
+        }
+    } else {
+        Column(modifier, verticalArrangement, horizontalAlignment) {
+            content(false)
         }
     }
 }
@@ -374,6 +388,8 @@ private fun LuiNodeContent(
         LuiNodeKind.tree,
         LuiNodeKind.timeline,
         -> LuiColumn(
+            backend = backend,
+            children = children,
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
@@ -410,6 +426,8 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.table -> LuiColumn(
+            backend = backend,
+            children = children,
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
@@ -471,7 +489,7 @@ private fun LuiNodeContent(
 
         LuiNodeKind.bubble -> LuiBubble(backend, node, modifier, children)
 
-        LuiNodeKind.box -> LuiColumn(modifier) { boundedHeight ->
+        LuiNodeKind.box -> LuiColumn(backend, children, modifier) { boundedHeight ->
             children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight) }
         }
 
@@ -900,6 +918,8 @@ private fun LuiStackLike(
     val stackContent: @Composable () -> Unit = {
         if (node.kind == LuiNodeKind.card || node.kind == LuiNodeKind.panel) {
             LuiColumn(
+                backend = backend,
+                children = visible,
                 modifier = modifier,
                 verticalArrangement = if (node.propString("main") == "space_between") Arrangement.SpaceBetween
                     else Arrangement.spacedBy(gapOf(node).dp, alignment = mainVerticalAlignment(node.propString("main"))),
@@ -2384,7 +2404,11 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                         sheetState.expand()
                     }
                 }
-                LuiColumn(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) { boundedHeight ->
+                LuiColumn(
+                    backend,
+                    node.children,
+                    Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity),
+                ) { boundedHeight ->
                     if (node.text().isNotEmpty()) {
                         Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.headlineSmall)
