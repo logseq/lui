@@ -240,7 +240,7 @@ module Slot_style : sig
     ?max_height_viewport_signal:float Signal.signal ->
     unit -> t
   val merge : t -> t -> t
-  val scoped : (Lui_ui.ui_context -> t) -> t
+  val scoped : Lui_protocol.property -> (Lui_ui.ui_context -> t) -> t
 end
 
 val mount : 'a -> ?parent:'b -> ('a -> 'b option -> 'c) -> 'c

@@ -23,8 +23,12 @@ calling this adapter directly.
 
 `Slot_style.merge base override` is right-biased per property, including signal
 bindings: an overridden base binding is not installed. A style may only contain
-properties admitted by its target's existing wire kind. Unsupported properties
-are rejected before any style bindings are installed; for example, collision
+properties admitted by its target's existing wire kind. Reactive projections
+are deferred per property, so merging does not evaluate a replaced projection.
+The PPX passes the property's wire identifier to `Slot_style.scoped`; its
+callback must produce exactly that one property's binding.
+Unsupported properties are rejected before any style bindings are installed;
+for example, collision
 padding belongs on a dropdown surface, not a toolbar button.
 
 ```ocaml

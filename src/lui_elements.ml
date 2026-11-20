@@ -900,10 +900,9 @@ let user_select_value : user_select -> string = function
   | `none -> "none" | `text -> "text"
 
 module Slot_style = struct
-  type t = Lui_ui.ui_context ->
-    (Lui_protocol.property * (Lui_ui.ui_context -> int -> unit)) list
+  type t = (Lui_protocol.property * (Lui_ui.ui_context -> int -> unit)) list
 
-  let make ?font_size ?font_size_signal ?font_weight ?font_weight_signal ?font_family ?font_family_signal ?font_style ?font_style_signal ?line_height ?line_height_signal ?letter_spacing ?letter_spacing_signal ?text_decoration ?text_decoration_signal ?white_space ?white_space_signal ?text_overflow ?text_overflow_signal ?overflow ?overflow_signal ?hover_background ?hover_background_signal ?hover_foreground ?hover_foreground_signal ?focus_within_background ?focus_within_background_signal ?focus_within_border ?focus_within_border_signal ?focus_shadow ?focus_shadow_signal ?shadow ?shadow_signal ?collision_padding ?collision_padding_signal ?cursor ?cursor_signal ?user_select ?user_select_signal ?disabled_opacity ?disabled_opacity_signal ?pressed_opacity ?pressed_opacity_signal ?hover_opacity ?hover_opacity_signal ?max_height_viewport ?max_height_viewport_signal () : t = fun _context ->
+  let make ?font_size ?font_size_signal ?font_weight ?font_weight_signal ?font_family ?font_family_signal ?font_style ?font_style_signal ?line_height ?line_height_signal ?letter_spacing ?letter_spacing_signal ?text_decoration ?text_decoration_signal ?white_space ?white_space_signal ?text_overflow ?text_overflow_signal ?overflow ?overflow_signal ?hover_background ?hover_background_signal ?hover_foreground ?hover_foreground_signal ?focus_within_background ?focus_within_background_signal ?focus_within_border ?focus_within_border_signal ?focus_shadow ?focus_shadow_signal ?shadow ?shadow_signal ?collision_padding ?collision_padding_signal ?cursor ?cursor_signal ?user_select ?user_select_signal ?disabled_opacity ?disabled_opacity_signal ?pressed_opacity ?pressed_opacity_signal ?hover_opacity ?hover_opacity_signal ?max_height_viewport ?max_height_viewport_signal () : t =
     List.filter_map Fun.id [
       (if Option.is_none font_size && Option.is_none font_size_signal then None
        else Some (FontSize, fun context node ->
@@ -999,17 +998,18 @@ module Slot_style = struct
          Option.iter (fun source -> Lui_ui.float_property_signal context node MaxHeightViewport source) max_height_viewport_signal))
     ]
 
-  let scoped make context = (make context) context
+  let scoped property make =
+    [property, fun context node ->
+      match make context with
+      | [actual, apply] when actual = property -> apply context node
+      | _ -> invalid_arg "Slot_style.scoped: expected one matching property"]
 
-  let merge base override context =
-    let base = base context in
-    let override = override context in
+  let merge base override =
     let replaced = Hashtbl.create (List.length override) in
     List.iter (fun (property, _) -> Hashtbl.replace replaced property ()) override;
     List.filter (fun (property, _) -> not (Hashtbl.mem replaced property)) base @ override
 
   let apply context node style =
-    let style = style context in
     let kind = Lui_ui.node_kind context node in
     List.iter (fun (property, _) ->
       if not (Lui_protocol.property_supported kind property) then
