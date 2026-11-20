@@ -1469,10 +1469,10 @@ let test_incremental_random () =
        InsertChild (1, 2, 0); InsertChild (1, 3, 1) ]
      @ List.concat_map
          (fun i ->
-           [ CreateNode (10 + i, Text);
-             InsertChild ((if i mod 2 = 0 then 2 else 3), 10 + i, i / 2);
-             SetProp (10 + i, WidthValue, IntValue (10 + i));
-             SetProp (10 + i, HeightValue, IntValue 10) ])
+           [ CreateNode (i, Text);
+             InsertChild ((if i mod 2 = 0 then 2 else 3), i, (i - 10) / 2);
+             SetProp (i, WidthValue, IntValue i);
+             SetProp (i, HeightValue, IntValue 10) ])
          leaves);
   let t = Lui_layout.create () in
   Lui_layout.sync ~width:200. ~height:100. t store;

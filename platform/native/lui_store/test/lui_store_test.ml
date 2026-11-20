@@ -243,6 +243,16 @@ let test_ops_on_missing_are_ignored () =
   apply t [ SetProp (99, TextValue, StringValue "x"); RemoveProp (99, TextValue) ];
   check int "still empty" 0 (Lui_store.node_count t)
 
+(* Gallery (and the runtime overlay) emit InsertChild(-1, root, 0). The
+   parent is not a node; apply_op already no-ops, and apply_batch must
+   too instead of aborting the mount. *)
+let test_insert_under_missing_parent_is_noop () =
+  let t = Lui_store.create () in
+  apply t [ CreateNode (1, Column); InsertChild (-1, 1, 0) ];
+  check (list int) "stays a root" [1] (Lui_store.root_ids t);
+  check (option int) "no parent" None (Lui_store.parent t 1);
+  check (list int) "preorder" [1] (bounded_preorder t)
+
 let test_structural_ops_on_missing_fail_atomically () =
   let t = Lui_store.create () in
   apply t [ CreateNode (1, Column); CreateNode (2, Text) ];
@@ -504,6 +514,8 @@ let () =
          test_case "cyclic insert rejected" `Quick test_cyclic_insert_rejected;
          test_case "structural ops on missing fail atomically" `Quick
            test_structural_ops_on_missing_fail_atomically;
+         test_case "insert under missing parent is a no-op" `Quick
+           test_insert_under_missing_parent_is_noop;
          test_case "preorder allocation" `Quick test_preorder_allocation;
          test_case "streamed preorder order" `Quick test_iter_preorder_order;
          test_case "kind lookup allocation" `Quick test_kind_lookup_allocation;

@@ -586,65 +586,66 @@ let describe_op = function
    nodes and cycle-forming inserts fail the whole batch so the host
    can resync. *)
 type shadow = {
-  parent : (int, int option) Hashtbl.t;
-  children : (int, int list) Hashtbl.t;
+  of_parent : (int, int option) Hashtbl.t;
+  of_children : (int, (int, unit) Hashtbl.t) Hashtbl.t;
 }
 
+let empty_kids () = Hashtbl.create 4
+
 let shadow_of t =
-  let parent = Hashtbl.create (Hashtbl.length t.nodes) in
-  let children = Hashtbl.create (Hashtbl.length t.nodes) in
+  let of_parent = Hashtbl.create (Hashtbl.length t.nodes) in
+  let of_children = Hashtbl.create (Hashtbl.length t.nodes) in
   Hashtbl.iter
     (fun id n ->
-      Hashtbl.replace parent id n.parent;
-      Hashtbl.replace children id (map_children (fun c -> c.id) n))
+      Hashtbl.replace of_parent id n.parent;
+      let kids = empty_kids () in
+      List.iter (fun cid -> Hashtbl.replace kids cid ())
+        (map_children (fun c -> c.id) n);
+      Hashtbl.replace of_children id kids)
     t.nodes;
-  { parent; children }
+  { of_parent; of_children }
 
-let shadow_exists sh id = Hashtbl.mem sh.parent id
+let shadow_exists sh id = Hashtbl.mem sh.of_parent id
 
-let shadow_children sh id =
-  match Hashtbl.find_opt sh.children id with Some xs -> xs | None -> []
+let shadow_kids sh id =
+  match Hashtbl.find_opt sh.of_children id with
+  | Some h -> h
+  | None ->
+    let h = empty_kids () in
+    Hashtbl.replace sh.of_children id h;
+    h
+
+let shadow_has_child sh parent child = Hashtbl.mem (shadow_kids sh parent) child
 
 let rec shadow_is_ancestor sh ancestor id =
-  match Hashtbl.find_opt sh.parent id with
+  match Hashtbl.find_opt sh.of_parent id with
   | Some (Some p) when p = ancestor -> true
   | Some (Some p) -> shadow_is_ancestor sh ancestor p
   | _ -> false
 
 let rec drop_shadow sh id =
   if shadow_exists sh id then begin
-    (match Hashtbl.find sh.parent id with
-     | Some pid ->
-       Hashtbl.replace sh.children pid
-         (List.filter (( <> ) id) (shadow_children sh pid))
+    (match Hashtbl.find sh.of_parent id with
+     | Some pid -> Hashtbl.remove (shadow_kids sh pid) id
      | None -> ());
-    List.iter (drop_shadow sh) (shadow_children sh id);
-    Hashtbl.remove sh.parent id;
-    Hashtbl.remove sh.children id
+    let kids = shadow_kids sh id in
+    let child_ids = Hashtbl.fold (fun cid _ acc -> cid :: acc) kids [] in
+    List.iter (drop_shadow sh) child_ids;
+    Hashtbl.remove sh.of_parent id;
+    Hashtbl.remove sh.of_children id
   end
 
 let unlink_shadow sh child =
-  match Hashtbl.find_opt sh.parent child with
+  match Hashtbl.find_opt sh.of_parent child with
   | Some (Some pid) ->
-    Hashtbl.replace sh.children pid
-      (List.filter (( <> ) child) (shadow_children sh pid));
-    Hashtbl.replace sh.parent child None
+    Hashtbl.remove (shadow_kids sh pid) child;
+    Hashtbl.replace sh.of_parent child None
   | _ -> ()
 
-let insert_at_list xs child index =
-  let xs = List.filter (( <> ) child) xs in
-  let rec go i = function
-    | rest when i <= 0 -> child :: rest
-    | [] -> [ child ]
-    | x :: rest -> x :: go (i - 1) rest
-  in
-  go index xs
-
-let insert_shadow sh parent child index =
+let insert_shadow sh parent child =
   unlink_shadow sh child;
-  Hashtbl.replace sh.children parent
-    (insert_at_list (shadow_children sh parent) child index);
-  Hashtbl.replace sh.parent child (Some parent)
+  Hashtbl.replace (shadow_kids sh parent) child ();
+  Hashtbl.replace sh.of_parent child (Some parent)
 
 let fail_op index op msg =
   invalid_arg
@@ -657,8 +658,8 @@ let validate_batch t (batch : patch_batch) =
       match op with
       | CreateNode (id, _) | CreateExtension (id, _, _) ->
         if shadow_exists sh id then drop_shadow sh id;
-        Hashtbl.replace sh.parent id None;
-        Hashtbl.replace sh.children id []
+        Hashtbl.replace sh.of_parent id None;
+        Hashtbl.replace sh.of_children id (empty_kids ())
       | DropNode id | DetachSubtree id ->
         if not (shadow_exists sh id) then fail_op op_index op "unknown node";
         drop_shadow sh id
@@ -670,19 +671,22 @@ let validate_batch t (batch : patch_batch) =
            one stale write from aborting the rest of the batch. *)
         ignore id
       | InsertChild (parent, child, at) | MoveChild (parent, child, at) ->
-        if not (shadow_exists sh parent) then
-          fail_op op_index op "unknown parent";
         if not (shadow_exists sh child) then
           fail_op op_index op "unknown child";
-        if parent = child || shadow_is_ancestor sh child parent then
-          fail_op op_index op "child insertion would create a cycle";
-        insert_shadow sh parent child at
+        (* Missing parent is a no-op, matching apply_op: CreateNode
+           leaves the id in the root set (gallery uses parent=-1). *)
+        if shadow_exists sh parent then begin
+          if parent = child || shadow_is_ancestor sh child parent then
+            fail_op op_index op "child insertion would create a cycle";
+          ignore at;
+          insert_shadow sh parent child
+        end
       | RemoveChild (parent, child) ->
         if not (shadow_exists sh parent) then
           fail_op op_index op "unknown parent";
         if not (shadow_exists sh child) then
           fail_op op_index op "unknown child";
-        if not (List.mem child (shadow_children sh parent)) then
+        if not (shadow_has_child sh parent child) then
           fail_op op_index op "child is not attached to parent";
         unlink_shadow sh child)
     batch.ops
