@@ -4,12 +4,13 @@ import {readFile} from 'node:fs/promises'
 
 const build=process.env.LUI_TEST_BUILD_DIR??'_build'
 const modules=new URL(`../../../${build}/default/examples/components/web/lui-components-web/node_modules/`,import.meta.url)
-const [Store,Protocol,Schema,Events,Tables]=await Promise.all([
+const [Store,Protocol,Schema,Events,Tables,Props]=await Promise.all([
   import(new URL('lui.web.dom/core/lui_web_store.js',modules)),
   import(new URL('lui/lui_protocol.js',modules)),
   import(new URL('lui/lui_wire_schema.js',modules)),
   import(new URL('lui.web.dom/events/lui_web_events.js',modules)),
   import(new URL('melange/hashtbl.js',modules)),
+  import(new URL('lui.web.dom/render/lui_web_props.js',modules)),
 ])
 const schema=JSON.parse(await readFile(new URL('../../../schema/components.json',import.meta.url)))
 const press=schema.events.findIndex(event=>event.lg==='Press')
@@ -20,6 +21,31 @@ const find=(list,nameOf,name)=>{
 const kind=find(Schema.all_node_kinds,Schema.node_kind_name,'link')
 const property=name=>find(Schema.all_properties,Schema.property_name,name)
 const list=values=>values.reduceRight((tl,hd)=>({hd,tl}),0)
+
+for(const target of ['_self','_blank',undefined]){
+  test(`URL updates retain ${target??'the default _blank'} link target`,()=>{
+    const store=Store.create_store(),attributes=new Map()
+    const element={setAttribute(name,value){attributes.set(name,value)},
+      removeAttribute(name){attributes.delete(name)}}
+    const renderer={web_store:store}
+    let generation=0
+    const apply=ops=>assert.equal(Store.apply_batch(store,()=>element,
+      {generation:++generation,ops:list(ops)}),true)
+    apply([Protocol.create_node_op(1,kind)])
+    const set=(name,text)=>{
+      const key=property(name),value={TAG:0,_0:text}
+      apply([Protocol.set_prop_op(1,key,value)])
+      Props.apply_property(renderer,()=>{},1,kind,element,key,value)
+    }
+    set('url','#/all-pages')
+    if(target!==undefined)set('target',target)
+    for(const url of ['#/all-pages?graph-id=fixture','','#/page/updated']){
+      set('url',url)
+      assert.equal(attributes.get('href'),url)
+      assert.equal(attributes.get('target'),target??'_blank')
+    }
+  })
+}
 
 function fixture(){
   const store=Store.create_store(),events=[],listeners=new Map()

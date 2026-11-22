@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+### Web link URL updates preserve authored targets
+
+Updating a link's URL preserves its authored ``~target:`self_`` or
+``~target:`blank``, including reactive URL updates. Previously the Web renderer
+incorrectly replaced an authored target with `_blank` when only the URL changed.
+Links without an authored target retain their existing Web default of `_blank`.
+No constructor or wire changes are required; internal links should continue to
+use ``link ~url ~target:`self_ []``.
+
 ### Shared typed slot appearance
 
 `menu_item`, dropdown surfaces and items, toolbar controls and toolbar text
