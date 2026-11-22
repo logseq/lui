@@ -45,6 +45,18 @@ extension EnvironmentValues {
 struct LUIPositionedStackLayout: Layout {
     let direction: LayoutDirection
 
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout ()) -> CGFloat? {
+        nil
+    }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout ()) -> CGFloat? {
+        nil
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         var intrinsic = CGSize.zero
         for child in subviews where child[LUIAbsoluteInsetsKey.self] == nil {
@@ -122,6 +134,20 @@ struct LUIPositionedFlowLayout<Flow: Layout>: Layout {
     func updateCache(_ cache: inout Cache, subviews: Subviews) {
         cache.sizes.removeAll(keepingCapacity: true)
         flow.updateCache(&cache.flow, subviews: flowSubviews(subviews))
+    }
+
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout Cache) -> CGFloat? {
+        nil
+    }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout Cache) -> CGFloat? {
+        guard guide == .firstTextBaseline || guide == .lastTextBaseline else { return nil }
+        return flow.explicitAlignment(of: guide, in: bounds, proposal: proposal,
+                                      subviews: flowSubviews(subviews), cache: &cache.flow)
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
