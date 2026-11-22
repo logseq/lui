@@ -1,7 +1,18 @@
 package dev.lui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsOwner
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -37,29 +48,44 @@ class LuiRowStretchTest {
     @Test fun columnsInStretchedRowSupportIntrinsicHeight() {
         val backend = LuiBackend()
         check(backend.applyBatch("""{"generation":1,"ops":[
-          {"op":"create-node","id":1,"kind":"root"},
-          {"op":"create-node","id":2,"kind":"row"},
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"set-prop","id":1,"property":"cross","value":"stretch"},
+          {"op":"create-node","id":2,"kind":"column"},
           {"op":"insert-child","parent":1,"child":2,"index":0},
-          {"op":"set-prop","id":2,"property":"cross","value":"stretch"},
-          {"op":"create-node","id":3,"kind":"column"},
+          {"op":"set-prop","id":2,"property":"grow","value":1},
+          {"op":"create-node","id":3,"kind":"text"},
           {"op":"insert-child","parent":2,"child":3,"index":0},
-          {"op":"set-prop","id":3,"property":"grow","value":1},
-          {"op":"create-node","id":4,"kind":"text"},
-          {"op":"insert-child","parent":3,"child":4,"index":0},
-          {"op":"set-prop","id":4,"property":"text","value":"Natural column"},
-          {"op":"create-node","id":5,"kind":"column"},
-          {"op":"insert-child","parent":2,"child":5,"index":1},
+          {"op":"set-prop","id":3,"property":"text","value":"Natural"},
+          {"op":"create-node","id":4,"kind":"column"},
+          {"op":"insert-child","parent":1,"child":4,"index":1},
+          {"op":"set-prop","id":4,"property":"grow","value":1},
+          {"op":"create-node","id":5,"kind":"text"},
+          {"op":"insert-child","parent":4,"child":5,"index":0},
           {"op":"set-prop","id":5,"property":"grow","value":1},
+          {"op":"set-prop","id":5,"property":"height","value":96},
+          {"op":"set-prop","id":5,"property":"text","value":"Tall"},
           {"op":"create-node","id":6,"kind":"text"},
-          {"op":"insert-child","parent":5,"child":6,"index":0},
+          {"op":"insert-child","parent":4,"child":6,"index":1},
           {"op":"set-prop","id":6,"property":"grow","value":1},
-          {"op":"set-prop","id":6,"property":"text","value":"Growing child"},
-          {"op":"set-prop","id":6,"property":"background","value":"secondary"},
-          {"op":"create-node","id":7,"kind":"text"},
-          {"op":"insert-child","parent":2,"child":7,"index":2},
-          {"op":"set-prop","id":7,"property":"height","value":96},
-          {"op":"set-prop","id":7,"property":"text","value":"Tall cell"}
+          {"op":"set-prop","id":6,"property":"height","value":24},
+          {"op":"set-prop","id":6,"property":"text","value":"Short"}
         ]}""")) { backend.lastError.orEmpty() }
-        paparazzi.snapshot(name = "stretched-row-columns") { LuiTheme { backend.Content() } }
+        var tallHeight = 0f
+        var density = 0f
+        val view = ComposeView(paparazzi.context).apply { setContent {
+            val native = LocalView.current
+            density = LocalDensity.current.density
+            LuiTheme { Box { backend.Content(1) } }
+            LaunchedEffect(Unit) {
+                repeat(3) { withFrameNanos {} }
+                val owner = native.javaClass.methods.first { it.name == "getSemanticsOwner" }.invoke(native) as SemanticsOwner
+                fun nodes(root: SemanticsNode): List<SemanticsNode> = listOf(root) + root.children.flatMap(::nodes)
+                tallHeight = nodes(owner.unmergedRootSemanticsNode).first {
+                    it.config.getOrNull(SemanticsProperties.Text)?.any { value -> value.text == "Tall" } == true
+                }.boundsInRoot.height
+            }
+        } }
+        paparazzi.luiFrames(view, name = "stretched-row-columns", end = 100, fps = 30)
+        assertTrue("tall growing child height $tallHeight", density > 0f && tallHeight >= 96 * density - 1)
     }
 }
