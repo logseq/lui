@@ -20,7 +20,7 @@ const named = (values, nameOf, name) => {
 const kind = name => named(Schema.all_node_kinds, Schema.node_kind_name, name)
 const prop = name => named(Schema.all_properties, Schema.property_name, name)
 
-function fixture(role = 'menu', empty = false) {
+function fixture(role = 'menu', empty = false, actionKind = 'menu-item') {
   const document = {addEventListener() {}, removeEventListener() {}}, activated = [], dismissed = []
   const element = (id, children = []) => {
     const attrs = new Map()
@@ -42,11 +42,11 @@ function fixture(role = 'menu', empty = false) {
   let generation = 0, platform
   const apply = ops => assert.equal(Store.apply_batch(store, () => platform,
     {generation: ++generation, ops: list(ops)}), true)
-  for (const [id, name] of [[1, 'column'], [2, 'popover'], [3, 'column'], [4, 'menu-item'],
-    [5, 'row'], [6, 'menu-item'], [7, 'menu-item'], [8, 'popover'], [9, 'menu-item']]) {
+  for (const [id, name] of [[1, 'column'], [2, 'popover'], [3, 'column'], [4, actionKind],
+    [5, 'row'], [6, actionKind], [7, actionKind], [8, 'popover'], [9, actionKind]]) {
     platform = elements.get(id)
     apply([Protocol.create_node_op(id, kind(name)),
-      ...(name === 'menu-item'
+      ...(name === actionKind
         ? [Protocol.set_prop_op(id, prop('text'), {TAG: 0, _0: id === 4 ? 'Rename' : 'Delete'})] : [])])
     Nodes.dom_node(renderer, id)
   }
@@ -94,6 +94,14 @@ test('empty menu popovers leave navigation and activation unhandled', () => {
   assert.equal(f.key('ArrowDown'), false)
   f.key('Enter')
   assert.deepEqual(f.activated, [])
+  f.dispose()
+})
+
+test('button-only menu popovers preserve native Enter activation on the focused button', () => {
+  const f = fixture('menu', false, 'button')
+  f.element(4).focus()
+  assert.equal(f.key('Enter'), false, 'the native button activation must not be prevented')
+  assert.deepEqual(f.activated, [], 'the menu must not also synthesize a click')
   f.dispose()
 })
 

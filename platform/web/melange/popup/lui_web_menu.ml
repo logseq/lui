@@ -1184,9 +1184,10 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
       | None -> ()
     end
     else if key = "Enter" then begin
-      W.KeyboardEvent.preventDefault event;
       match current_index with
-      | Some index -> activate_menu_item renderer (List.nth items index)
+      | Some index ->
+          W.KeyboardEvent.preventDefault event;
+          activate_menu_item renderer (List.nth items index)
       | None -> ()
     end
     else if
