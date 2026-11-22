@@ -9,6 +9,19 @@ Links without an authored target retain their existing Web default of `_blank`.
 No constructor or wire changes are required; internal links should continue to
 use ``link ~url ~target:`self_ []``.
 
+### Apple nested flow measurement
+
+Apple flow containers now reuse native stack measurements for identical proposals
+until SwiftUI invalidates the layout cache. This prevents repeated horizontal and
+vertical stack probes from multiplying through deeply nested containers. An
+unspecified dimension remains distinct from zero or infinity. Child and layout
+changes invalidate measurements; absolute children remain excluded from intrinsic
+flow sizing and retain their existing positioning and paint order.
+
+No public API, wire property, default or event contract changes. Downstream code
+such as `row [column [row children]]` needs no migration or depth limit; update the
+Apple backend dependency without changing the view tree.
+
 ### Shared typed slot appearance
 
 `menu_item`, dropdown surfaces and items, toolbar controls and toolbar text
