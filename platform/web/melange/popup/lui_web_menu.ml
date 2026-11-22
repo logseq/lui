@@ -695,17 +695,19 @@ let hide_context_menu renderer =
   | None -> ()
 
 let context_menu_focus_items renderer menu =
+  let rec collect items child =
+    match Store.node renderer.web_store child with
+    | Some current when Store.menu_item_row current ->
+        if Store.enabled_node renderer child then child :: items else items
+    | Some current ->
+        (match Store.standard_kind current with
+         | Some (DropdownMenu | ContextMenu | Popover) -> items
+         | _ -> Lui_sequence.fold_left collect items current.retained_children)
+    | None -> items
+  in
   match Store.node renderer.web_store menu with
   | Some current ->
-      Lui_sequence.fold_left
-        (fun items child ->
-          match Store.node renderer.web_store child with
-          | Some child_node
-            when Store.menu_item_row child_node
-                 && Store.enabled_node renderer child ->
-              child :: items
-          | _ -> items)
-        [] current.retained_children
+      Lui_sequence.fold_left collect [] current.retained_children
       |> List.rev
   | None -> []
 
@@ -1182,9 +1184,10 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
       | None -> ()
     end
     else if key = "Enter" then begin
-      W.KeyboardEvent.preventDefault event;
       match current_index with
-      | Some index -> activate_menu_item renderer (List.nth items index)
+      | Some index ->
+          W.KeyboardEvent.preventDefault event;
+          activate_menu_item renderer (List.nth items index)
       | None -> ()
     end
     else if
@@ -1882,6 +1885,12 @@ let attach_popover_events renderer node _popover_node =
   let document = renderer.web_document in
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
+  let typeahead_buffer = ref "" and typeahead_timer = ref None in
+  let key_handler event =
+    if Store.property renderer.web_store node RoleValue = Some (StringValue "menu")
+       && W.KeyboardEvent.key event <> "Escape"
+    then dropdown_key_handler renderer node typeahead_buffer typeahead_timer event
+  in
   let owner =
     match Store.node renderer.web_store node with
     | Some current -> current.retained_parent
@@ -1895,9 +1904,10 @@ let attach_popover_events renderer node _popover_node =
          (Store.property renderer.web_store node))
        ~dismiss:(fun () -> emit renderer (Dismiss node))
        ~close:(fun () -> ())
-       ~key_handler:(fun _event -> ())
+       ~key_handler
        ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
+      cancel_typeahead typeahead_timer;
       Lui_web_popup_tracking.stop positioner;
       if not (Lui_web_layers.is_present renderer.web_layers node) then
         Lui_web_layers.remove renderer.web_layers renderer.web_document node)
