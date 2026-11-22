@@ -105,23 +105,26 @@ let shadow_remove shadow child =
   if Lui_indexed_sequence.index shadow.items child <> None then
     Lui_indexed_sequence.remove shadow.items child
 
-let shadow_refresh_weight renderer shadow child =
+let shadow_refresh_weight renderer previous_nodes shadow child =
   match shadow.prefix_container with
   | None -> ()
   | Some container ->
-    let counted = match Store.node renderer.web_store child with
+    let current = match Store.node renderer.web_store child with
+      | Some _ as current -> current
+      | None -> previous_nodes child in
+    let counted = match current with
       | Some current when Lazy.is_val current.platform_node ->
         child_counted_in_container current container
       | _ -> false in
     Lui_indexed_sequence.set_weight shadow.items child (if counted then 1 else 0)
 
-let visible_child_index renderer ~container ~children index =
+let visible_child_index renderer previous_nodes ~container ~children index =
   (match children.prefix_container with
    | Some previous when previous == container -> ()
    | _ ->
      children.prefix_container <- Some container;
      Lui_indexed_sequence.iter
-       (shadow_refresh_weight renderer children) children.items);
+       (shadow_refresh_weight renderer previous_nodes children) children.items);
   Lui_indexed_sequence.prefix_weight children.items index
 
 let focused_descendant renderer dom_node =
@@ -334,7 +337,7 @@ let insert_child_dom renderer previous_nodes children_of effects parent
                 dom_child_container renderer parent parent_dom
               in
               Util.insert_dom_child container child_dom
-                (visible_child_index renderer ~container
+                (visible_child_index renderer previous_nodes ~container
                    ~children:(children_of parent) index))
       | Some Toast ->
           W.Element.appendChild (W.Element.asNode child_dom)
@@ -358,7 +361,7 @@ let insert_child_dom renderer previous_nodes children_of effects parent
             dom_child_container renderer parent parent_dom
           in
           Util.insert_dom_child container child_dom
-            (visible_child_index renderer ~container
+            (visible_child_index renderer previous_nodes ~container
                ~children:(children_of parent) index))
 
 let apply_insert_child renderer previous_nodes children_of effects parent
@@ -525,7 +528,7 @@ let apply_move_child renderer previous_nodes children_of effects parent
       W.Element.appendChild (W.Element.asNode child_node) parent_node
     else
       Util.insert_dom_child parent_node child_node
-        (visible_child_index renderer ~container:parent_node
+        (visible_child_index renderer previous_nodes ~container:parent_node
            ~children:(children_of parent) index)
   end;
   queue_split effects parent;
@@ -692,7 +695,7 @@ let rec materialize_in renderer effects node =
         shadow_insert shadow index child;
         apply_insert_child renderer (Store.node renderer.web_store) children_of
           effects node child index;
-        shadow_refresh_weight renderer shadow child) current.retained_children
+        shadow_refresh_weight renderer (Store.node renderer.web_store) shadow child) current.retained_children
     end;
     Nodes.dom_node renderer node
 
@@ -979,7 +982,7 @@ let apply_dom_batch renderer previous_nodes batch =
            operation;
          (match operation with
           | InsertChild (parent, child, _) | MoveChild (parent, child, _) ->
-            shadow_refresh_weight renderer (children_of parent) child
+            shadow_refresh_weight renderer previous_nodes (children_of parent) child
           | _ -> ())
        with Invalid_argument msg ->
          invalid_arg

@@ -1,5 +1,22 @@
 # LUI API migration guide
 
+### Explicit Web popover anchors own return focus
+
+An anchored popover with an explicit target now uses that target as its layer
+trigger, rather than a transient invoking control in a closing menu. This keeps
+a replacement form open when the old menu restores focus to the shared anchor.
+For example, ``popover ~target:(Anchor {source = Target "filter"; ...})`` returns
+focus to `filter`; it does not retain the selected option as its trigger. Parent
+and rectangle anchors retain their existing trigger behavior. No wire changes
+are required.
+
+### Web child replacement preserves surviving sibling order
+
+Web batches that replace keyed siblings now count pending-removal DOM children
+until their removal operation executes. A surviving row keeps its authored
+position when the surrounding rows are replaced. No API or wire migration is
+required.
+
 ### Web menu popovers support keyboard navigation through layout wrappers
 
 Popovers authored with ``~role:`menu`` now support ArrowUp/ArrowDown, Home/End,
