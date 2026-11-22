@@ -33,4 +33,33 @@ class LuiRowStretchTest {
         ]}""")) { backend.lastError.orEmpty() }
         paparazzi.snapshot(name = "stretched-table-row") { LuiTheme { backend.Content() } }
     }
+
+    @Test fun columnsInStretchedRowSupportIntrinsicHeight() {
+        val backend = LuiBackend()
+        check(backend.applyBatch("""{"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"root"},
+          {"op":"create-node","id":2,"kind":"row"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"set-prop","id":2,"property":"cross","value":"stretch"},
+          {"op":"create-node","id":3,"kind":"column"},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"set-prop","id":3,"property":"grow","value":1},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"insert-child","parent":3,"child":4,"index":0},
+          {"op":"set-prop","id":4,"property":"text","value":"Natural column"},
+          {"op":"create-node","id":5,"kind":"column"},
+          {"op":"insert-child","parent":2,"child":5,"index":1},
+          {"op":"set-prop","id":5,"property":"grow","value":1},
+          {"op":"create-node","id":6,"kind":"text"},
+          {"op":"insert-child","parent":5,"child":6,"index":0},
+          {"op":"set-prop","id":6,"property":"grow","value":1},
+          {"op":"set-prop","id":6,"property":"text","value":"Growing child"},
+          {"op":"set-prop","id":6,"property":"background","value":"secondary"},
+          {"op":"create-node","id":7,"kind":"text"},
+          {"op":"insert-child","parent":2,"child":7,"index":2},
+          {"op":"set-prop","id":7,"property":"height","value":96},
+          {"op":"set-prop","id":7,"property":"text","value":"Tall cell"}
+        ]}""")) { backend.lastError.orEmpty() }
+        paparazzi.snapshot(name = "stretched-row-columns") { LuiTheme { backend.Content() } }
+    }
 }

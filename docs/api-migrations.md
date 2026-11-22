@@ -2736,6 +2736,27 @@ applications do not need to remove `grow` from scroll-contained textareas.
 Android dialogs also render the existing `description` property above their
 retained body. Neither correction changes the wire format or event ABI.
 
+Android columns (`column`, `box`, `table`, `card`, `panel`, list sections and
+sheet bodies) now measure without subcomposition. The decision to distribute
+remaining height among `grow` children is made at measure time, so the same
+column can be measured intrinsically by its parent, including inside a row with
+`cross = stretch`, whether or not any child grows. Children also keep their
+composition, focus and editor state when a sibling's `grow` changes between 0
+and a positive value. Weighted and unweighted columns size the same way as
+before: in a bounded column, growing children share the remaining height; in an
+unbounded or intrinsic measurement, they keep their natural height.
+
+No application changes are required. For example, this layout previously threw
+an intrinsic-measurement exception on Android and now renders with both columns
+matching the tallest cell:
+
+```ocaml
+row ~cross:`Stretch
+  [ column ~grow:1. [ text "Natural column" ]
+  ; column ~grow:1. [ text ~grow:1. "Growing child" ]
+  ; text ~height:96 "Tall cell" ]
+```
+
 The native Android component Gallery now derives a Material navigation drawer
 from the retained page roots and renders one selected page at a time. Shared
 OCaml model state remains authoritative across page switches; navigation is
