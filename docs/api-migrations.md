@@ -21,6 +21,15 @@ No constructor or wire changes are required. Menu popovers should use the typed
 role above rather than a DOM role attribute; ordinary forms should keep their
 dialog role.
 
+### Web link URL updates preserve authored targets
+
+Updating a link's URL preserves its authored ``~target:`self_`` or
+``~target:`blank``, including reactive URL updates. Previously the Web renderer
+incorrectly replaced an authored target with `_blank` when only the URL changed.
+Links without an authored target retain their existing Web default of `_blank`.
+No constructor or wire changes are required; internal links should continue to
+use ``link ~url ~target:`self_ []``.
+
 ### Apple nested flow measurement
 
 Apple flow containers now reuse native stack measurements for identical proposals

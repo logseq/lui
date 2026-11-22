@@ -1049,7 +1049,12 @@ and apply_secondary_property renderer queue_split node kind dom_node
       if kind = Image then Widgets.update_image renderer node dom_node
       else begin
         W.Element.setAttribute "href" url dom_node;
-        W.Element.setAttribute "target" "_blank" dom_node
+        let target =
+          match Store.property renderer.web_store node TargetValue with
+          | Some (StringValue target) -> target
+          | _ -> "_blank"
+        in
+        W.Element.setAttribute "target" target dom_node
       end
   | Opacity, FloatValue value ->
       set_style dom_node "opacity"
