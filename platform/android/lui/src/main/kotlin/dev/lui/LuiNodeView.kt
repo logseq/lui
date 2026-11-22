@@ -426,7 +426,10 @@ private class LuiColumnMeasurePolicy(
             }
         }
         val spacing = if (measurables.size > 1) verticalArrangement.spacing.roundToPx().toLong() * (measurables.size - 1) else 0L
-        return (fixed + spacing + (heightPerWeight * totalWeight).roundToLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val total = (fixed + spacing + (heightPerWeight * totalWeight).roundToLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        // Parents such as IntrinsicSize.Min turn this into a fixed-height constraint, so a tiny
+        // grow weight must not request more height than Constraints can encode.
+        return Constraints.fitPrioritizingHeight(0, Constraints.Infinity, total, total).maxHeight
     }
 }
 
