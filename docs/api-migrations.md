@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+### Apple flow and box containers resolve their own alignment guides
+
+Apple row, column and box containers no longer merge descendant explicit
+alignment guides for ordinary or custom alignments. This avoids recursive
+child placement during alignment resolution. Flow containers still forward
+first and last text baselines through their non-positioned children. Box
+containers use their implicit guides, including baselines. The wire API and
+ordinary layout defaults are unchanged. Native integrations that previously
+attached a custom `.alignmentGuide` to a descendant should attach it to the
+container instead; for example, move `.alignmentGuide(.leading) { _ in 8 }`
+from a row's child to the row's root view.
+
 ### Native headless frames use simulated time
 
 The macOS native window driver's `--headless N` mode now advances application,

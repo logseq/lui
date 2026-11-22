@@ -12,7 +12,9 @@ private final class FlowMeasurements: @unchecked Sendable {
 }
 
 private struct MeasuredFlow<Flow: Layout>: Layout {
+    static var layoutProperties: LayoutProperties { Flow.layoutProperties }
     let measurements: FlowMeasurements
+    var placements: FlowMeasurements? = nil
     var flow: Flow
 
     func makeCache(subviews: Subviews) -> Flow.Cache {
@@ -27,7 +29,20 @@ private struct MeasuredFlow<Flow: Layout>: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews,
                        cache: inout Flow.Cache) {
+        placements?.increment()
         flow.placeSubviews(in: bounds, proposal: proposal, subviews: subviews, cache: &cache)
+    }
+
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout Flow.Cache) -> CGFloat? {
+        flow.explicitAlignment(of: guide, in: bounds, proposal: proposal, subviews: subviews, cache: &cache)
+    }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect,
+                           proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout Flow.Cache) -> CGFloat? {
+        flow.explicitAlignment(of: guide, in: bounds, proposal: proposal, subviews: subviews, cache: &cache)
     }
 }
 
@@ -115,6 +130,59 @@ struct LUIFlowMeasurementTests {
             Text("Sibling")
             nested(depth - 1, measurements)
         })
+    }
+
+    private func nestedCenterFlow(_ depth: Int, _ measurements: FlowMeasurements,
+                                  _ placements: FlowMeasurements) -> AnyView {
+        guard depth > 0 else { return AnyView(Text("Leaf")) }
+        if depth.isMultiple(of: 2) {
+            return centerFlow(depth, measurements, placements, HStackLayout(alignment: .center, spacing: 1))
+        }
+        return centerFlow(depth, measurements, placements, VStackLayout(alignment: .center, spacing: 1))
+    }
+
+    private func centerFlow<Flow: Layout>(_ depth: Int, _ measurements: FlowMeasurements,
+                                         _ placements: FlowMeasurements, _ flow: Flow) -> AnyView {
+        return AnyView(LUIPositionedFlowLayout(
+            flow: MeasuredFlow(measurements: measurements, placements: placements, flow: flow),
+            direction: .leftToRight
+        ) {
+            Text("Sibling")
+                .frame(maxWidth: nil, maxHeight: nil)
+                .layoutPriority(depth.isMultiple(of: 2) ? 1 : 0)
+            nestedCenterFlow(depth - 1, measurements, placements)
+                .frame(maxWidth: nil, maxHeight: nil)
+            if depth.isMultiple(of: 2) { Spacer(minLength: 0) }
+            Text("Positioned")
+                .layoutValue(key: LUIAbsoluteInsetsKey.self, value: LUIAbsoluteInsets(properties: [
+                    .position: .string("absolute"), .insetTop: .double(0), .insetRight: .double(0)
+                ]))
+        }.padding(1))
+    }
+
+    @Test func nestedCenterFlowMeasurement() {
+        _ = NSApplication.shared
+        for depth in [16, 20] {
+            let measurements = FlowMeasurements()
+            let placements = FlowMeasurements()
+            let root = ScrollView {
+                nestedCenterFlow(depth, measurements, placements).fixedSize()
+            }.frame(width: 400, height: 600)
+            let host = NSHostingView(rootView: root)
+            let window = NSWindow(contentRect: CGRect(x: -10_000, y: 0, width: 400, height: 600),
+                styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = host
+            window.orderFrontRegardless()
+            host.layoutSubtreeIfNeeded()
+            window.display()
+            window.orderOut(nil)
+            window.contentView = nil
+            print("CENTER FLOW depth=\(depth) measurements=\(measurements.count) placements=\(placements.count)")
+            #expect(measurements.count > 0)
+            #expect(placements.count > 0)
+            #expect(measurements.count < 32 * depth * depth)
+            #expect(placements.count < 4 * depth)
+        }
     }
 
     @Test func nestedFlowMeasurement() {
