@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -106,7 +105,6 @@ import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.LaunchedEffect
@@ -133,6 +131,17 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.ParentDataModifierNode
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import kotlin.math.roundToLong
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
@@ -297,14 +306,14 @@ private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long, stretch: B
     }
 }
 
-/** Applies `grow` to a child inside a Column. */
+/** Applies `grow` to a child inside a [LuiColumn]. */
 @Composable
-private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boundedHeight: Boolean, stretch: Boolean = false) {
+private fun GrowChildColumn(backend: LuiBackend, childId: Long, stretch: Boolean = false) {
     val child = backend.node(childId)
     val grow = child?.prop("grow")?.numberValue ?: 0.0
     val fillWidth = stretch && child?.prop("width") == null && child?.prop("max-width") == null
-    if ((grow > 0 && boundedHeight) || stretch) {
-        val sizing = if (grow > 0 && boundedHeight) Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)) else Modifier
+    if (grow > 0 || stretch) {
+        val sizing = if (grow > 0) Modifier.luiColumnGrow(grow.toFloat().coerceAtLeast(0.001f)) else Modifier
         Box(if (fillWidth) sizing.fillMaxWidth() else sizing, propagateMinConstraints = true) {
             LuiNodeView(backend, childId)
         }
@@ -313,32 +322,94 @@ private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boun
     }
 }
 
+private class LuiColumnGrow(val weight: Float)
+
+private data class LuiColumnGrowElement(val weight: Float) : ModifierNodeElement<LuiColumnGrowNode>() {
+    override fun create() = LuiColumnGrowNode(weight)
+    override fun update(node: LuiColumnGrowNode) {
+        node.weight = weight
+    }
+}
+
+private class LuiColumnGrowNode(var weight: Float) : Modifier.Node(), ParentDataModifierNode {
+    override fun Density.modifyParentData(parentData: Any?): Any = LuiColumnGrow(weight)
+}
+
+private fun Modifier.luiColumnGrow(weight: Float): Modifier = this then LuiColumnGrowElement(weight)
+
+/**
+ * Lays out children vertically. Growing children share the remaining height only when it is
+ * bounded; otherwise they keep their natural height. Deciding this at measure time keeps one
+ * composition shape for every child, so a column never needs subcomposition and supports
+ * intrinsic measurement.
+ */
+private class LuiColumnMeasurePolicy(
+    private val verticalArrangement: Arrangement.Vertical,
+    private val horizontalAlignment: Alignment.Horizontal,
+) : MeasurePolicy {
+    override fun MeasureScope.measure(measurables: List<Measurable>, constraints: Constraints): MeasureResult {
+        val count = measurables.size
+        val placeables = arrayOfNulls<Placeable>(count)
+        val spacing = verticalArrangement.spacing.roundToPx()
+        val bounded = constraints.hasBoundedHeight
+        val weights = FloatArray(count) { (measurables[it].parentData as? LuiColumnGrow)?.weight ?: 0f }
+        val totalWeight = if (bounded) weights.sum() else 0f
+        val totalSpacing = if (count > 1) spacing.toLong() * (count - 1) else 0L
+        var fixedHeight = 0L
+        var width = 0
+        for (index in 0 until count) {
+            if (totalWeight > 0f && weights[index] > 0f) continue
+            val maxHeight = if (bounded) (constraints.maxHeight - fixedHeight - totalSpacing).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                else Constraints.Infinity
+            val placeable = measurables[index].measure(Constraints(maxWidth = constraints.maxWidth, maxHeight = maxHeight))
+            placeables[index] = placeable
+            fixedHeight += placeable.height
+            width = maxOf(width, placeable.width)
+        }
+        if (totalWeight > 0f) {
+            var remaining = (constraints.maxHeight - fixedHeight - totalSpacing).coerceAtLeast(0L)
+            var remainingWeight = totalWeight
+            for (index in 0 until count) {
+                val weight = weights[index]
+                if (weight <= 0f) continue
+                val height = if (remainingWeight <= weight) remaining
+                    else (remaining * (weight / remainingWeight)).roundToLong().coerceIn(0L, remaining)
+                remaining -= height
+                remainingWeight -= weight
+                val size = height.toInt()
+                val placeable = measurables[index].measure(
+                    Constraints(maxWidth = constraints.maxWidth, minHeight = size, maxHeight = size),
+                )
+                placeables[index] = placeable
+                width = maxOf(width, placeable.width)
+            }
+        }
+        val heights = IntArray(count) { placeables[it]!!.height }
+        val contentHeight = (heights.sum().toLong() + totalSpacing).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val layoutHeight = if (totalWeight > 0f) constraints.maxHeight
+            else contentHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
+        val layoutWidth = width.coerceIn(constraints.minWidth, constraints.maxWidth)
+        val positions = IntArray(count)
+        with(verticalArrangement) { arrange(layoutHeight, heights, positions) }
+        return layout(layoutWidth, layoutHeight) {
+            placeables.forEachIndexed { index, placeable ->
+                placeable!!.place(horizontalAlignment.align(placeable.width, layoutWidth, layoutDirection), positions[index])
+            }
+        }
+    }
+}
+
 @Composable
 private fun LuiColumn(
-    backend: LuiBackend,
-    children: List<Long>,
     modifier: Modifier = Modifier,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
-    content: @Composable ColumnScope.(Boolean) -> Unit,
+    content: @Composable () -> Unit,
 ) {
-    // Weight needs bounded height. A naturally sized column can be measured by
-    // its parent directly and does not need a nested composition.
-    val hasGrowingChild by remember(backend, children) {
-        derivedStateOf { children.any { (backend.node(it)?.prop("grow")?.numberValue ?: 0.0) > 0 } }
+    val measurePolicy = remember(verticalArrangement, horizontalAlignment) {
+        LuiColumnMeasurePolicy(verticalArrangement, horizontalAlignment)
     }
-    if (hasGrowingChild) {
-        BoxWithConstraints(modifier, propagateMinConstraints = true) {
-            val boundedHeight = constraints.hasBoundedHeight
-            Column(verticalArrangement = verticalArrangement, horizontalAlignment = horizontalAlignment) {
-                content(boundedHeight)
-            }
-        }
-    } else {
-        Column(modifier, verticalArrangement, horizontalAlignment) {
-            content(false)
-        }
-    }
+    Layout(content, modifier, measurePolicy)
 }
 
 /**
@@ -388,16 +459,14 @@ private fun LuiNodeContent(
         LuiNodeKind.tree,
         LuiNodeKind.timeline,
         -> LuiColumn(
-            backend = backend,
-            children = children,
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
                 alignment = mainVerticalAlignment(node.propString("main")),
             ),
             horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
-        ) { boundedHeight ->
-            children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight, node.propString("cross") == "stretch") }
+        ) {
+            children.forEachNode { childId -> GrowChildColumn(backend, childId, node.propString("cross") == "stretch") }
         }
 
         LuiNodeKind.list -> {
@@ -426,20 +495,18 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.table -> LuiColumn(
-            backend = backend,
-            children = children,
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
                 alignment = mainVerticalAlignment(node.propString("main")),
             ),
             horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
-        ) { boundedHeight ->
+        ) {
             children.forEachIndexedNode { index, childId ->
                 CompositionLocalProvider(
                     LocalLuiChildSlot provides LuiChildSlot(index, children.size),
                 ) {
-                    GrowChildColumn(backend, childId, boundedHeight)
+                    GrowChildColumn(backend, childId)
                 }
             }
         }
@@ -489,8 +556,8 @@ private fun LuiNodeContent(
 
         LuiNodeKind.bubble -> LuiBubble(backend, node, modifier, children)
 
-        LuiNodeKind.box -> LuiColumn(backend, children, modifier) { boundedHeight ->
-            children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight) }
+        LuiNodeKind.box -> LuiColumn(modifier) {
+            children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
 
         LuiNodeKind.text,
@@ -918,14 +985,12 @@ private fun LuiStackLike(
     val stackContent: @Composable () -> Unit = {
         if (node.kind == LuiNodeKind.card || node.kind == LuiNodeKind.panel) {
             LuiColumn(
-                backend = backend,
-                children = visible,
                 modifier = modifier,
                 verticalArrangement = if (node.propString("main") == "space_between") Arrangement.SpaceBetween
                     else Arrangement.spacedBy(gapOf(node).dp, alignment = mainVerticalAlignment(node.propString("main"))),
                 horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
-            ) { boundedHeight ->
-                visible.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight, node.propString("cross") in setOf(null, "stretch")) }
+            ) {
+                visible.forEachNode { childId -> GrowChildColumn(backend, childId, node.propString("cross") in setOf(null, "stretch")) }
             }
         } else {
             Box(modifier) {
@@ -2404,16 +2469,12 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                         sheetState.expand()
                     }
                 }
-                LuiColumn(
-                    backend,
-                    node.children,
-                    Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity),
-                ) { boundedHeight ->
+                LuiColumn(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) {
                     if (node.text().isNotEmpty()) {
                         Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.headlineSmall)
                     }
-                    node.children.forEachNode { GrowChildColumn(backend, it, boundedHeight) }
+                    node.children.forEachNode { GrowChildColumn(backend, it) }
                 }
             }
         }
