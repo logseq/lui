@@ -1940,6 +1940,7 @@ let mount_popover renderer node =
         renderer.web_modal_return_focus := None;
         match invoked with
         | Some element when not cover
+            && Lui_web_nodes.explicit_anchor renderer node = None
             && Lui_web_focus.focus_target_available element -> Some element
         | _ -> if positioned then
           if Lui_web_position.anchored renderer node then
