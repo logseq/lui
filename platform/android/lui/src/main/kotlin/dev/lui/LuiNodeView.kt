@@ -131,6 +131,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasurePolicy
@@ -356,14 +358,16 @@ private class LuiColumnMeasurePolicy(
         val totalWeight = if (bounded) weights.sum() else 0f
         val totalSpacing = if (count > 1) spacing.toLong() * (count - 1) else 0L
         var fixedHeight = 0L
+        var fixedSpace = 0L
         var width = 0
         for (index in 0 until count) {
             if (totalWeight > 0f && weights[index] > 0f) continue
-            val maxHeight = if (bounded) (constraints.maxHeight - fixedHeight - totalSpacing).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
-                else Constraints.Infinity
+            val remaining = if (bounded) (constraints.maxHeight - fixedSpace).coerceAtLeast(0L) else 0L
+            val maxHeight = if (bounded) remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else Constraints.Infinity
             val placeable = measurables[index].measure(Constraints(maxWidth = constraints.maxWidth, maxHeight = maxHeight))
             placeables[index] = placeable
             fixedHeight += placeable.height
+            fixedSpace += placeable.height + if (bounded) minOf(spacing.toLong(), (remaining - placeable.height).coerceAtLeast(0L)) else 0L
             width = maxOf(width, placeable.width)
         }
         if (totalWeight > 0f) {
@@ -396,6 +400,33 @@ private class LuiColumnMeasurePolicy(
                 placeable!!.place(horizontalAlignment.align(placeable.width, layoutWidth, layoutDirection), positions[index])
             }
         }
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int): Int =
+        intrinsicHeight(measurables) { it.minIntrinsicHeight(width) }
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int): Int =
+        intrinsicHeight(measurables) { it.maxIntrinsicHeight(width) }
+
+    /** Growing children need enough height that each one's weighted share fits its content. */
+    private fun IntrinsicMeasureScope.intrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        height: (IntrinsicMeasurable) -> Int,
+    ): Int {
+        var fixed = 0L
+        var totalWeight = 0f
+        var heightPerWeight = 0f
+        measurables.forEach { child ->
+            val weight = (child.parentData as? LuiColumnGrow)?.weight ?: 0f
+            if (weight > 0f) {
+                totalWeight += weight
+                heightPerWeight = maxOf(heightPerWeight, height(child) / weight)
+            } else {
+                fixed += height(child)
+            }
+        }
+        val spacing = if (measurables.size > 1) verticalArrangement.spacing.roundToPx().toLong() * (measurables.size - 1) else 0L
+        return (fixed + spacing + (heightPerWeight * totalWeight).roundToLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 }
 

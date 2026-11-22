@@ -2742,19 +2742,20 @@ remaining height among `grow` children is made at measure time, so the same
 column can be measured intrinsically by its parent, including inside a row with
 `cross = stretch`, whether or not any child grows. Children also keep their
 composition, focus and editor state when a sibling's `grow` changes between 0
-and a positive value. Weighted and unweighted columns size the same way as
-before: in a bounded column, growing children share the remaining height; in an
-unbounded or intrinsic measurement, they keep their natural height.
+and a positive value. In a bounded column, growing children share the remaining height;
+in an unbounded measurement, they keep their natural height. An intrinsic height
+query reports enough height for every growing child's weighted share to fit its
+content, matching Compose `Column` weights.
 
 No application changes are required. For example, this layout previously threw
 an intrinsic-measurement exception on Android and now renders with both columns
 matching the tallest cell:
 
 ```ocaml
-row ~cross:`Stretch
-  [ column ~grow:1. [ text "Natural column" ]
-  ; column ~grow:1. [ text ~grow:1. "Growing child" ]
-  ; text ~height:96 "Tall cell" ]
+row ~cross:`stretch
+  [ column ~grow:1. [ text ~value:"Natural column" [] ]
+  ; column ~grow:1. [ text ~grow:1. ~value:"Growing child" [] ]
+  ; text ~height:96 ~value:"Tall cell" [] ]
 ```
 
 The native Android component Gallery now derives a Material navigation drawer
