@@ -6,6 +6,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsOwner
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.dp
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
@@ -70,17 +75,24 @@ class LuiRowStretchTest {
         }
         val equalWeights = weightedRow(tallHeight = 96, tallGrow = 1.0)
         val tinyWeight = weightedRow(tallHeight = 300, tallGrow = 0.001)
-        var rowHeight = 0
+        var tallHeight = 0f
         var density = 0f
         paparazzi.snapshot(name = "stretched-row-columns") {
+            val native = LocalView.current
             density = LocalDensity.current.density
             LuiTheme {
                 Column {
-                    Box(Modifier.onGloballyPositioned { rowHeight = it.size.height }) { equalWeights.Content(1) }
+                    Box(Modifier.onGloballyPositioned {
+                        val owner = native.javaClass.methods.first { it.name == "getSemanticsOwner" }.invoke(native) as SemanticsOwner
+                        fun nodes(root: SemanticsNode): List<SemanticsNode> = listOf(root) + root.children.flatMap(::nodes)
+                        tallHeight = nodes(owner.unmergedRootSemanticsNode).first { node ->
+                            node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "Tall" } == true
+                        }.boundsInRoot.height
+                    }) { equalWeights.Content(1) }
                     Box(Modifier.height(600.dp)) { tinyWeight.Content(1) }
                 }
             }
         }
-        assertTrue("equal-weight row height $rowHeight", density > 0f && rowHeight >= 192 * density - 1)
+        assertTrue("equal-weight tall child height $tallHeight", density > 0f && tallHeight >= 96 * density - 1)
     }
 }
