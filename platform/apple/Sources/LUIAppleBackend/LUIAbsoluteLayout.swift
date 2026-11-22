@@ -98,6 +98,17 @@ struct LUIPositionedFlowLayout<Flow: Layout>: Layout {
 
     struct Cache {
         var flow: Flow.Cache
+        var sizes: [Proposal: CGSize] = [:]
+    }
+
+    struct Proposal: Hashable {
+        let width: CGFloat?
+        let height: CGFloat?
+
+        init(_ proposal: ProposedViewSize) {
+            width = proposal.width
+            height = proposal.height
+        }
     }
 
     private func flowSubviews(_ subviews: Subviews) -> Subviews {
@@ -109,12 +120,20 @@ struct LUIPositionedFlowLayout<Flow: Layout>: Layout {
     }
 
     func updateCache(_ cache: inout Cache, subviews: Subviews) {
+        cache.sizes.removeAll(keepingCapacity: true)
         flow.updateCache(&cache.flow, subviews: flowSubviews(subviews))
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
         let children = flowSubviews(subviews)
-        let size = flow.sizeThatFits(proposal: proposal, subviews: children, cache: &cache.flow)
+        let key = Proposal(proposal)
+        let size: CGSize
+        if let measured = cache.sizes[key] {
+            size = measured
+        } else {
+            size = flow.sizeThatFits(proposal: proposal, subviews: children, cache: &cache.flow)
+            cache.sizes[key] = size
+        }
         guard children.count != subviews.count else { return size }
         // The outer native surface frames supply the constrained proposal.
         // Accept it on constrained axes so absolute offsets use that surface,
