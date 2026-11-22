@@ -1,5 +1,22 @@
 # LUI API migration guide
 
+### Web menu popovers support keyboard navigation through layout wrappers
+
+Popovers authored with ``~role:`menu`` now support ArrowUp/ArrowDown, Home/End,
+typeahead and Enter activation, including menu rows nested in ordinary layout
+containers. Disabled rows and nested popup contents are excluded from the parent
+menu's focus order. Dialog and default popovers retain their existing keyboard
+behavior; Escape remains owned by the topmost popup layer.
+
+```ocaml
+popover ~role:`menu
+  [column [menu_item ~text:"Rename" ~on_press:(fun _ -> rename ()) []]]
+```
+
+No constructor or wire changes are required. Menu popovers should use the typed
+role above rather than a DOM role attribute; ordinary forms should keep their
+dialog role.
+
 ### Web link URL updates preserve authored targets
 
 Updating a link's URL preserves its authored ``~target:`self_`` or
