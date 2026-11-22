@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+### Native headless frames use simulated time
+
+The macOS native window driver's `--headless N` mode now advances application,
+animation and input clocks at a simulated 60 Hz per window instead of sampling
+wall-clock execution time. For example, repeated `--headless 6 --windows 2` runs
+now produce identical checksums even when a window contains an animated drawer.
+Animated headless checksums may change; interactive timing and wire contracts
+are unchanged. No application migration is required.
+
 ### Explicit Web popover anchors own return focus
 
 An anchored popover with an explicit target now uses that target as its layer
