@@ -160,6 +160,9 @@ let pending : Demo_app.action Queue.t = Queue.create ()
 
 (* ---------- per-window helpers ---------- *)
 
+let surface_time_s (s : surf) =
+  if !headless then float s.driver.frame /. 60. else perf_s ()
+
 let drawable (s : surf) =
   (* Under the dummy driver this may report 0x0; fall back to the
      logical size so layout still gets a sane extent. *)
@@ -366,7 +369,7 @@ let poll_driver (s : surf) =
    until the nearest deadline. *)
 let tick ?(live_resize = false) (s : surf) ~t0 =
   let d = s.driver in
-  let now_s = perf_s () in
+  let now_s = surface_time_s s in
   let now_ms = now_s *. 1000. in
   ignore (Lui_app.tick_clock d.app ~now:now_ms);
   Lui_host.tick s.host ~now:now_s;
@@ -862,7 +865,7 @@ let handle_sdl_event e =
       | None -> Multi.find_focused windows, e in
     (match target, input_of_event e with
      | Some s, Some input ->
-       Ui.tick_scrollbars s.ui ~now_ms:(perf_s () *. 1000.);
+       Ui.tick_scrollbars s.ui ~now_ms:(surface_time_s s *. 1000.);
        apply_actions s (Multi.dispatch s input)
      | _ -> ())
 

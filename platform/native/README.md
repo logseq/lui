@@ -146,6 +146,9 @@ OPAMSWITCH=5.5.1 opam exec -- dune exec platform/native/lui_window/main.exe
 
 Interactive window with five sections (inputs / controls / lists / overlays /
 decorations), live FPS + renderer badge, tray icon, notifications, clipboard.
-`--headless N` runs N deterministic frames and prints a scene checksum — the
-same command is a regression test. Renderer selection can be inspected from
+`--headless N` runs N deterministic frames at a simulated 60 Hz and prints a
+scene checksum — the same command is a regression test. Each window advances
+its application, animation and input clocks from its own frame count, independent
+of execution speed. Interactive windows still use monotonic real time.
+Renderer selection can be inspected from
 the log line (`renderer=lui_metal|lui_gl|lui_raster+blit`).
