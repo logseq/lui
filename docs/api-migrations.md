@@ -21,6 +21,15 @@ now produce identical checksums even when a window contains an animated drawer.
 Animated headless checksums may change; interactive timing and wire contracts
 are unchanged. No application migration is required.
 
+### Generic native hosts accept shrink and focus-within observation
+
+Generic OCaml native hosts now accept the existing `shrink` property and
+`focus-within-enabled` observation instead of rejecting them as Web-only at
+runtime. SwiftUI and Kotlin hosts continue to ignore these schema Web hints.
+No constructor, wire-name or application migration is required; native hosts
+that already consume the retained properties can enable the behavior by
+updating the runtime dependency.
+
 ### Explicit Web popover anchors own return focus
 
 An anchored popover with an explicit target now uses that target as its layer
