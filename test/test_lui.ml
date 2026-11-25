@@ -1920,12 +1920,14 @@ let test_shrink_contract () =
     Alcotest.(check bool) "shrink does not author grow" false
       (List.exists (function SetProp (_, GrowValue, _) -> true | _ -> false) (all_ops ()));
     ignore (Lui_app.dispose app))
-    [WebHost];
-  List.iter (fun host ->
-    Alcotest.check_raises "unsupported host rejects opt-in"
-      (Invalid_argument "shrink is unsupported by backend profile")
-      (fun () -> ignore (mount ~shrink:0. host (fun _ _ -> ()))))
-    [GenericHost];
+    [WebHost; GenericHost];
+  let app = mount GenericHost (fun context node ->
+    Lui_runtime.set_prop context.Lui_ui.ui_application node FocusWithinEnabled (BoolValue true);
+    Lui_runtime.remove_prop context.Lui_ui.ui_application node FocusWithinEnabled) in
+  flush_app app;
+  Alcotest.(check bool) "generic host observes focus within" true
+    (List.exists (function SetProp (_, p, BoolValue true) -> p = FocusWithinEnabled | _ -> false) (all_ops ()));
+  ignore (Lui_app.dispose app);
   List.iter (fun host ->
     let app = mount ~shrink:0. host (fun context node ->
       Lui_runtime.set_prop context.Lui_ui.ui_application node FocusWithinEnabled (BoolValue true);
