@@ -7352,9 +7352,11 @@ private struct LUIVirtualListView: View {
     @State private var appliedScrollKey: String?
     @Environment(\.luiMinimumScrollViewport) private var minimumScrollViewport
     @State private var unobscuredFrame: CGRect?
+    @State private var visibleViewport: CGRect?
+    @State private var contentWidth: CGFloat?
     @State private var titleTracker = LUIScrollSectionTitleTracker()
     @State private var windowTracker = LUIVirtualWindowTracker()
-    @State private var firstSectionHeights: [SlotID: CGFloat] = [:]
+    @State private var firstSectionSizes: [SlotID: CGSize] = [:]
     @State private var rowFrames = LUIVirtualRowFrames()
     @State private var pinnedFrame: PinnedFrame?
     @State private var pinnedSize: PinnedSize?
@@ -7374,10 +7376,13 @@ private struct LUIVirtualListView: View {
     var body: some View {
         let rows = sectionRows
         let editor = rows.editor
+        let request = scrollRequest(in: rows)
         let contentSpace = ContentSpace(nodeID: model.id)
         ScrollViewReader { proxy in
             ScrollView {
-                virtualStack(rows, contentSpace: contentSpace)
+                virtualStack(rows, contentSpace: contentSpace, request: request) { request in
+                    revealTarget(request, rows: rows, using: proxy)
+                }
                 .coordinateSpace(name: contentSpace)
                 .background {
                     #if os(iOS)
@@ -7412,8 +7417,18 @@ private struct LUIVirtualListView: View {
                 }
                 .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
             }
-            .onAppear { revealTarget(using: proxy) }
-            .onChange(of: scrollRequest) { _, _ in revealTarget(using: proxy) }
+            .onAppear {
+                if !rows.usesMeasuredStack, let request { revealTarget(request, rows: rows, using: proxy) }
+            }
+            .onChange(of: request) { _, request in
+                if !rows.usesMeasuredStack, let request { revealTarget(request, rows: rows, using: proxy) }
+            }
+            .onGeometryChange(for: CGRect.self) {
+                let insets = $0.safeAreaInsets
+                return CGRect(x: insets.leading, y: insets.top,
+                    width: max(0, $0.size.width - insets.leading - insets.trailing),
+                    height: max(0, $0.size.height - insets.top - insets.bottom))
+            } action: { visibleViewport = $0 }
             .coordinateSpace(name: titleCoordinateSpace)
             .environment(\.luiScrollHeadingContext, tracksSectionTitles
                 ? LUIScrollHeadingContext(coordinateSpace: titleCoordinateSpace, tracker: titleTracker) : nil)
@@ -7435,26 +7450,36 @@ private struct LUIVirtualListView: View {
         }
     }
 
-    @ViewBuilder private func virtualStack(_ rows: SectionRows, contentSpace: ContentSpace) -> some View {
+    @ViewBuilder private func virtualStack(_ rows: SectionRows, contentSpace: ContentSpace,
+                                           request: ScrollRequest?, reveal: @escaping (ScrollRequest) -> Void) -> some View {
         let gap = CGFloat(model.property(.gap)?.intValue ?? 0)
         #if os(iOS)
-        if rows.segments.contains(where: { $0.window != nil }) {
+        if rows.usesMeasuredStack {
             // The backend already materializes a bounded row window. LazyVStack
             // estimates that window a second time as rich rows enter the viewport.
             // Lay out the materialized rows and represent each cold span by one spacer.
             VStack(alignment: .leading, spacing: gap) {
-                ForEach(rows.stackSlots(measurements: rowFrames, gap: gap)) { slot in
+                ForEach(rows.stackSlots(measurements: rowFrames, width: contentWidth, gap: gap,
+                                        target: request?.position)) { slot in
                     switch slot {
                     case let .row(slot):
                         stackRow(slot, rows: rows, contentSpace: contentSpace)
+                            .modifier(LUIVirtualScrollTargetLayout(
+                                request: request?.position == slot.position ? request : nil, reveal: reveal))
                     case let .band(band):
                         LUIVirtualListBandView(band: band, backend: backend, tracker: windowTracker,
                             coordinateSpace: titleCoordinateSpace, viewportHeight: unobscuredHeight ?? 600)
+                    case let .target(slot, band):
+                        LUIVirtualListBandView(band: band, backend: backend, tracker: windowTracker,
+                            coordinateSpace: titleCoordinateSpace, viewportHeight: unobscuredHeight ?? 600)
+                            .id(slot.id)
+                            .modifier(LUIVirtualScrollTargetLayout(request: request, reveal: reveal))
                     }
                 }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
             .environment(\.luiVirtualAppearanceViewport,
-                LUIVirtualAppearanceViewport(space: titleCoordinateSpace, height: unobscuredHeight ?? 600))
+                LUIVirtualAppearanceViewport(space: titleCoordinateSpace, bounds: visibleViewport))
         } else {
             lazyStack(rows, contentSpace: contentSpace, gap: gap)
         }
@@ -7496,12 +7521,12 @@ private struct LUIVirtualListView: View {
     @ViewBuilder private func virtualRow(_ row: SectionRow) -> some View {
         let content = LUIVirtualListRow(row: row, backend: backend,
             tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
-            viewportHeight: unobscuredHeight ?? 600,
-            onMeasure: { id, height, tracksSectionHeight in
+            viewportHeight: unobscuredHeight ?? 600, contentWidth: contentWidth,
+            onMeasure: { id, size, tracksSectionHeight in
                 #if os(iOS)
-                rowFrames.measure(height, for: id)
+                rowFrames.measure(size, for: id)
                 #endif
-                if tracksSectionHeight, firstSectionHeights[id] != height { firstSectionHeights[id] = height }
+                if tracksSectionHeight, firstSectionSizes[id] != size { firstSectionSizes[id] = size }
             })
         if tracksSectionTitles {
             content.modifier(LUIScrollSectionFrameModifier(
@@ -7519,8 +7544,19 @@ private struct LUIVirtualListView: View {
         let position: Int
     }
 
-    private var scrollRequest: ScrollRequest? {
-        for segment in sectionRows.segments {
+    private struct LUIVirtualScrollTargetLayout: ViewModifier {
+        let request: ScrollRequest?
+        let reveal: (ScrollRequest) -> Void
+
+        func body(content: Content) -> some View {
+            content.onGeometryChange(for: ScrollRequest?.self) { _ in request } action: { request in
+                if let request { reveal(request) }
+            }
+        }
+    }
+
+    private func scrollRequest(in rows: SectionRows) -> ScrollRequest? {
+        for segment in rows.segments {
             let sourceID = segment.source
             guard let source = backend.model(id: sourceID),
                   let encoded = source.property(.dataAttrs)?.stringValue else { continue }
@@ -7530,16 +7566,17 @@ private struct LUIVirtualListView: View {
                 if pair.count == 2 { attributes[String(pair[0])] = String(pair[1]) }
             }
             if let key = attributes["data-scroll-key"],
-               let index = attributes["data-scroll-index"].flatMap(Int.init), index >= 0 {
+               let index = attributes["data-scroll-index"].flatMap(Int.init), (0..<segment.count).contains(index) {
                 return ScrollRequest(key: key, position: segment.base + index)
             }
         }
         return nil
     }
 
-    private func revealTarget(using proxy: ScrollViewProxy) {
-        guard let request = scrollRequest, appliedScrollKey != request.key else { return }
-        proxy.scrollTo(request.position, anchor: .top)
+    private func revealTarget(_ request: ScrollRequest, rows: SectionRows, using proxy: ScrollViewProxy) {
+        guard appliedScrollKey != request.key else { return }
+        let indices = LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor)
+        proxy.scrollTo(indices[request.position].id, anchor: .top)
         appliedScrollKey = request.key
     }
 
@@ -7587,8 +7624,18 @@ private struct LUIVirtualListView: View {
         let segments: [Segment]
         let endIndex: Int
         let firstSectionHeights: [SlotID: CGFloat]
+
+        var usesMeasuredStack: Bool {
+            #if os(iOS)
+            segments.contains { $0.window != nil }
+            #else
+            false
+            #endif
+        }
+
         #if os(iOS)
-        func stackSlots(measurements: LUIVirtualRowFrames, gap: CGFloat) -> [LUIVirtualListSlot] {
+        func stackSlots(measurements: LUIVirtualRowFrames, width: CGFloat?, gap: CGFloat,
+                        target: Int?) -> [LUIVirtualListSlot] {
             var slots: [LUIVirtualListSlot] = []
             let indices = LUIVirtualRowIndices(count: endIndex, editor: editor)
             for segment in segments {
@@ -7598,12 +7645,24 @@ private struct LUIVirtualListView: View {
                 }
                 let start = Swift.min(window.start, window.count)
                 let end = Swift.min(start + window.length, window.count)
-                let extents = measurements.extents(for: segment.source, window: window, gap: gap,
+                let extents = measurements.extents(for: segment.source, window: window, width: width, gap: gap,
                     firstSectionMinimum: segment.lastSectionRowMinimumHeight)
-                func appendBand(_ lower: Int, _ upper: Int) {
+                func band(_ range: Range<Int>) -> LUIVirtualListBand {
+                    LUIVirtualListBand(source: segment.source, indices: range, extents: extents)
+                }
+                func appendSpan(_ lower: Int, _ upper: Int) {
                     guard lower < upper else { return }
-                    slots.append(.band(LUIVirtualListBand(source: segment.source,
-                        indices: lower..<upper, extents: extents)))
+                    slots.append(.band(band(lower..<upper)))
+                }
+                func appendBand(_ lower: Int, _ upper: Int) {
+                    if let target, (lower..<upper).contains(target - segment.base) {
+                        let index = target - segment.base
+                        appendSpan(lower, index)
+                        slots.append(.target(indices[target], band(index..<(index + 1))))
+                        appendSpan(index + 1, upper)
+                    } else {
+                        appendSpan(lower, upper)
+                    }
                 }
                 if let pinned = window.pinnedIndex, pinned < start {
                     appendBand(0, pinned)
@@ -7679,6 +7738,9 @@ private struct LUIVirtualListView: View {
 
     private var sectionRows: SectionRows {
         let itemExtent = configuredItemExtent
+        let firstSectionHeights = firstSectionSizes.compactMapValues { size in
+            LUIVirtualRowFrames.matchesWidth(size.width, contentWidth) ? size.height : nil
+        }
         let titles = model.childData.sectionTitles ?? [:]
         var segments: [SectionRows.Segment] = []
         var total = 0
@@ -7715,40 +7777,49 @@ private struct LUIVirtualListView: View {
 private final class LUIVirtualRowFrames {
     var frames: [LUIVirtualListView.SlotID: CGRect] = [:]
 
+    static func matchesWidth(_ measured: CGFloat, _ available: CGFloat?) -> Bool {
+        available.map { abs($0 - measured) < 0.5 } ?? true
+    }
+
     #if os(iOS)
     private struct Measurements {
-        var heights: [Int: CGFloat] = [:]
+        var sizes: [Int: CGSize] = [:]
         var extents = LUISparseRowExtents()
+        var width: CGFloat?
         var minimumRow: Int?
         var minimum: CGFloat = 0
 
-        mutating func measure(_ height: CGFloat, index: Int) {
-            heights[index] = height
-            extents.measure(index, height: max(height, index == minimumRow ? minimum : 0))
+        mutating func measure(_ size: CGSize, index: Int) {
+            sizes[index] = size
+            guard LUIVirtualRowFrames.matchesWidth(size.width, width) else { return }
+            extents.measure(index, height: max(size.height, index == minimumRow ? minimum : 0))
         }
     }
     private var measurements: [Int: Measurements] = [:]
 
-    func measure(_ height: CGFloat, for slot: LUIVirtualListView.SlotID) {
+    func measure(_ size: CGSize, for slot: LUIVirtualListView.SlotID) {
         guard slot.offset >= 0 else { return }
-        measurements[slot.source, default: Measurements()].measure(height, index: slot.offset)
+        measurements[slot.source, default: Measurements()].measure(size, index: slot.offset)
     }
 
-    func extents(for source: Int, window: LUIVirtualWindow, gap: CGFloat,
+    func extents(for source: Int, window: LUIVirtualWindow, width: CGFloat?, gap: CGFloat,
                  firstSectionMinimum: CGFloat) -> LUISparseRowExtents {
         var current = measurements[source] ?? Measurements()
         let minimumRow = window.firstSectionCount > 0 ? window.firstSectionCount - 1 : nil
         let old = current.extents
         if old.count != window.count || old.estimate != window.extent || old.gap != gap
-            || current.minimumRow != minimumRow || current.minimum != firstSectionMinimum {
+            || current.width != width || current.minimumRow != minimumRow || current.minimum != firstSectionMinimum {
             current.extents = LUISparseRowExtents(count: window.count, estimate: window.extent, gap: gap)
+            current.width = width
             current.minimumRow = minimumRow
             current.minimum = firstSectionMinimum
-            for (index, height) in current.heights where index != minimumRow {
-                current.extents.measure(index, height: height)
+            for (index, size) in current.sizes where index != minimumRow && Self.matchesWidth(size.width, width) {
+                current.extents.measure(index, height: size.height)
             }
             if let minimumRow {
-                let intrinsic = current.heights[minimumRow] ?? window.extent
+                let intrinsic = current.sizes[minimumRow].flatMap {
+                    Self.matchesWidth($0.width, width) ? $0.height : nil
+                } ?? window.extent
                 current.extents.measure(minimumRow, height: max(intrinsic, firstSectionMinimum))
             }
             measurements[source] = current
@@ -7763,15 +7834,18 @@ private enum LUIVirtualListSlot: Identifiable {
     enum ID: Hashable {
         case row(Int)
         case band(Int, Range<Int>)
+        case target(Int)
     }
 
     case row(LUIVirtualRowIndices.Slot)
     case band(LUIVirtualListBand)
+    case target(LUIVirtualRowIndices.Slot, LUIVirtualListBand)
 
     var id: ID {
         switch self {
         case let .row(slot): .row(slot.id)
         case let .band(band): .band(band.source, band.indices)
+        case let .target(slot, _): .target(slot.id)
         }
     }
 }
@@ -7873,7 +7947,7 @@ fileprivate struct LUIVirtualWindow {
 // A measurement is consumed when a slot becomes a placeholder. Recording it
 // must not invalidate the same row immediately after its first layout.
 private final class LUIVirtualRowMeasurement {
-    var height: CGFloat?
+    var size: CGSize?
     var frame: CGRect?
     var isVisible = false
 }
@@ -7884,7 +7958,8 @@ private struct LUIVirtualListRow: View {
     let tracker: LUIVirtualWindowTracker
     let coordinateSpace: LUIScrollTitleCoordinateSpace
     let viewportHeight: CGFloat
-    let onMeasure: (LUIVirtualListView.SlotID, CGFloat, Bool) -> Void
+    let contentWidth: CGFloat?
+    let onMeasure: (LUIVirtualListView.SlotID, CGSize, Bool) -> Void
     @State private var measurement = LUIVirtualRowMeasurement()
 
     var body: some View {
@@ -7893,19 +7968,22 @@ private struct LUIVirtualListRow: View {
                 LUIAnyNodeView(nodeID: nodeID, backend: backend)
                     .equatable()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                        if height > 0 {
-                            measurement.height = height
-                            onMeasure(row.id, height, row.tracksSectionHeight)
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                        if size.height > 0 {
+                            measurement.size = size
+                            onMeasure(row.id, size, row.tracksSectionHeight)
                         }
                     }
             } else {
-                Color.clear.frame(height: measurement.height ?? row.estimatedHeight)
+                let height = measurement.size.flatMap { size in
+                    LUIVirtualRowFrames.matchesWidth(size.width, contentWidth) ? size.height : nil
+                }
+                Color.clear.frame(height: height ?? row.estimatedHeight)
                     .accessibilityHidden(true)
             }
         }
         .onChange(of: row.tracksSectionHeight) { _, tracks in
-            if tracks, let height = measurement.height { onMeasure(row.id, height, true) }
+            if tracks, let size = measurement.size { onMeasure(row.id, size, true) }
         }
         .onGeometryChange(for: CGRect.self) { geometry in
             geometry.frame(in: .named(coordinateSpace))
@@ -7915,7 +7993,7 @@ private struct LUIVirtualListRow: View {
         }
         .onChange(of: viewportHeight) { _, _ in updateVisibility() }
         .onAppear {
-            if row.tracksSectionHeight, let height = measurement.height { onMeasure(row.id, height, true) }
+            if row.tracksSectionHeight, let size = measurement.size { onMeasure(row.id, size, true) }
             // Lazy stacks can reuse a previously visible slot without another
             // geometry change. Restore its registration after onDisappear.
             if measurement.isVisible, let windowID = row.windowID {

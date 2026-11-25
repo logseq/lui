@@ -6,8 +6,15 @@ The legacy virtual list window protocol keeps the same row and visible-range
 properties. On iOS, a list using window metadata lays out the mounted rows
 directly and uses measured heights or the configured item extent for offscreen
 spans. This removes the second layer of height estimation inside the scroll
-view. Appearance handlers in these lists run when their view reaches the
-viewport, so appearance-based pagination can continue to use an end marker.
+view. An appearance-based pagination marker fires when it intersects the
+keyboard-aware visible viewport. The pinned editor retains its native view
+appearance lifecycle in its overlay. Cached heights are reused at the width
+they were measured at.
+
+No wire changes are required. For example, a list with rows 0–31 mounted can
+still set `data-scroll-index=500` and a new `data-scroll-key`. The list aligns
+the estimated position first and requests that row through visible-range
+tracking, even while the row is outside the mounted window.
 
 ### Apple flow and box containers resolve their own alignment guides
 

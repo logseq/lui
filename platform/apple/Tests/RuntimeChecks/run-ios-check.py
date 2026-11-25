@@ -19,6 +19,8 @@ CHECKS = {
     "drawer-vertical-bars": ("DrawerVerticalBars.swift", "DrawerVerticalBarsCheck"),
     "button-gesture-lifecycle": ("ButtonGestureLifecycle.swift", "ButtonGestureLifecycleCheck"),
     "read-only-field-delegate": ("ReadOnlyFieldDelegate.swift", "ReadOnlyFieldDelegateCheck"),
+    "legacy-virtual-scroll": ("../LUIAppleBackendTests/LUIVirtualListReentryRuntimeCheck.swift",
+                              "LUIVirtualListReentryRuntimeCheck"),
 }
 
 
@@ -72,7 +74,7 @@ def main():
         directory = Path(temporary)
         checkpoint_name = f"native-check-{uuid.uuid4().hex}.log"
         source = directory / "Check.swift"
-        check = Path(__file__).with_name(filename).read_text().replace("@main", "", 1)
+        check = (Path(__file__).parent / filename).read_text().replace("@main", "", 1)
         if args.check == "bounded-virtual-rows":
             helpers = ROOT / "Tests/LUIAppleBackendTests"
             check = "\n".join((helpers / name).read_text() for name in (
