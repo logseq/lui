@@ -1,14 +1,15 @@
 # LUI API migration guide
 
-### Native file dialogs require a window rather than a running AppKit loop
+### Native file dialogs accept SDL-style windows
 
 macOS `open_dialog` and `save_dialog` now treat a process with a visible,
 key-capable `NSWindow` as able to present a modal panel, even when the
 application drives its own event loop and `[NSApp isRunning]` is false. This
-covers SDL-backed native hosts. Truly headless helper processes still have no
-visible key-capable window and continue to return `None`. The calling host
-remains responsible for presenting dialogs on the main thread; no application
-migration is required.
+covers SDL-backed native hosts. Running AppKit applications remain eligible
+even without such a window (for example menu-only hosts). Truly headless
+helper processes still have neither capability and continue to return `None`.
+The calling host remains responsible for presenting dialogs on the main
+thread; no application migration is required.
 
 ### Generic native hosts accept shrink and focus-within observation
 
