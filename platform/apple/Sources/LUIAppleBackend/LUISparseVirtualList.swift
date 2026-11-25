@@ -29,7 +29,7 @@ struct LUIVirtualPopupOwnership: ViewModifier {
 }
 
 /// Sparse prefix sums retain measurements, never views or source records.
-private struct LUISparseRowExtents: Equatable {
+struct LUISparseRowExtents: Equatable {
   var count = 0
   var estimate: CGFloat = 32
   var gap: CGFloat = 0

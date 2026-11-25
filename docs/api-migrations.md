@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+### iOS window-backed virtual lists use measured row heights
+
+The legacy virtual list window protocol keeps the same row and visible-range
+properties. On iOS, a list using window metadata lays out the mounted rows
+directly and uses measured heights or the configured item extent for offscreen
+spans. This removes the second layer of height estimation inside the scroll
+view. Appearance handlers in these lists run when their view reaches the
+viewport, so appearance-based pagination can continue to use an end marker.
+
 ### Apple flow and box containers resolve their own alignment guides
 
 Apple row, column and box containers no longer merge descendant explicit

@@ -94,13 +94,32 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
     }
 }
 
+struct LUIVirtualAppearanceViewport: Equatable {
+    let space: LUIScrollTitleCoordinateSpace
+    let height: CGFloat
+}
+
+extension EnvironmentValues {
+    @Entry var luiVirtualAppearanceViewport: LUIVirtualAppearanceViewport? = nil
+}
+
 struct LUIAppearModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiVirtualAppearanceViewport) private var viewport
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if model.supportsAppear {
+        if model.supportsAppear, let viewport {
+            // The virtual window lays out ahead of the viewport. An appearance
+            // event such as pagination must wait for the row to reach it.
+            content.onGeometryChange(for: Bool.self) {
+                let frame = $0.frame(in: .named(viewport.space))
+                return frame.maxY > -16 && frame.minY < viewport.height + 16
+            } action: { visible in
+                if visible { try? backend.performAppear(node: model.id) }
+            }
+        } else if model.supportsAppear {
             content.onAppear {
                 try? backend.performAppear(node: model.id)
             }
