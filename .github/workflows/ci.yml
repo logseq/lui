@@ -229,7 +229,7 @@ jobs:
           if device["state"] != "Booted":
               subprocess.run(["xcrun", "simctl", "boot", device["udid"]], check=True)
           subprocess.run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"], check=True)
-          for check in ("bounded-virtual-rows", "read-only-field-delegate"):
+          for check in ("bounded-virtual-rows", "legacy-virtual-scroll", "read-only-field-delegate"):
               subprocess.run([sys.executable, "platform/apple/Tests/RuntimeChecks/run-ios-check.py",
                   check, "--simulator", device["udid"],
                   "--diagnostics-dir", os.path.join(os.environ["RUNNER_TEMP"], "lui-uikit-diagnostics", check)],
