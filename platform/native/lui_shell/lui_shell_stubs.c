@@ -812,11 +812,14 @@ static BOOL lui_can_present(void)
 {
   /* SDL-backed applications drive their own event loop rather than
      NSApplicationMain, so [NSApp isRunning] remains false even while
-     their real NSWindow is visible and active. A window is the
-     practical capability gate: truly headless helper processes do not
-     have one and must keep degrading instead of blocking in runModal. */
+     their real NSWindow is visible and active. Keep accepting a
+     running AppKit application for menu-only hosts; otherwise require
+     a visible key-capable window so truly headless helper processes
+     keep degrading instead of blocking in runModal. */
   if (![NSThread isMainThread]) return NO;
-  for (NSWindow *window in [lui_app() windows]) {
+  NSApplication *app = lui_app();
+  if ([app isRunning]) return YES;
+  for (NSWindow *window in [app windows]) {
     if ([window isVisible] && [window canBecomeKeyWindow]) return YES;
   }
   return NO;

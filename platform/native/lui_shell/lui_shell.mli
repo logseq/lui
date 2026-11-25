@@ -179,8 +179,10 @@ val clipboard_change_count : unit -> int
 
 val can_present_dialogs : unit -> bool
 (** Whether modal panels can actually run: the call is on the main
-    thread and the application is running. When [false], the dialogs
-    below return [None] immediately instead of blocking. *)
+    thread and either the application is running or it has a visible,
+    key-capable window. The window case covers SDL-style hosts that
+    drive their own event loop. When [false], the dialogs below return
+    [None] immediately instead of blocking. *)
 
 val open_dialog : ?dirs:bool -> ?files:bool -> ?multi:bool ->
   ?filters:string list -> unit -> string list option
