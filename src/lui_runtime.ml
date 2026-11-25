@@ -2318,18 +2318,8 @@ let ignored_property application property =
 let set_prop application node property value =
   if ignored_property application property then () else begin
   let value = normalize_property_value property value in
-  if property = FocusWithinEnabled then
-    (match application.runtime_backend.backend_profile.profile_host with
-     | WebHost -> ()
-     | SwiftUIHost | KotlinHost | GenericHost ->
-         invalid_arg "focus-within observation is unsupported by backend profile");
   let node = canonical_node application node in
   let kind = require_standard_node_kind application node in
-  if property = ShrinkValue then
-    (match application.runtime_backend.backend_profile.profile_host with
-     | WebHost -> ()
-     | GenericHost | SwiftUIHost | KotlinHost ->
-         invalid_arg "shrink is unsupported by backend profile");
   if not (property_supported kind property) then
     invalid_arg
       (Printf.sprintf
