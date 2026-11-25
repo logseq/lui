@@ -7352,8 +7352,8 @@ private struct LUIVirtualListView: View {
     @State private var appliedScrollKey: String?
     @Environment(\.luiMinimumScrollViewport) private var minimumScrollViewport
     @State private var unobscuredFrame: CGRect?
-    @State private var visibleViewport: CGRect?
-    @State private var contentWidth: CGFloat?
+    @State private var visibleHeight: CGFloat?
+    @State private var layoutWidth: CGFloat?
     @State private var titleTracker = LUIScrollSectionTitleTracker()
     @State private var windowTracker = LUIVirtualWindowTracker()
     @State private var firstSectionSizes: [SlotID: CGSize] = [:]
@@ -7374,11 +7374,22 @@ private struct LUIVirtualListView: View {
     }
 
     var body: some View {
-        let rows = sectionRows
+        #if os(iOS)
+        LUIVirtualViewportWidth {
+            scrollBody(layoutWidth: layoutWidth)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { layoutWidth = $0 }
+        #else
+        scrollBody(layoutWidth: nil)
+        #endif
+    }
+
+    private func scrollBody(layoutWidth: CGFloat?) -> some View {
+        let rows = sectionRows(layoutWidth: layoutWidth)
         let editor = rows.editor
         let request = scrollRequest(in: rows)
         let contentSpace = ContentSpace(nodeID: model.id)
-        ScrollViewReader { proxy in
+        return ScrollViewReader { proxy in
             ScrollView {
                 virtualStack(rows, contentSpace: contentSpace, request: request) { request in
                     revealTarget(request, rows: rows, using: proxy)
@@ -7423,12 +7434,8 @@ private struct LUIVirtualListView: View {
             .onChange(of: request) { _, request in
                 if !rows.usesMeasuredStack, let request { revealTarget(request, rows: rows, using: proxy) }
             }
-            .onGeometryChange(for: CGRect.self) {
-                let insets = $0.safeAreaInsets
-                return CGRect(x: insets.leading, y: insets.top,
-                    width: max(0, $0.size.width - insets.leading - insets.trailing),
-                    height: max(0, $0.size.height - insets.top - insets.bottom))
-            } action: { visibleViewport = $0 }
+            // This measurement already excludes the safe area and keyboard.
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
             .coordinateSpace(name: titleCoordinateSpace)
             .environment(\.luiScrollHeadingContext, tracksSectionTitles
                 ? LUIScrollHeadingContext(coordinateSpace: titleCoordinateSpace, tracker: titleTracker) : nil)
@@ -7459,7 +7466,7 @@ private struct LUIVirtualListView: View {
             // estimates that window a second time as rich rows enter the viewport.
             // Lay out the materialized rows and represent each cold span by one spacer.
             VStack(alignment: .leading, spacing: gap) {
-                ForEach(rows.stackSlots(measurements: rowFrames, width: contentWidth, gap: gap,
+                ForEach(rows.stackSlots(measurements: rowFrames, gap: gap,
                                         target: request?.position)) { slot in
                     switch slot {
                     case let .row(slot):
@@ -7477,9 +7484,8 @@ private struct LUIVirtualListView: View {
                     }
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
             .environment(\.luiVirtualAppearanceViewport,
-                LUIVirtualAppearanceViewport(space: titleCoordinateSpace, bounds: visibleViewport))
+                LUIVirtualAppearanceViewport(space: titleCoordinateSpace, height: visibleHeight))
         } else {
             lazyStack(rows, contentSpace: contentSpace, gap: gap)
         }
@@ -7521,7 +7527,7 @@ private struct LUIVirtualListView: View {
     @ViewBuilder private func virtualRow(_ row: SectionRow) -> some View {
         let content = LUIVirtualListRow(row: row, backend: backend,
             tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
-            viewportHeight: unobscuredHeight ?? 600, contentWidth: contentWidth,
+            viewportHeight: unobscuredHeight ?? 600, contentWidth: row.layoutWidth,
             onMeasure: { id, size, tracksSectionHeight in
                 #if os(iOS)
                 rowFrames.measure(size, for: id)
@@ -7603,6 +7609,7 @@ private struct LUIVirtualListView: View {
         var startsSection = false
         let estimatedHeight: CGFloat
         let tracksSectionHeight: Bool
+        let layoutWidth: CGFloat?
         var minimumHeight: CGFloat = 0
     }
 
@@ -7624,6 +7631,7 @@ private struct LUIVirtualListView: View {
         let segments: [Segment]
         let endIndex: Int
         let firstSectionHeights: [SlotID: CGFloat]
+        let layoutWidth: CGFloat?
 
         var usesMeasuredStack: Bool {
             #if os(iOS)
@@ -7634,7 +7642,7 @@ private struct LUIVirtualListView: View {
         }
 
         #if os(iOS)
-        func stackSlots(measurements: LUIVirtualRowFrames, width: CGFloat?, gap: CGFloat,
+        func stackSlots(measurements: LUIVirtualRowFrames, gap: CGFloat,
                         target: Int?) -> [LUIVirtualListSlot] {
             var slots: [LUIVirtualListSlot] = []
             let indices = LUIVirtualRowIndices(count: endIndex, editor: editor)
@@ -7645,7 +7653,7 @@ private struct LUIVirtualListView: View {
                 }
                 let start = Swift.min(window.start, window.count)
                 let end = Swift.min(start + window.length, window.count)
-                let extents = measurements.extents(for: segment.source, window: window, width: width, gap: gap,
+                let extents = measurements.extents(for: segment.source, window: window, width: layoutWidth, gap: gap,
                     firstSectionMinimum: segment.lastSectionRowMinimumHeight)
                 func band(_ range: Range<Int>) -> LUIVirtualListBand {
                     LUIVirtualListBand(source: segment.source, indices: range, extents: extents)
@@ -7717,11 +7725,13 @@ private struct LUIVirtualListView: View {
                     startsSection: window.sectionTitles.contains(where: { $0.index == offset }),
                     estimatedHeight: firstSectionHeights[SlotID(source: segment.source, offset: offset)] ?? window.extent,
                     tracksSectionHeight: segment.tracksSectionHeight && offset < window.firstSectionCount,
+                    layoutWidth: layoutWidth,
                     minimumHeight: offset == window.firstSectionCount - 1 ? segment.lastSectionRowMinimumHeight : 0)
             }
             return SectionRow(id: SlotID(source: segment.source, offset: -1),
                 nodeID: segment.source, windowID: nil, windowIndex: 0,
-                index: index, title: segment.title, startsSection: segment.startsSection, estimatedHeight: 0, tracksSectionHeight: false)
+                index: index, title: segment.title, startsSection: segment.startsSection, estimatedHeight: 0,
+                tracksSectionHeight: false, layoutWidth: layoutWidth)
         }
     }
 
@@ -7736,10 +7746,10 @@ private struct LUIVirtualListView: View {
         return nil
     }
 
-    private var sectionRows: SectionRows {
+    private func sectionRows(layoutWidth: CGFloat?) -> SectionRows {
         let itemExtent = configuredItemExtent
         let firstSectionHeights = firstSectionSizes.compactMapValues { size in
-            LUIVirtualRowFrames.matchesWidth(size.width, contentWidth) ? size.height : nil
+            LUIVirtualRowFrames.matchesWidth(size.width, layoutWidth) ? size.height : nil
         }
         let titles = model.childData.sectionTitles ?? [:]
         var segments: [SectionRows.Segment] = []
@@ -7769,10 +7779,28 @@ private struct LUIVirtualListView: View {
                 titles: source?.childData.sectionTitles ?? [:]))
             total += count
         }
-        return SectionRows(segments: segments, endIndex: total, firstSectionHeights: firstSectionHeights)
+        return SectionRows(segments: segments, endIndex: total, firstSectionHeights: firstSectionHeights,
+            layoutWidth: layoutWidth)
     }
 
 }
+
+#if os(iOS)
+// Rows may overflow the horizontal proposal. Keep that overflow out of the
+// viewport width without changing the scroll view's vertical measurement.
+private struct LUIVirtualViewportWidth: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let scroll = subviews.first else { return .zero }
+        let size = scroll.sizeThatFits(proposal)
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? size.width
+        return CGSize(width: width, height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: proposal)
+    }
+}
+#endif
 
 private final class LUIVirtualRowFrames {
     var frames: [LUIVirtualListView.SlotID: CGRect] = [:]
@@ -7968,7 +7996,9 @@ private struct LUIVirtualListRow: View {
                 LUIAnyNodeView(nodeID: nodeID, backend: backend)
                     .equatable()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                    .onGeometryChange(for: CGSize.self) {
+                        CGSize(width: contentWidth ?? $0.size.width, height: $0.size.height)
+                    } action: { size in
                         if size.height > 0 {
                             measurement.size = size
                             onMeasure(row.id, size, row.tracksSectionHeight)

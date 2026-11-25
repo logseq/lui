@@ -96,7 +96,7 @@ struct LUIContainerRelativeFrameModifier: ViewModifier {
 
 struct LUIVirtualAppearanceViewport: Equatable {
     let space: LUIScrollTitleCoordinateSpace
-    let bounds: CGRect?
+    let height: CGFloat?
 }
 
 extension EnvironmentValues {
@@ -114,9 +114,9 @@ struct LUIAppearModifier: ViewModifier {
             // The virtual window lays out ahead of the viewport. An appearance
             // event such as pagination must wait for the row to reach it.
             content.onGeometryChange(for: Bool.self) {
-                guard let bounds = viewport.bounds, bounds.height > 0 else { return false }
+                guard let height = viewport.height, height > 0 else { return false }
                 let frame = $0.frame(in: .named(viewport.space))
-                return frame.maxY > bounds.minY && frame.minY < bounds.maxY
+                return frame.maxY > 0 && frame.minY < height
             } action: { visible in
                 if visible { try? backend.performAppear(node: model.id) }
             }

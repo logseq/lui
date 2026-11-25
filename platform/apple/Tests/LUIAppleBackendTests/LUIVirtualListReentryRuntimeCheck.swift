@@ -12,7 +12,6 @@ enum LUIVirtualListReentryRuntimeCheck {
             .map { "\($0.key)\u{1f}\($0.value)" }.joined(separator: "\u{1e}")
         let operations: [[String: Any]] = [
             ["op": "create-node", "id": 1, "kind": "virtual-list"],
-            ["op": "set-prop", "id": 1, "property": "height", "value": 300],
             ["op": "create-node", "id": 2, "kind": "list"],
             ["op": "set-prop", "id": 2, "property": "data-attrs", "value": metadata],
             ["op": "set-prop", "id": 2, "property": "track-visible-range", "value": true],
@@ -29,6 +28,9 @@ enum LUIVirtualListReentryRuntimeCheck {
         try backend.apply(json: String(decoding: json, as: UTF8.self))
         var ranges: [(Int, Int)] = []
         var markerAppearances = 0
+        var targetFrame: CGRect?
+        backend.frameReportingEnabled = true
+        backend.onFramesReport = { targetFrame = $0[5] }
         backend.onEvent = { event in
             if case let .visibleRange(node, first, last) = event, node == 2 {
                 ranges.append((first, last))
@@ -38,7 +40,10 @@ enum LUIVirtualListReentryRuntimeCheck {
         }
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first!
         let window = UIWindow(windowScene: scene)
-        window.rootViewController = UIHostingController(rootView: LUISwiftUIRoot(backend: backend, rootID: 1))
+        window.rootViewController = UIHostingController(rootView: VStack(spacing: 0) {
+            TextField("Keyboard fixture", text: .constant("")).frame(height: 32)
+            LUISwiftUIRoot(backend: backend, rootID: 1)
+        })
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
         func views(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(views) }
@@ -60,7 +65,21 @@ enum LUIVirtualListReentryRuntimeCheck {
             guard let range = ranges.last else { return false }
             return scroll.contentOffset.y > 15_900 && range.0 <= 500 && range.1 >= 500
         }
-        let bottomOfRows: CGFloat = 320_000
+        let mountedMetadata = scrollMetadata.replacingOccurrences(of: "data-virtual-start\u{1f}0",
+            with: "data-virtual-start\u{1f}500").replacingOccurrences(of: "data-virtual-length\u{1f}0",
+            with: "data-virtual-length\u{1f}1")
+        let mounted: [String: Any] = ["generation": 3, "ops": [
+            ["op": "create-node", "id": 5, "kind": "box"],
+            ["op": "set-prop", "id": 5, "property": "height", "value": 72],
+            ["op": "insert-child", "parent": 2, "child": 5, "index": 0],
+            ["op": "set-prop", "id": 2, "property": "data-attrs", "value": mountedMetadata],
+        ]]
+        try backend.apply(json: String(decoding: JSONSerialization.data(withJSONObject: mounted), as: UTF8.self))
+        try await wait("The hydrated destination stays onscreen") {
+            guard let targetFrame else { return false }
+            return targetFrame.height >= 72 && targetFrame.intersects(scroll.convert(scroll.bounds, to: window))
+        }
+        let bottomOfRows = scroll.contentSize.height - 420
         let markerAtEdge = bottomOfRows - scroll.bounds.height + scroll.adjustedContentInset.bottom
         scroll.setContentOffset(CGPoint(x: 0, y: markerAtEdge - 8), animated: false)
         try await Task.sleep(for: .milliseconds(250))
@@ -76,7 +95,29 @@ enum LUIVirtualListReentryRuntimeCheck {
             scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
             try await wait("Reused lazy rows must report visibility again on return") { ranges.last?.0 == 0 }
         }
-        print("PASS: distant targets, exact pagination visibility and repeated viewport reentry")
+        guard let field = views(window).compactMap({ $0 as? UITextField }).first else {
+            throw NSError(domain: "LUIVirtualListReentry", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Missing keyboard fixture field"])
+        }
+        let visibleBottom = { scroll.bounds.height - scroll.adjustedContentInset.bottom }
+        let unoccludedBottom = visibleBottom()
+        let priorAppearances = markerAppearances
+        field.becomeFirstResponder()
+        try await wait("The software keyboard reduces the visible viewport") {
+            unoccludedBottom - visibleBottom() > 80
+        }
+        scroll.setContentOffset(CGPoint(x: 0, y: bottomOfRows - unoccludedBottom + 20), animated: false)
+        try await Task.sleep(for: .milliseconds(250))
+        guard markerAppearances == priorAppearances else {
+            throw NSError(domain: "LUIVirtualListReentry", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "The pagination marker fired behind the keyboard"])
+        }
+        scroll.setContentOffset(CGPoint(x: 0, y: bottomOfRows - visibleBottom() + 8), animated: false)
+        try await wait("The pagination marker fires when scrolled above the keyboard") {
+            markerAppearances == priorAppearances + 1
+        }
+        field.resignFirstResponder()
+        print("PASS: distant targets, pagination with and without the keyboard, and repeated viewport reentry")
     }
 }
 #endif

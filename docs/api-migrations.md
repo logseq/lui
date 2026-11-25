@@ -8,13 +8,15 @@ directly and uses measured heights or the configured item extent for offscreen
 spans. This removes the second layer of height estimation inside the scroll
 view. An appearance-based pagination marker fires when it intersects the
 keyboard-aware visible viewport. The pinned editor retains its native view
-appearance lifecycle in its overlay. Cached heights are reused at the width
-they were measured at.
+appearance lifecycle in its overlay. Cached heights are reused at the
+viewport width they were measured at.
 
 No wire changes are required. For example, a list with rows 0–31 mounted can
 still set `data-scroll-index=500` and a new `data-scroll-key`. The list aligns
 the estimated position first and requests that row through visible-range
-tracking, even while the row is outside the mounted window.
+tracking, even while the row is outside the mounted window. The index must
+be within the source's current logical count. An out-of-bounds request can be
+applied later when a source update makes the index valid.
 
 ### Apple flow and box containers resolve their own alignment guides
 
