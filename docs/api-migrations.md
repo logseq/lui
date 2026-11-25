@@ -1,6 +1,6 @@
 # LUI API migration guide
 
-### Native file dialogs require a window rather than a running AppKit loop
+### Native file dialogs accept SDL-style windows
 
 macOS `open_dialog` and `save_dialog` now treat a process with a visible,
 key-capable `NSWindow` as able to present a modal panel, even when the
