@@ -18,6 +18,17 @@ tracking, even while the row is outside the mounted window. The index must
 be within the source's current logical count. An out-of-bounds request can be
 applied later when a source update makes the index valid.
 
+### Native file dialogs accept SDL-style windows
+
+macOS `open_dialog` and `save_dialog` now treat a process with a visible,
+key-capable `NSWindow` as able to present a modal panel, even when the
+application drives its own event loop and `[NSApp isRunning]` is false. This
+covers SDL-backed native hosts. Running AppKit applications remain eligible
+even without such a window (for example menu-only hosts). Truly headless
+helper processes still have neither capability and continue to return `None`.
+The calling host remains responsible for presenting dialogs on the main
+thread; no application migration is required.
+
 ### Apple flow and box containers resolve their own alignment guides
 
 Apple row, column and box containers no longer merge descendant explicit
@@ -38,6 +49,15 @@ wall-clock execution time. For example, repeated `--headless 6 --windows 2` runs
 now produce identical checksums even when a window contains an animated drawer.
 Animated headless checksums may change; interactive timing and wire contracts
 are unchanged. No application migration is required.
+
+### Generic native hosts accept shrink and focus-within observation
+
+Generic OCaml native hosts now accept the existing `shrink` property and
+`focus-within-enabled` observation instead of rejecting them as Web-only at
+runtime. SwiftUI and Kotlin hosts continue to ignore these schema Web hints.
+No constructor, wire-name or application migration is required; native hosts
+that already consume the retained properties can enable the behavior by
+updating the runtime dependency.
 
 ### Explicit Web popover anchors own return focus
 

@@ -810,7 +810,30 @@ CAMLprim value lui_sh_clip_count(value unit)
 
 static BOOL lui_can_present(void)
 {
-  return [NSThread isMainThread] && [lui_app() isRunning];
+  /* SDL-backed applications drive their own event loop rather than
+     NSApplicationMain, so [NSApp isRunning] remains false even while
+     their real NSWindow is visible and active. Keep accepting a
+     running AppKit application for menu-only hosts; otherwise require
+     a visible key-capable window so truly headless helper processes
+     keep degrading instead of blocking in runModal. The pool is local:
+     callers test eligibility before entering their own pools. */
+  BOOL ok = NO;
+  @autoreleasepool {
+    if ([NSThread isMainThread]) {
+      NSApplication *app = lui_app();
+      if ([app isRunning]) {
+        ok = YES;
+      } else {
+        for (NSWindow *window in [app windows]) {
+          if ([window isVisible] && [window canBecomeKeyWindow]) {
+            ok = YES;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return ok;
 }
 
 CAMLprim value lui_sh_can_present(value unit)
