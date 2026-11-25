@@ -3,10 +3,24 @@ import SwiftUI
 import UIKit
 @testable import LUIAppleBackend
 
+private struct RetainedVirtualRowProbe: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.accessibilityIdentifier = "virtual-row-lifetime-probe"
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {}
+}
+
 @MainActor
 enum LUIVirtualListReentryRuntimeCheck {
     static func main() async throws {
-        let backend = LUIAppleBackend()
+        let registry = LUIAppleExtensionRegistry()
+        try registry.register(LUIAppleExtension(identifier: "virtual-row-probe", fingerprint: "v1") { _ in
+            AnyView(RetainedVirtualRowProbe())
+        })
+        let backend = try LUIAppleBackend(extensionRegistry: registry)
         let metadata = ["data-virtual-count": "10000", "data-virtual-start": "0",
                         "data-virtual-length": "0", "data-item-extent": "32"]
             .map { "\($0.key)\u{1f}\($0.value)" }.joined(separator: "\u{1e}")
@@ -71,6 +85,8 @@ enum LUIVirtualListReentryRuntimeCheck {
         let mounted: [String: Any] = ["generation": 3, "ops": [
             ["op": "create-node", "id": 5, "kind": "box"],
             ["op": "set-prop", "id": 5, "property": "height", "value": 72],
+            ["op": "create-extension", "id": 6, "identifier": "virtual-row-probe", "fingerprint": "v1"],
+            ["op": "insert-child", "parent": 5, "child": 6, "index": 0],
             ["op": "insert-child", "parent": 2, "child": 5, "index": 0],
             ["op": "set-prop", "id": 2, "property": "data-attrs", "value": mountedMetadata],
         ]]
@@ -78,6 +94,32 @@ enum LUIVirtualListReentryRuntimeCheck {
         try await wait("The hydrated destination stays onscreen") {
             guard let targetFrame else { return false }
             return targetFrame.height >= 72 && targetFrame.intersects(scroll.convert(scroll.bounds, to: window))
+        }
+        func rowProbe() -> UIView? {
+            views(window).first { $0.accessibilityIdentifier == "virtual-row-lifetime-probe" }
+        }
+        try await wait("The destination row must mount its UIKit subtree") { rowProbe() != nil }
+        let existingProbe = rowProbe()
+        let initialY = targetFrame!.minY
+        let expandedMetadata = mountedMetadata.replacingOccurrences(of: "data-virtual-length\u{1f}1",
+            with: "data-virtual-length\u{1f}2")
+        let insertion: [String: Any] = ["generation": 4, "ops": [
+            ["op": "create-node", "id": 7, "kind": "box"],
+            ["op": "set-prop", "id": 7, "property": "height", "value": 32],
+            ["op": "insert-child", "parent": 2, "child": 7, "index": 0],
+            ["op": "set-prop", "id": 2, "property": "data-attrs", "value": expandedMetadata],
+        ]]
+        try backend.apply(json: String(decoding: JSONSerialization.data(withJSONObject: insertion), as: UTF8.self))
+        try await wait("Inserting above a mounted row moves it without recreating its UIKit subtree") {
+            (targetFrame?.minY ?? 0) > initialY + 25 && rowProbe() === existingProbe
+        }
+        let removal: [String: Any] = ["generation": 5, "ops": [
+            ["op": "remove-child", "parent": 2, "child": 7],
+            ["op": "set-prop", "id": 2, "property": "data-attrs", "value": mountedMetadata],
+        ]]
+        try backend.apply(json: String(decoding: JSONSerialization.data(withJSONObject: removal), as: UTF8.self))
+        try await wait("Removing the preceding row restores the same mounted row") {
+            abs((targetFrame?.minY ?? 0) - initialY) < 1 && rowProbe() === existingProbe
         }
         let bottomOfRows = scroll.contentSize.height - 420
         let markerAtEdge = bottomOfRows - scroll.bounds.height + scroll.adjustedContentInset.bottom
@@ -117,7 +159,7 @@ enum LUIVirtualListReentryRuntimeCheck {
             markerAppearances == priorAppearances + 1
         }
         field.resignFirstResponder()
-        print("PASS: distant targets, pagination with and without the keyboard, and repeated viewport reentry")
+        print("PASS: distant targets, mounted row identity, keyboard pagination, and repeated viewport reentry")
     }
 }
 #endif
