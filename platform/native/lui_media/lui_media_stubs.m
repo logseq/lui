@@ -356,6 +356,7 @@ static void lui_video_finalize(value v)
   LuiVideoDec *d = video_of(v);
   if (d) {
     [d.reader cancelReading];
+    [d.audioPlayer pause];
     CFRelease((CFTypeRef)d);
   }
 }
@@ -708,6 +709,8 @@ CAMLprim value lui_media_video_close(value v)
   [d.reader cancelReading];
   d.reader = nil;
   d.out = nil;
+  [d.audioPlayer pause];
+  d.audioPlayer = nil;
   CAMLreturn(Val_unit);
 }
 
