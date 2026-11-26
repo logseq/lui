@@ -309,6 +309,7 @@ static double player_position(LuiMediaPlayer *p)
 @property(nonatomic) AVAssetTrack *track;
 @property(nonatomic) AVAssetReader *reader;
 @property(nonatomic) AVAssetReaderTrackOutput *out;
+@property(nonatomic) AVPlayer *audioPlayer;
 @property(nonatomic) double dur;
 @property(nonatomic) int w;
 @property(nonatomic) int h;
@@ -678,6 +679,29 @@ CAMLprim value lui_media_video_open(value vpath)
     d.w = (int)sz.width;
     d.h = (int)sz.height;
     d.dur = CMTimeGetSeconds(asset.duration);
+    NSArray<AVAssetTrack *> *audioTracks =
+        [asset tracksWithMediaType:AVMediaTypeAudio];
+    if (audioTracks.count > 0) {
+      AVMutableComposition *audioComposition =
+          [AVMutableComposition composition];
+      for (AVAssetTrack *audioTrack in audioTracks) {
+        AVMutableCompositionTrack *compositionTrack =
+            [audioComposition addMutableTrackWithMediaType:AVMediaTypeAudio
+                                          preferredTrackID:kCMPersistentTrackID_Invalid];
+        NSError *trackError = nil;
+        if (![compositionTrack insertTimeRange:audioTrack.timeRange
+                                       ofTrack:audioTrack
+                                        atTime:kCMTimeZero
+                                         error:&trackError])
+          [audioComposition removeTrack:compositionTrack];
+      }
+      if (audioComposition.tracks.count > 0) {
+        AVPlayerItem *item =
+            [AVPlayerItem playerItemWithAsset:audioComposition];
+        d.audioPlayer = [AVPlayer playerWithPlayerItem:item];
+        d.audioPlayer.volume = 1.0f;
+      }
+    }
     NSError *e = nil;
     if (![d startReaderAt:0 error:&e]) {
       NSString *m = e ? [e localizedDescription] : @"reader failed";
@@ -729,7 +753,47 @@ CAMLprim value lui_media_video_seek(value v, value vt)
     NSString *m = e ? [e localizedDescription] : @"seek failed";
     caml_failwith([m UTF8String]);
   }
+  if (d.audioPlayer)
+    [d.audioPlayer seekToTime:CMTimeMakeWithSeconds(t, 600)
+              toleranceBefore:kCMTimeZero
+               toleranceAfter:kCMTimeZero];
   CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_media_video_transport_control(value v, value vplaying,
+                                                 value vrate)
+{
+  CAMLparam3(v, vplaying, vrate);
+  LuiVideoDec *d = video_of(v);
+  if (d.audioPlayer) {
+    if (Bool_val(vplaying))
+      d.audioPlayer.rate = (float)Double_val(vrate);
+    else
+      [d.audioPlayer pause];
+  }
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_media_video_transport_volume(value v, value vvolume)
+{
+  CAMLparam2(v, vvolume);
+  LuiVideoDec *d = video_of(v);
+  if (d.audioPlayer)
+    d.audioPlayer.volume = (float)Double_val(vvolume);
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_media_video_transport_position(value v)
+{
+  CAMLparam1(v);
+  LuiVideoDec *d = video_of(v);
+  double seconds = -1.0;
+  if (d.audioPlayer) {
+    CMTime t = d.audioPlayer.currentTime;
+    if (CMTIME_IS_VALID(t) && !CMTIME_IS_INDEFINITE(t))
+      seconds = CMTimeGetSeconds(t);
+  }
+  CAMLreturn(caml_copy_double(seconds));
 }
 
 CAMLprim value lui_media_video_next(value v)

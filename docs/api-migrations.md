@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+### Native macOS videos play their audio track
+
+`Lui_media.video_play` now also starts an AVPlayer-backed audio-only composition
+when the source asset has audio tracks. `video_pause`, `video_seek`,
+`video_set_rate`, and `video_set_volume` mirror the same transport to that
+audio output, and `video_position` uses the audio transport clock when it is
+available so decoded frames stay synchronized with audible playback. Videos
+without an audio track retain the previous wall-clock frame pacing. This is a
+behavior correction rather than a constructor or wire-protocol change; hosts
+that intentionally want silent video should call `video_set_volume video 0.`
+after opening the video.
+
 ### Native dark text masks no longer receive light-ink coverage gain
 
 `Lui_text.rasterize` still applies its manual coverage gain for light mask

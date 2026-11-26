@@ -40,6 +40,12 @@ external c_video_size : video_h -> int * int = "lui_media_video_size"
 external c_video_seek : video_h -> float -> unit = "lui_media_video_seek"
 external c_video_next : video_h -> bool * float * int * int * string * string
   = "lui_media_video_next"
+external c_video_transport_control : video_h -> bool -> float -> unit
+  = "lui_media_video_transport_control"
+external c_video_transport_volume : video_h -> float -> unit
+  = "lui_media_video_transport_volume"
+external c_video_transport_position : video_h -> float
+  = "lui_media_video_transport_position"
 (* -> found pts w h rgba_bytes err *)
 
 external c_write_test_video : string -> int -> int -> float -> bool * string
@@ -102,7 +108,9 @@ let now () = Unix.gettimeofday ()
 
 let video_position v =
   let pos =
-    if v.vstate = Playing then v.base +. ((now ()) -. v.t0) *. v.rate_f
+    let transport = c_video_transport_position v.vh in
+    if transport >= 0. then transport
+    else if v.vstate = Playing then v.base +. ((now ()) -. v.t0) *. v.rate_f
     else v.base
   in
   Float.min (Float.max pos 0.) v.vdur
@@ -286,13 +294,15 @@ let video_play v =
      v.base <- 0.
    | _ -> ());
   v.t0 <- now ();
-  v.vstate <- Playing
+  v.vstate <- Playing;
+  c_video_transport_control v.vh true v.rate_f
 
 let video_pause v =
   if v.vclosed then invalid_arg "Lui_media: video closed";
   if v.vstate = Playing then begin
     v.base <- video_position v;
-    v.vstate <- Paused
+    v.vstate <- Paused;
+    c_video_transport_control v.vh false v.rate_f
   end
 
 let video_seek v t =
@@ -311,12 +321,15 @@ let video_set_rate v r =
   let r = Float.min (Float.max r 0.01) 16. in
   if v.vstate = Playing then begin
     v.base <- video_position v;
-    v.t0 <- now ()
+    v.t0 <- now ();
+    c_video_transport_control v.vh true r
   end;
   v.rate_f <- r
 
 let video_rate v = v.rate_f
-let video_set_volume v x = v.vol_f <- Float.min (Float.max x 0.) 1.
+let video_set_volume v x =
+  v.vol_f <- Float.min (Float.max x 0.) 1.;
+  c_video_transport_volume v.vh v.vol_f
 let video_volume v = v.vol_f
 let video_duration v = v.vdur
 let video_status v = v.vstate
