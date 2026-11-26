@@ -682,24 +682,12 @@ CAMLprim value lui_media_video_open(value vpath)
     NSArray<AVAssetTrack *> *audioTracks =
         [asset tracksWithMediaType:AVMediaTypeAudio];
     if (audioTracks.count > 0) {
-      AVMutableComposition *audioComposition =
-          [AVMutableComposition composition];
-      AVAssetTrack *audioTrack = audioTracks.firstObject;
-      AVMutableCompositionTrack *compositionTrack =
-          [audioComposition addMutableTrackWithMediaType:AVMediaTypeAudio
-                                        preferredTrackID:kCMPersistentTrackID_Invalid];
-      NSError *trackError = nil;
-      if (![compositionTrack insertTimeRange:audioTrack.timeRange
-                                     ofTrack:audioTrack
-                                      atTime:kCMTimeZero
-                                       error:&trackError])
-        [audioComposition removeTrack:compositionTrack];
-      if (audioComposition.tracks.count > 0) {
-        AVPlayerItem *item =
-            [AVPlayerItem playerItemWithAsset:audioComposition];
-        d.audioPlayer = [AVPlayer playerWithPlayerItem:item];
-        d.audioPlayer.volume = 1.0f;
-      }
+      AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:asset];
+      for (AVPlayerItemTrack *itemTrack in item.tracks)
+        if ([itemTrack.assetTrack.mediaType isEqualToString:AVMediaTypeVideo])
+          itemTrack.enabled = NO;
+      d.audioPlayer = [AVPlayer playerWithPlayerItem:item];
+      d.audioPlayer.volume = 1.0f;
     }
     NSError *e = nil;
     if (![d startReaderAt:0 error:&e]) {

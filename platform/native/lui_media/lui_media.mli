@@ -16,8 +16,8 @@
    - macOS: real implementation. Audio decodes through ExtAudioFile /
      AudioFile and plays through a shared AVAudioEngine; video decodes
      through AVAssetReader into premultiplied RGBA frames and plays
-     the asset's audio tracks through an AVPlayer-backed audio-only
-     composition.
+     the asset's default audio track through an AVPlayer transport
+     whose video tracks are disabled.
    - Linux: audio decode via a runtime-resolved libsndfile with an
      [ffmpeg] subprocess fallback; playback via a runtime-resolved
      SDL3 device queue, with an [ffplay] subprocess fallback that only

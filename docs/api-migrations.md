@@ -2,8 +2,9 @@
 
 ### Native macOS videos play their audio track
 
-`Lui_media.video_play` now also starts an AVPlayer-backed audio-only composition
-when the source asset has audio tracks. `video_pause`, `video_seek`,
+`Lui_media.video_play` now also starts an AVPlayer-backed transport for the
+source asset's default audio track, with video tracks disabled, when the asset
+has audio. `video_pause`, `video_seek`,
 `video_set_rate`, and `video_set_volume` mirror the same transport to that
 audio output, and `video_position` uses the audio transport clock when it is
 available so decoded frames stay synchronized with audible playback. Videos
