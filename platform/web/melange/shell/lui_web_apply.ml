@@ -831,7 +831,7 @@ let apply_detach_subtree renderer previous_nodes children_of effects node =
     Ext.cleanup_extension_node renderer previous_nodes node_id;
     (* Exiting popup visuals must keep their inline icons until the exit
        callback removes the boundary; the store cleanup only drops ownership. *)
-    cleanup_node ~preserve_icons:(exit_boundary <> None) renderer node_id;
+    cleanup_node ~preserve_icons:(exit_boundary <> None || !toast_boundaries <> []) renderer node_id;
     Lui_indexed_sequence.iter visit (children_of node_id).items
   in
   visit node;
