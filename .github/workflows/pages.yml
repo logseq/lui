@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -18,6 +19,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # GitHub retains artifacts from earlier attempts of the same run.
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -53,10 +57,31 @@ jobs:
         run: node tooling/build_web_release.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
+        id: upload
         with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
           path: _build/web-release
+      - name: Wait for the uploaded Pages artifact
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAGES_ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+        run: |
+          : "${PAGES_ARTIFACT_ID:?The Pages upload did not return an artifact ID}"
+          endpoint="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=$PAGES_ARTIFACT_NAME"
+          for _ in {1..12}; do
+            if artifact_ids=$(gh api "$endpoint" --jq '.artifacts[] | select(.expired == false) | .id') &&
+              [[ $artifact_ids == "$PAGES_ARTIFACT_ID" ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::GitHub Pages artifact $PAGES_ARTIFACT_NAME is not visible after upload."
+          exit 1
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT_NAME }}
       - name: Trim dune cache
         if: github.event_name == 'push'
         run: opam exec -- dune cache trim --size=400MB
