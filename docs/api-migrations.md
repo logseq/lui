@@ -1,5 +1,18 @@
 # LUI API migration guide
 
+### Android sheet hardware back is event-only
+
+Android modal sheets no longer let Material dismiss the native sheet before
+the application handles hardware Back. Back now emits the sheet's existing
+`dismiss` event while the native sheet remains visible; the application model
+decides whether to remove the sheet, navigate inside it, or ignore the event.
+An expanded sheet with a medium detent still collapses to that detent before
+a later Back emits `dismiss`. Outside presses and swipe dismissal are
+unchanged. Applications already handle `sheet ~on_dismiss` by updating their
+model, so no code migration is required; handlers that assumed every Back
+event meant close should perform their own hierarchical back navigation before
+removing the sheet.
+
 ### Web popup exits retain inline app icons
 
 Web popup subtrees retained for their exit transition now keep inline `app:`

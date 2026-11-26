@@ -1,6 +1,7 @@
 package dev.lui
 
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -83,6 +84,7 @@ import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.DrawerValue
@@ -112,10 +114,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -2487,16 +2491,26 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
             )
         }
         LuiNodeKind.sheet -> {
+            val skipPartiallyExpanded = node.prop("detents")?.stringValue
+                ?.split(",")?.map { it.trim() }?.contains("medium") != true
             val sheetState = rememberModalBottomSheetState(
-                skipPartiallyExpanded = node.prop("detents")?.stringValue
-                    ?.split(",")?.map { it.trim() }?.contains("medium") != true,
+                skipPartiallyExpanded = skipPartiallyExpanded,
             )
+            val scope = rememberCoroutineScope()
             ModalBottomSheet(
                 modifier = Modifier.luiChrome(node),
                 onDismissRequest = onDismiss,
                 sheetState = sheetState,
+                properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
                 containerColor = LocalLuiSemanticColors.current["background"] ?: MaterialTheme.colorScheme.surface,
             ) {
+                BackHandler {
+                    if (!skipPartiallyExpanded && sheetState.currentValue == SheetValue.Expanded) {
+                        scope.launch { sheetState.partialExpand() }
+                    } else {
+                        onDismiss()
+                    }
+                }
                 val imeVisible = WindowInsets.isImeVisible
                 LaunchedEffect(imeVisible, sheetState.currentValue) {
                     if (imeVisible && sheetState.currentValue == SheetValue.PartiallyExpanded) {
