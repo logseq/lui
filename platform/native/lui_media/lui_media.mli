@@ -145,10 +145,11 @@ val video_volume : video -> float
 (** Output gain for the video's audio channel, clamped to \[0, 1]. *)
 
 val video_duration : video -> float
-val video_position : video -> float
+
 (** Playback position in seconds. When the asset has an audio track this
     comes from the audio transport clock so frame selection follows
     audible playback; otherwise it uses the decoder's wall-clock pacing. *)
+val video_position : video -> float
 val video_status : video -> player_state
 val video_natural_size : video -> int * int
 (** Decoded frame size (pixels), before any rotation metadata — the
