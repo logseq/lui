@@ -15,7 +15,9 @@
 
    - macOS: real implementation. Audio decodes through ExtAudioFile /
      AudioFile and plays through a shared AVAudioEngine; video decodes
-     through AVAssetReader into premultiplied RGBA frames.
+     through AVAssetReader into premultiplied RGBA frames and plays
+     the asset's audio tracks through an AVPlayer-backed audio-only
+     composition.
    - Linux: audio decode via a runtime-resolved libsndfile with an
      [ffmpeg] subprocess fallback; playback via a runtime-resolved
      SDL3 device queue, with an [ffplay] subprocess fallback that only
@@ -140,12 +142,13 @@ val video_rate : video -> float
 
 val video_set_volume : video -> float -> unit
 val video_volume : video -> float
-(** Volume for the video's audio channel. Video sound is not rendered
-    at v1 — the value is stored and reported so API users can wire it
-    ahead of time. *)
+(** Output gain for the video's audio channel, clamped to \[0, 1]. *)
 
 val video_duration : video -> float
 val video_position : video -> float
+(** Playback position in seconds. When the asset has an audio track this
+    comes from the audio transport clock so frame selection follows
+    audible playback; otherwise it uses the decoder's wall-clock pacing. *)
 val video_status : video -> player_state
 val video_natural_size : video -> int * int
 (** Decoded frame size (pixels), before any rotation metadata — the
