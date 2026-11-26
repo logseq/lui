@@ -63,8 +63,9 @@ let portal_parent renderer previous_nodes parent child =
     dom_child_container_before renderer previous_nodes parent
       (Nodes.dom_node_before renderer previous_nodes parent)
 
-let cleanup_node renderer node =
-  Lui_web_widgets.release_app_icon renderer node;
+let cleanup_node ?(preserve_icons=false) renderer node =
+  if preserve_icons then Lui_web_widgets.forget_app_icon renderer node
+  else Lui_web_widgets.release_app_icon renderer node;
   Hashtbl.remove renderer.web_portal_nodes node;
   Lui_web_events.release_appear renderer node;
   (match Hashtbl.find_opt renderer.web_virtual_lists node with
@@ -828,7 +829,9 @@ let apply_detach_subtree renderer previous_nodes children_of effects node =
     detach_element node_id;
     detach_bottom_tab_trigger node_id;
     Ext.cleanup_extension_node renderer previous_nodes node_id;
-    cleanup_node renderer node_id;
+    (* Exiting popup visuals must keep their inline icons until the exit
+       callback removes the boundary; the store cleanup only drops ownership. *)
+    cleanup_node ~preserve_icons:(exit_boundary <> None || !toast_boundaries <> []) renderer node_id;
     Lui_indexed_sequence.iter visit (children_of node_id).items
   in
   visit node;

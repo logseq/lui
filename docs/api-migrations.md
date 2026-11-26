@@ -13,6 +13,14 @@ model, so no code migration is required; handlers that assumed every Back
 event meant close should perform their own hierarchical back navigation before
 removing the sheet.
 
+### Web popup exits retain inline app icons
+
+Web popup subtrees retained for their exit transition now keep inline `app:`
+SVG icons painted until the transition removes the surface. Store cleanup only
+releases renderer ownership; it no longer strips the icon DOM/styles early.
+This is a rendering bug fix with no constructor, wire-name or application
+migration requirement.
+
 ### iOS window-backed virtual lists use measured row heights
 
 The legacy virtual list window protocol keeps the same row and visible-range
