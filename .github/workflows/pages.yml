@@ -18,6 +18,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # GitHub retains artifacts from earlier attempts of the same run.
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -51,12 +54,44 @@ jobs:
         run: opam exec -- dune build @web
       - name: Assemble release site
         run: node tooling/build_web_release.mjs
+      - name: Install the Pages artifact client
+        run: npm install --prefix "$RUNNER_TEMP/pages-artifact" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund @actions/artifact@2.1.3
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
+        id: upload
         with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
           path: _build/web-release
+      - name: Wait for the uploaded Pages artifact
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        timeout-minutes: 2
+        env:
+          PAGES_ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+        with:
+          script: |
+            const { join } = require('node:path')
+            const { setTimeout: delay } = require('node:timers/promises')
+            const { DefaultArtifactClient } = require(join(process.env.RUNNER_TEMP, 'pages-artifact/node_modules/@actions/artifact'))
+            const { PAGES_ARTIFACT_NAME: name, PAGES_ARTIFACT_ID: id } = process.env
+            if (!id) throw new Error('The Pages upload did not return an artifact ID.')
+
+            // Match deploy-pages by listing through the runner artifact service.
+            const client = new DefaultArtifactClient()
+            for (let attempt = 0; attempt < 12; attempt++) {
+              try {
+                const { artifacts } = await client.listArtifacts()
+                const matches = artifacts.filter(artifact => artifact.name === name)
+                if (matches.length === 1 && String(matches[0].id) === id) return
+              } catch (error) {
+                core.warning(`Unable to list Pages artifacts: ${error.message}`)
+              }
+              await delay(5000)
+            }
+            throw new Error(`GitHub Pages artifact ${name} is not visible after upload.`)
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT_NAME }}
       - name: Trim dune cache
         if: github.event_name == 'push'
         run: opam exec -- dune cache trim --size=400MB
