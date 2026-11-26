@@ -114,10 +114,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -2489,10 +2491,12 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
             )
         }
         LuiNodeKind.sheet -> {
+            val skipPartiallyExpanded = node.prop("detents")?.stringValue
+                ?.split(",")?.map { it.trim() }?.contains("medium") != true
             val sheetState = rememberModalBottomSheetState(
-                skipPartiallyExpanded = node.prop("detents")?.stringValue
-                    ?.split(",")?.map { it.trim() }?.contains("medium") != true,
+                skipPartiallyExpanded = skipPartiallyExpanded,
             )
+            val scope = rememberCoroutineScope()
             ModalBottomSheet(
                 modifier = Modifier.luiChrome(node),
                 onDismissRequest = onDismiss,
@@ -2500,7 +2504,13 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                 properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
                 containerColor = LocalLuiSemanticColors.current["background"] ?: MaterialTheme.colorScheme.surface,
             ) {
-                BackHandler(onBack = onDismiss)
+                BackHandler {
+                    if (!skipPartiallyExpanded && sheetState.currentValue == SheetValue.Expanded) {
+                        scope.launch { sheetState.partialExpand() }
+                    } else {
+                        onDismiss()
+                    }
+                }
                 val imeVisible = WindowInsets.isImeVisible
                 LaunchedEffect(imeVisible, sheetState.currentValue) {
                     if (imeVisible && sheetState.currentValue == SheetValue.PartiallyExpanded) {
