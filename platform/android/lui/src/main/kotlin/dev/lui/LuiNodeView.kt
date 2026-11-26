@@ -2495,14 +2495,6 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                 ?.split(",")?.map { it.trim() }?.contains("medium") != true
             val sheetState = rememberModalBottomSheetState(
                 skipPartiallyExpanded = skipPartiallyExpanded,
-                confirmValueChange = { value ->
-                    if (value == SheetValue.Hidden) {
-                        onDismiss()
-                        false
-                    } else {
-                        true
-                    }
-                },
             )
             val scope = rememberCoroutineScope()
             ModalBottomSheet(
