@@ -57,6 +57,8 @@ let create_app_svg document source =
     W.Element.appendChild (W.Element.asNode shape) root) source.svg_shapes;
   root
 
+let forget_app_icon renderer node = Hashtbl.remove renderer.web_inline_icons node
+
 let release_app_icon renderer node =
   match Hashtbl.find_opt renderer.web_inline_icons node with
   | None -> ()
@@ -65,7 +67,7 @@ let release_app_icon renderer node =
     let style = W.HtmlElement.style (W.Element.unsafeAsHtmlElement parent) in
     List.iter (fun name -> ignore (W.CssStyleDeclaration.removeProperty name style))
       ["mask-image"; "-webkit-mask-image"; "background-color"];
-    Hashtbl.remove renderer.web_inline_icons node
+    forget_app_icon renderer node
 
 let update_icon_name renderer node dom_node name =
   release_app_icon renderer node;
