@@ -141,7 +141,13 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
     LazyColumn(modifier = modifier, state = state, userScrollEnabled = visible && LocalLuiScrollingEnabled.current) {
         content.before.forEach { id -> item(key = "fixed:$id") { LuiNodeView(backend, id) } }
         // Preserve the active editor and its input connection when a split moves it.
-        items(count, key = { if (it == pinned) "editor:${content.window}" else "row:$it" }) { index ->
+        items(count, key = {
+            if (it == pinned) "editor:${content.window}"
+            else {
+                val keySlot = it - start
+                rows.getOrNull(keySlot)?.let { id -> "node:$id" } ?: "row:$it"
+            }
+        }) { index ->
             val slot = if (index == pinned && index !in start until start + length) length else index - start
             val id = rows.getOrNull(slot)
             if (id != null) {
