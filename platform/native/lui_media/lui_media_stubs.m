@@ -1830,6 +1830,25 @@ CAMLprim value lui_media_video_seek(value v, value vt)
   return Val_unit;
 }
 
+CAMLprim value lui_media_video_transport_control(value v, value vplaying,
+                                                 value vrate)
+{
+  CAMLparam3(v, vplaying, vrate);
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_media_video_transport_volume(value v, value vvolume)
+{
+  CAMLparam2(v, vvolume);
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_media_video_transport_position(value v)
+{
+  CAMLparam1(v);
+  CAMLreturn(caml_copy_double(-1.0));
+}
+
 CAMLprim value lui_media_video_next(value v)
 {
   (void)v;
@@ -1900,6 +1919,12 @@ CAMLprim value lui_media_video_size(value a)
 { (void)a; return unsupported(); }
 CAMLprim value lui_media_video_seek(value a, value b)
 { (void)a; (void)b; return unsupported(); }
+CAMLprim value lui_media_video_transport_control(value a, value b, value c)
+{ (void)a; (void)b; (void)c; return Val_unit; }
+CAMLprim value lui_media_video_transport_volume(value a, value b)
+{ (void)a; (void)b; return Val_unit; }
+CAMLprim value lui_media_video_transport_position(value a)
+{ (void)a; return caml_copy_double(-1.0); }
 CAMLprim value lui_media_video_next(value a)
 { (void)a; return unsupported(); }
 CAMLprim value lui_media_write_test_video(value a, value b, value c,
