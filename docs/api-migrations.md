@@ -1,5 +1,16 @@
 # LUI API migration guide
 
+### Android sheet hardware back is event-only
+
+Android modal sheets no longer let Material dismiss the native sheet before
+the application handles hardware Back. Back now emits the sheet's existing
+`dismiss` event while the native sheet remains visible; the application model
+decides whether to remove the sheet, navigate inside it, or ignore the event.
+Outside presses and swipe dismissal are unchanged. Applications already
+handle `sheet ~on_dismiss` by updating their model, so no code migration is
+required; handlers that assumed every Back event meant close should perform
+their own hierarchical back navigation before removing the sheet.
+
 ### iOS window-backed virtual lists use measured row heights
 
 The legacy virtual list window protocol keeps the same row and visible-range

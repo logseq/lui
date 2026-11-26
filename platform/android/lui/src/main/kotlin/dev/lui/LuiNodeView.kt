@@ -1,6 +1,7 @@
 package dev.lui
 
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -83,6 +84,7 @@ import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.DrawerValue
@@ -2495,8 +2497,10 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                 modifier = Modifier.luiChrome(node),
                 onDismissRequest = onDismiss,
                 sheetState = sheetState,
+                properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
                 containerColor = LocalLuiSemanticColors.current["background"] ?: MaterialTheme.colorScheme.surface,
             ) {
+                BackHandler(onBack = onDismiss)
                 val imeVisible = WindowInsets.isImeVisible
                 LaunchedEffect(imeVisible, sheetState.currentValue) {
                     if (imeVisible && sheetState.currentValue == SheetValue.PartiallyExpanded) {
