@@ -351,6 +351,13 @@ static LuiVideoDec *video_of(value v)
   return (__bridge LuiVideoDec *)LuiVideo_val(v);
 }
 
+static void lui_disable_video_transport_tracks(AVPlayerItem *item)
+{
+  for (AVPlayerItemTrack *itemTrack in item.tracks)
+    if ([itemTrack.assetTrack.mediaType isEqualToString:AVMediaTypeVideo])
+      itemTrack.enabled = NO;
+}
+
 static void lui_video_finalize(value v)
 {
   LuiVideoDec *d = video_of(v);
@@ -684,9 +691,7 @@ CAMLprim value lui_media_video_open(value vpath)
         [asset tracksWithMediaType:AVMediaTypeAudio];
     if (audioTracks.count > 0) {
       AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:asset];
-      for (AVPlayerItemTrack *itemTrack in item.tracks)
-        if ([itemTrack.assetTrack.mediaType isEqualToString:AVMediaTypeVideo])
-          itemTrack.enabled = NO;
+      lui_disable_video_transport_tracks(item);
       d.audioPlayer = [AVPlayer playerWithPlayerItem:item];
       d.audioPlayer.volume = 1.0f;
     }
@@ -779,6 +784,7 @@ CAMLprim value lui_media_video_transport_position(value v)
   LuiVideoDec *d = video_of(v);
   double seconds = -1.0;
   if (d.audioPlayer) {
+    lui_disable_video_transport_tracks(d.audioPlayer.currentItem);
     CMTime t = d.audioPlayer.currentTime;
     if (CMTIME_IS_VALID(t) && !CMTIME_IS_INDEFINITE(t))
       seconds = CMTimeGetSeconds(t);
