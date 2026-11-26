@@ -1,5 +1,13 @@
 # LUI API migration guide
 
+### Web popup exits retain inline app icons
+
+Web popup subtrees retained for their exit transition now keep inline `app:`
+SVG icons painted until the transition removes the surface. Store cleanup only
+releases renderer ownership; it no longer strips the icon DOM/styles early.
+This is a rendering bug fix with no constructor, wire-name or application
+migration requirement.
+
 ### Native file dialogs accept SDL-style windows
 
 macOS `open_dialog` and `save_dialog` now treat a process with a visible,
