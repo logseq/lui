@@ -1,5 +1,16 @@
 # LUI API migration guide
 
+### Native dark text masks no longer receive light-ink coverage gain
+
+`Lui_text.rasterize` still applies its manual coverage gain for light mask
+shades (`shade >= 0.5`) because alpha-only CoreText rasterization cannot apply
+ink luminance dilation itself. Shades below `0.5` no longer receive that extra
+gain. Dark text therefore keeps tighter edges and can have lower mask coverage
+than before, especially for small near-black glyphs. This is a rendering output
+correction rather than a constructor or wire-protocol change; applications that
+prefer the previous heavier dark-text appearance must apply their own text
+coverage adjustment in the scene renderer.
+
 ### Web popup exits retain inline app icons
 
 Web popup subtrees retained for their exit transition now keep inline `app:`

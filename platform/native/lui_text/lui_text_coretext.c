@@ -1077,11 +1077,11 @@ CAMLprim value lui_ct_rasterize(value vfont, value vid, value vscale,
   CGContextRelease(ctx);
 
   /* Font smoothing in an alpha-only context takes the fill's alpha
-     only — the gray above no longer biases dilation — so apply the
-     ink-luminance thickening directly: light ink optically shrinks on
-     dark surfaces, so coverage gains scale with shade (black ink is
-     untouched, and zero coverage stays zero). */
-  if (!color && smooth) {
+     only — the gray above no longer biases dilation. Light ink still
+     needs coverage thickening because it optically shrinks on dark
+     surfaces. Dark ink does not: applying the same gain there spreads
+     small glyph edges and makes text look fuzzy. */
+  if (!color && smooth && shade >= 0.5) {
     double gain = 1.0 + 0.35 * gray;
     if (gain > 1.0) {
       unsigned char *px = (unsigned char *)Bytes_val(vbytes);
