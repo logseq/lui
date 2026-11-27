@@ -666,7 +666,7 @@ let test_anchor_tooltip_lifecycle () =
     store_of
       [ CreateNode (1, Root); CreateNode (2, Button); CreateNode (3, Tooltip);
         CreateNode (4, Tooltip);
-        InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (1, 4, 1);
+        InsertChild (1, 4, 0); InsertChild (1, 2, 1); InsertChild (2, 3, 0);
         SetProp (2, PointerEnabled, BoolValue true);
         SetProp (2, AccessibilityIdentifier, StringValue "trigger");
         SetProp (3, AnchorValue, StringValue "above");
