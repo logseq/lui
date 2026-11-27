@@ -2218,6 +2218,11 @@
       "swift": "navigateEnabled"
     },
     {
+      "lg": "NavigationKeyEnabled",
+      "wire": "navigation-key-enabled",
+      "swift": "navigationKeyEnabled"
+    },
+    {
       "lg": "FirstPaneWidth",
       "wire": "first-pane-width",
       "swift": "firstPaneWidth"

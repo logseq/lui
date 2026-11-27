@@ -3748,7 +3748,7 @@ let test_textarea_shift_enter_commit_suppression () =
       CreateNode (2, Textarea);
       InsertChild (1, 2, 0);
       SetProp (2, TextValue, StringValue "abc");
-      SetProp (2, NavigateEnabled, BoolValue true);
+      SetProp (2, NavigationKeyEnabled, BoolValue true);
       SetProp (2, SubmitEnabled, BoolValue true) ]
   in
   let rects = Rects.create () in

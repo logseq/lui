@@ -4,13 +4,14 @@
 
 `textarea` now accepts `~on_navigation_key` for the existing `navigation-key`
 wire event. The initial text-input admission is limited to `Enter`: when the
-handler is registered and the user presses Shift+Enter, OCaml native hosts
-dispatch `NavigationKey (node, "Enter", true)` instead of editing the caret,
+handler is registered and the user presses Shift+Enter. Registration sets the additive
+`navigation-key-enabled` machine property, leaving `navigate-enabled` dedicated
+to Up/Down `NavigatePrevious`/`NavigateNext`; OCaml native hosts then dispatch `NavigationKey (node, "Enter", true)` instead of editing the caret,
 and the window host suppresses only the paired platform newline text commit.
 Plain Enter still inserts a newline through normal text input, and Ctrl/Cmd+Enter
 keeps the existing submit behavior. Existing unmodified Up/Down
-`NavigatePrevious`/`NavigateNext` semantics are unchanged. Applications that
-do not register `on_navigation_key` require no migration; applications that do
+`NavigatePrevious`/`NavigateNext` semantics are unchanged even when only
+`on_navigation_key` is registered. Applications that do not register `on_navigation_key` require no migration; applications that do
 register it must handle the event and must not also insert their own newline
 for the same keypress.
 

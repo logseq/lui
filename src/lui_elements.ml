@@ -772,10 +772,9 @@ let register_navigate context node handler =
   on_event context node is_navigate (typed_handler "on_navigate" Lui_event_payloads.on_navigate handler)
 
 let register_navigation_key context node handler =
-  enable context node NavigateEnabled;
-  let probe =
-    if Lui_ui.node_kind context node = Textarea then "Enter" else "ArrowRight"
-  in
+  let textarea = Lui_ui.node_kind context node = Textarea in
+  enable context node (if textarea then NavigationKeyEnabled else NavigateEnabled);
+  let probe = if textarea then "Enter" else "ArrowRight" in
   require_event_supported context node
     (NavigationKey (node, probe, false)) "navigation-key";
   ignore (on_event context node

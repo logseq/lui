@@ -273,6 +273,7 @@ enum class LuiProperty(val wireName: String) {
     transition("transition"),
     inert("inert"),
     navigateEnabled("navigate-enabled"),
+    navigationKeyEnabled("navigation-key-enabled"),
     firstPaneWidth("first-pane-width"),
     gridColumnSpan("grid-column-span"),
     labelOpacity("label-opacity"),

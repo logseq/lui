@@ -356,7 +356,7 @@ let test_textarea_enter_navigation_key () =
   let store = store_of
     [ CreateNode (1, Textarea);
       SetProp (1, TextValue, StringValue "first");
-      SetProp (1, NavigateEnabled, BoolValue true);
+      SetProp (1, NavigationKeyEnabled, BoolValue true);
       SetProp (1, SubmitEnabled, BoolValue true) ]
   in
   let rects = rects_of [ 1, rect 0. 0. 200. 60. ] in
@@ -369,11 +369,14 @@ let test_textarea_enter_navigation_key () =
   let next, actions = run none Lui_input.Return in
   Alcotest.(check bool) "plain enter keeps textarea newline semantics" true
     (actions = [] && next = st);
+  let _, actions = run none Lui_input.Arrow_up in
+  Alcotest.(check bool) "navigation-key opt-in alone keeps arrow editing local" true
+    (not (List.exists (function `Dispatch _ -> true | _ -> false) actions));
   let ctrl_shift = { shift with Lui_input.ctrl = true } in
   let _, actions = run ctrl_shift Lui_input.Return in
   Alcotest.(check bool) "ctrl enter retains submit semantics" true
     (actions = [ `Dispatch (Submit 1) ]);
-  Lui_store.apply_op store (RemoveProp (1, NavigateEnabled));
+  Lui_store.apply_op store (RemoveProp (1, NavigationKeyEnabled));
   let next, actions = run shift Lui_input.Return in
   Alcotest.(check bool) "unregistered shift enter falls back to editing" true
     (actions = [] && next = st)
