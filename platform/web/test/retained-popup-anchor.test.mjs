@@ -62,6 +62,29 @@ test('a direct child tooltip anchors to its retained parent control', () => {
       Protocol.set_prop_op(2, prop('text'), {TAG: 0, _0: 'Direct tip'})]),
   }), true)
   assert.equal(Nodes.dropdown_anchor_node(renderer, 2), buttonElement)
+
+  const stackElement = element({x: 10, y: 10, width: 32, height: 32})
+  const siblingButton = element({x: 10, y: 10, width: 32, height: 32})
+  const siblingTooltip = element({x: 0, y: 0, width: 40, height: 20})
+  stackElement.children = {item: index => [siblingButton, siblingTooltip][index] ?? null, length: 2}
+  const siblingStore = Store.create_store()
+  const siblingRenderer = {web_store: siblingStore, web_document: {documentElement: {clientWidth: 640, clientHeight: 480}}}
+  assert.equal(Store.apply_batch(siblingStore, name => {
+    if (name === kind('stack')) return stackElement
+    if (name === kind('button')) return siblingButton
+    if (name === kind('tooltip')) return siblingTooltip
+    return element({x: 0, y: 0, width: 0, height: 0})
+  }, {
+    generation: 1,
+    ops: list([Protocol.create_node_op(1, kind('stack')),
+      Protocol.create_node_op(2, kind('button')),
+      Protocol.set_prop_op(2, prop('accessibility-label'), {TAG: 0, _0: 'Sibling icon'}),
+      Protocol.create_node_op(3, kind('tooltip')), Protocol.insert_child_op(1, 2, 0),
+      Protocol.insert_child_op(1, 3, 1),
+      Protocol.set_prop_op(3, prop('anchor'), {TAG: 0, _0: 'above'}),
+      Protocol.set_prop_op(3, prop('text'), {TAG: 0, _0: 'Sibling tip'})]),
+  }), true)
+  assert.equal(Nodes.dropdown_anchor_node(siblingRenderer, 3), siblingButton)
 })
 
 test('a portal popover uses its retained target for alignment, tracking and availability', () => {
