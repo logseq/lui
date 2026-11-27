@@ -168,7 +168,7 @@ enum LUIWireValue: Decodable, Equatable {
              .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
              .doublePressEnabled, .appearEnabled, .pointerEnabled, .connector,
-             .expanded, .enabled, .inert, .navigateEnabled,
+             .expanded, .enabled, .inert, .navigateEnabled, .navigationKeyEnabled,
              .scrollAnimated, .trackVisibleRange:
             return boolValue != nil
         case .resizeHandleWidth:
