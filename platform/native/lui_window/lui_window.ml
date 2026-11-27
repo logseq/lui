@@ -696,17 +696,27 @@ module Ui = struct
         found := Some id);
     !found
 
+  let direct_tooltip_for_trigger store trigger =
+    let found = ref None in
+    Lui_store.iter_child_ids store trigger (fun id ->
+      if !found = None && anchored_tooltip store id then found := Some id);
+    !found
+
   let tooltip_for_trigger store trigger =
-    match
-      List.find_opt
-        (fun id -> anchored_tooltip store id)
-        (Lui_store.child_ids store trigger)
-    with
+    match direct_tooltip_for_trigger store trigger with
     | Some id -> Some id
     | None -> explicit_tooltip_for_owner store trigger
 
   let tooltip_in_path store path =
-    List.find_map (tooltip_for_trigger store) path
+    let found = ref None in
+    List.iter
+      (fun id ->
+        if !found = None then
+          match tooltip_for_trigger store id with
+          | Some _ as tip -> found := tip
+          | None -> ())
+      path;
+    !found
 
   let rec tooltip_at_or_above store id =
     if id = 0 then None
