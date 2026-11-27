@@ -42,6 +42,28 @@ const element = (bounds, children = []) => {
   }
 }
 
+test('a direct child tooltip anchors to its retained parent control', () => {
+  const buttonElement = element({x: 10, y: 10, width: 32, height: 32})
+  const iconElement = element({x: 18, y: 18, width: 16, height: 16})
+  const tooltipElement = element({x: 0, y: 0, width: 40, height: 20})
+  buttonElement.children = {item: index => [iconElement, tooltipElement][index] ?? null, length: 2}
+  const store = Store.create_store()
+  const renderer = {web_store: store, web_document: {documentElement: {clientWidth: 640, clientHeight: 480}}}
+  assert.equal(Store.apply_batch(store, name => {
+    if (name === kind('button')) return buttonElement
+    if (name === kind('tooltip')) return tooltipElement
+    return element({x: 0, y: 0, width: 0, height: 0})
+  }, {
+    generation: 1,
+    ops: list([Protocol.create_node_op(1, kind('button')),
+      Protocol.set_prop_op(1, prop('accessibility-label'), {TAG: 0, _0: 'Direct icon'}),
+      Protocol.create_node_op(2, kind('tooltip')), Protocol.insert_child_op(1, 2, 0),
+      Protocol.set_prop_op(2, prop('anchor'), {TAG: 0, _0: 'above'}),
+      Protocol.set_prop_op(2, prop('text'), {TAG: 0, _0: 'Direct tip'})]),
+  }), true)
+  assert.equal(Nodes.dropdown_anchor_node(renderer, 2), buttonElement)
+})
+
 test('a portal popover uses its retained target for alignment, tracking and availability', () => {
   const viewport = {clientWidth: 640, clientHeight: 720}
   const anchorBounds = {x: 500, y: 80, width: 24, height: 24}

@@ -543,6 +543,14 @@ let dropdown_anchor_node renderer node =
   | None ->
   match Store.node renderer.web_store node with
   | Some current ->
+      if Store.anchored_tooltip current then
+        (match current.retained_parent with
+         | Some parent ->
+             (match Store.node renderer.web_store parent with
+              | Some parent_node -> Lazy.force parent_node.platform_node
+              | None -> invalid_arg "tooltip parent is unavailable")
+         | None -> invalid_arg "tooltip requires an anchor parent")
+      else
       (match current.retained_parent with
        | Some parent ->
            (match Store.node renderer.web_store parent with
