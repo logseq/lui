@@ -755,7 +755,7 @@ CAMLprim value lui_sh_clip_write(value vstr)
 }
 
 
-static NSString *lui_clipboard_type(value vname)
+static NSString *lui_clipboard_native_type(value vname)
 {
   mlsize_t len = caml_string_length(vname);
   const char *name = String_val(vname);
@@ -763,7 +763,12 @@ static NSString *lui_clipboard_type(value vname)
     return NSPasteboardTypeString;
   if (len == 9 && memcmp(name, "text/html", 9) == 0)
     return NSPasteboardTypeHTML;
-  return lui_nsstring(vname);
+  return nil;
+}
+
+static void lui_clipboard_add_type(NSMutableArray *types, NSString *type)
+{
+  if (![types containsObject:type]) [types addObject:type];
 }
 
 static BOOL lui_clip_valid_pair(value vname, value vtext)
@@ -792,16 +797,42 @@ CAMLprim value lui_sh_clip_write_formats(value vitems)
             valid = valid && lui_clip_valid_pair(Field(vitems, i),
                                                  Field(vitems, i + 1));
           if (valid) {
+            BOOL explicit_plain = NO;
+            BOOL explicit_html = NO;
             NSMutableArray *types =
-              [NSMutableArray arrayWithCapacity:(NSUInteger)(entries / 2)];
-            for (i = 0; i < entries; i += 2)
-              [types addObject:lui_clipboard_type(Field(vitems, i))];
+              [NSMutableArray arrayWithCapacity:(NSUInteger)(entries / 2 + 2)];
+            for (i = 0; i < entries; i += 2) {
+              NSString *exact = lui_nsstring(Field(vitems, i));
+              if ([exact isEqualToString:NSPasteboardTypeString])
+                explicit_plain = YES;
+              if ([exact isEqualToString:NSPasteboardTypeHTML])
+                explicit_html = YES;
+            }
+            for (i = 0; i < entries; i += 2) {
+              value vname = Field(vitems, i);
+              NSString *native = lui_clipboard_native_type(vname);
+              lui_clipboard_add_type(types, lui_nsstring(vname));
+              if (native != nil
+                  && !([native isEqualToString:NSPasteboardTypeString]
+                       && explicit_plain)
+                  && !([native isEqualToString:NSPasteboardTypeHTML]
+                       && explicit_html))
+                lui_clipboard_add_type(types, native);
+            }
             [pb declareTypes:types owner:nil];
             ok = YES;
             for (i = 0; i < entries; i += 2) {
-              NSString *type = lui_clipboard_type(Field(vitems, i));
+              value vname = Field(vitems, i);
+              NSString *exact = lui_nsstring(vname);
+              NSString *native = lui_clipboard_native_type(vname);
               NSString *text = lui_nsstring(Field(vitems, i + 1));
-              ok = ok && [pb setString:text forType:type];
+              ok = ok && [pb setString:text forType:exact];
+              if (native != nil
+                  && !([native isEqualToString:NSPasteboardTypeString]
+                       && explicit_plain)
+                  && !([native isEqualToString:NSPasteboardTypeHTML]
+                       && explicit_html))
+                ok = ok && [pb setString:text forType:native];
             }
           }
         }
@@ -825,7 +856,11 @@ CAMLprim value lui_sh_clip_read_format(value vname)
       @try {
         NSPasteboard *pb = lui_pasteboard();
         NSString *s = pb != nil
-          ? [pb stringForType:lui_clipboard_type(vname)] : nil;
+          ? [pb stringForType:lui_nsstring(vname)] : nil;
+        if (s == nil && pb != nil) {
+          NSString *native = lui_clipboard_native_type(vname);
+          if (native != nil) s = [pb stringForType:native];
+        }
         if (s != nil) {
           vs = lui_ocamlstring(s);
           vopt = caml_alloc(1, 0);
