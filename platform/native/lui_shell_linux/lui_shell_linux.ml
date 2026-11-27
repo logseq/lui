@@ -334,6 +334,7 @@ external c_clip_clear : unit -> int = "lui_shx_clip_clear"
 external c_clip_count : unit -> int = "lui_shx_clip_count"
 external c_clip_write_formats : string array -> bool = "lui_shx_clip_write_formats"
 external c_clip_read_format : string -> string option = "lui_shx_clip_read_format"
+external c_clip_store : unit -> unit = "lui_shx_clip_store"
 
 let valid_format_name name =
   let n = String.length name in
@@ -356,6 +357,11 @@ let clipboard_write_formats items =
 let clipboard_read_format name =
   probe ();
   if valid_format_name name then c_clip_read_format name else None
+
+(* X11 clipboard ownership normally dies with the process. Ask a clipboard
+   manager to retain the current contents during process shutdown instead of
+   blocking the UI thread after every copy. *)
+let () = at_exit c_clip_store
 
 let clipboard_write s =
   probe ();

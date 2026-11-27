@@ -12,7 +12,9 @@ legacy `UTF8_STRING` target. Values are UTF-8 strings and may contain embedded
 NUL bytes; binary payloads must otherwise be encoded by the application before
 calling the API. On Linux, clipboard ownership and reads follow the existing
 GTK requirements: call on the GTK UI thread and keep servicing `pump` while
-the application owns the clipboard. A Linux `text/plain` value must not
+the application owns the clipboard. The Linux shell requests clipboard-manager
+persistence during process shutdown rather than blocking after each copy. A
+Linux `text/plain` value must not
 contain embedded NUL bytes because GTK's plain-text paste API is
 NUL-terminated; custom formats may contain them. On macOS `text/plain` and
 `text/html` are written both under their exact MIME names and under the

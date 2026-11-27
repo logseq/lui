@@ -1162,7 +1162,6 @@ CAMLprim value lui_shx_clip_write(value vstr)
   /* GTK ignores both callbacks on failure; otherwise clear owns the copy. */
   if (ok) {
     p_gtk_clipboard_set_can_store(board, 0, 0);
-    p_gtk_clipboard_store(board);
     clip_generation++;
   } else {
     free(text);
@@ -1274,7 +1273,6 @@ CAMLprim value lui_shx_clip_write_formats(value vitems)
       formats);
   if (ok) {
     p_gtk_clipboard_set_can_store(board, 0, 0);
-    p_gtk_clipboard_store(board);
     clip_generation++;
     formats = 0;
   }
@@ -1327,6 +1325,15 @@ CAMLprim value lui_shx_clip_read(value unit)
     Store_field(vopt, 0, vs);
   }
   CAMLreturn(vopt);
+}
+
+
+CAMLprim value lui_shx_clip_store(value unit)
+{
+  CAMLparam1(unit);
+  void *board = clip_board();
+  if (board != 0) p_gtk_clipboard_store(board);
+  CAMLreturn(Val_unit);
 }
 
 CAMLprim value lui_shx_clip_clear(value unit)
@@ -1584,6 +1591,8 @@ CAMLprim value lui_shx_status_set_on_click(value a, value b) {
 CAMLprim value lui_shx_clip_write(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_shx_clip_write_formats(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_shx_clip_store(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_shx_clip_read_format(value a) {
   (void)a; return unsupported(); }
