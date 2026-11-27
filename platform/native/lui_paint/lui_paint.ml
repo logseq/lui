@@ -1887,7 +1887,9 @@ let image_ops ctx store id r alpha radii =
   | None -> (
     match Lui_store.kind store id, pstr store id "alt" with
     | "image", Some alt when alt <> "" ->
-      scale_ops alpha (ctx.hooks.text_ops id r (text_fg ctx store id) alt)
+      scale_ops alpha
+        (Push_clip { crect = r; cradii = (0., 0., 0., 0.); ccontinuous = false }
+         :: (ctx.hooks.text_ops id r (text_fg ctx store id) alt @ [ Pop_clip ]))
     | _ -> [])
   | Some img ->
     let sw, sh = float img.iw, float img.ih in
