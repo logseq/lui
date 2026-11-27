@@ -706,7 +706,9 @@ let test_anchor_tooltip_lifecycle () =
     (Ui.handle ui s rects
        (Input.Key_down (Input.Escape, Input.mods_none, false)));
   Alcotest.(check bool) "escape does not reopen focus tooltip" true
-    (Ui.hidden ui s 3)
+    (Ui.hidden ui s 3);
+  Alcotest.(check int) "second escape reaches focus dismissal" 0
+    (Ui.focused ui)
 
 let test_context_menu () =
   let s, rects = ui_store_fresh () in
