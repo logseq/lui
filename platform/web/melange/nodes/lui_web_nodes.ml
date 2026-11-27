@@ -547,8 +547,17 @@ let dropdown_anchor_node renderer node =
        | Some parent ->
            (match Store.node renderer.web_store parent with
             | Some parent_node ->
-                if Store.menu_item_row parent_node then
-                  (Lazy.force parent_node.platform_node)
+                let tooltip_sibling_container =
+                  match Store.standard_kind parent_node with
+                  | Some (Row | Column | Grid | Stack) ->
+                      Lui_sequence.length parent_node.retained_children > 1
+                  | _ -> false
+                in
+                if
+                  (Store.anchored_tooltip current
+                   && not tooltip_sibling_container)
+                  || Store.menu_item_row parent_node
+                then Lazy.force parent_node.platform_node
                 else
                   let container =
                     retained_content_container
