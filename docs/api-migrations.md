@@ -1,5 +1,16 @@
 # LUI API migration guide
 
+### Native video EOF waits for the audio transport clock
+
+A playing native video no longer transitions to `Ended` merely because its
+video frame decoder reaches EOF. The decoder EOF now ends playback only when
+the effective playback position has also reached the asset duration. This
+preserves pause/resume controls for macOS videos whose audio track outlasts
+their picture; the final video frame remains visible while the audio tail
+plays. Hosts do not need a migration, but any host that intentionally treated
+frame-decoder EOF as end-of-media should now listen to `video_on_ended`
+instead of inferring EOF from frame availability.
+
 ### Native macOS videos play their audio track
 
 `Lui_media.video_play` now also starts an AVPlayer-backed transport for the
