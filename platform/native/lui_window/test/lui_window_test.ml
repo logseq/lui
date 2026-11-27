@@ -665,11 +665,15 @@ let test_anchor_tooltip_lifecycle () =
   let s =
     store_of
       [ CreateNode (1, Root); CreateNode (2, Button); CreateNode (3, Tooltip);
-        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        CreateNode (4, Tooltip);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (1, 4, 1);
         SetProp (2, PointerEnabled, BoolValue true);
+        SetProp (2, AccessibilityIdentifier, StringValue "trigger");
         SetProp (3, AnchorValue, StringValue "above");
         SetProp (3, TooltipDelay, IntValue 20);
-        SetProp (3, TextValue, StringValue "tip") ]
+        SetProp (3, TextValue, StringValue "tip");
+        SetProp (4, AnchorValue, StringValue "above");
+        SetProp (4, AnchorTarget, StringValue "trigger") ]
   in
   let rects =
     rects_of
@@ -687,6 +691,8 @@ let test_anchor_tooltip_lifecycle () =
   Ui.tick_scrollbars ui ~now_ms:121.;
   Alcotest.(check bool) "hover delay opens tooltip" false
     (Ui.hidden ui s 3);
+  Alcotest.(check bool) "direct tooltip wins over an explicit raw anchor" true
+    (Ui.hidden ui s 4);
   ignore (Ui.handle ui s rects (Input.Move (90., 10.)));
   Ui.tick_scrollbars ui ~now_ms:130.;
   Alcotest.(check bool) "pointer leave hides after a short delay" false
