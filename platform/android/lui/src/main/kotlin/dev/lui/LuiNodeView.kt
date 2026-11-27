@@ -215,7 +215,13 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
             .luiInspection(backend, id)
             .luiChrome(node)
             .luiGestures(backend, node, id) {}
-        LuiNodeContent(backend, node, id, modifier, onContextMenu = null)
+        if (node.kind == LuiNodeKind.popover) {
+            Box(propagateMinConstraints = true) {
+                LuiNodeContent(backend, node, id, modifier, onContextMenu = null)
+            }
+        } else {
+            LuiNodeContent(backend, node, id, modifier, onContextMenu = null)
+        }
         return
     }
     var contextMenuAt by remember(id) { mutableStateOf(Offset.Zero) }

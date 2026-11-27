@@ -14,6 +14,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -119,6 +120,12 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
                     val estimatedHeight = heights[pinned] ?: with(density) { extent.dp.roundToPx() }
                     val offset = -(layout.viewportEndOffset - layout.viewportStartOffset - estimatedHeight).coerceAtLeast(0)
                     state.scrollToItem(index, offset)
+                    withFrameNanos { }
+                    val postLayout = state.layoutInfo
+                    val postItem = postLayout.visibleItemsInfo.firstOrNull { it.index == index }
+                    if (postItem != null && postItem.offset + postItem.size > postLayout.viewportEndOffset) {
+                        state.scrollBy((postItem.offset + postItem.size - postLayout.viewportEndOffset).toFloat())
+                    }
                 }
                 item == null -> state.scrollToItem(index)
                 item.offset < layout.viewportStartOffset ->
@@ -164,7 +171,10 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
             val id = rows.getOrNull(slot)
             if (id != null) {
                 val indexRef = remember(id) { RowIndexRef(index) }
-                indexRef.index = index
+                if (indexRef.index != index) {
+                    indexRef.index = index
+                    if (indexRef.lastHeight > 0) heights[index] = indexRef.lastHeight
+                }
                 LuiVirtualRowItem(backend, id, heightStore, indexRef)
             } else {
                 val height = heights[index]?.let { with(density) { it.toDp() } } ?: extent.toFloat().dp
@@ -181,7 +191,7 @@ private class RowHeightStore {
 }
 
 @Stable
-private class RowIndexRef(var index: Int)
+private class RowIndexRef(var index: Int, var lastHeight: Int = -1)
 
 @Composable
 private fun LuiVirtualRowItem(
@@ -191,7 +201,10 @@ private fun LuiVirtualRowItem(
     indexRef: RowIndexRef,
 ) {
     val sizeModifier = remember(id, heightStore, indexRef) {
-        Modifier.fillMaxWidth().onSizeChanged { heightStore.heights[indexRef.index] = it.height }
+        Modifier.fillMaxWidth().onSizeChanged {
+            indexRef.lastHeight = it.height
+            heightStore.heights[indexRef.index] = it.height
+        }
     }
     Box(sizeModifier) {
         LuiNodeView(backend, id)
