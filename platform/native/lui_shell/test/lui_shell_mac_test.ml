@@ -18,6 +18,22 @@ let test_clipboard_roundtrip () =
   Alcotest.(check (option string)) "read back" (Some stamp)
     (clipboard_read ())
 
+let test_clipboard_formats () =
+  let items =
+    [ "text/plain", "plain blocks"
+    ; "text/html", "<b>blocks</b>"
+    ; "application/logseq", "{:blocks []}" ]
+  in
+  Alcotest.(check bool) "write formats" true
+    (clipboard_write_formats items);
+  List.iter
+    (fun (name, expected) ->
+      Alcotest.(check (option string)) ("read " ^ name) (Some expected)
+        (clipboard_read_format name))
+    items;
+  Alcotest.(check (option string)) "plain fallback" (Some "plain blocks")
+    (clipboard_read ())
+
 let test_change_count () =
   let before = clipboard_change_count () in
   Alcotest.(check bool) "has pasteboard" true (before >= 0);
@@ -151,6 +167,7 @@ let () =
   run "lui_shell_mac"
     [ ( "clipboard",
         [ test_case "roundtrip" `Quick test_clipboard_roundtrip;
+          test_case "named formats" `Quick test_clipboard_formats;
           test_case "change count" `Quick test_change_count ] );
       ( "app identity",
         [ test_case "activation policy" `Quick test_activation_policy;

@@ -165,6 +165,26 @@ let notify ~id ~title ?(subtitle = "") ~body () =
 
 (* ---------------------------------------------------------- clipboard *)
 
+external c_clip_write_formats : string array -> bool = "lui_sh_clip_write_formats"
+external c_clip_read_format : string -> string option = "lui_sh_clip_read_format"
+
+let valid_format_name name =
+  let n = String.length name in
+  n > 0 && n < 256 && not (String.contains name '\000')
+
+let clipboard_write_formats items =
+  items <> []
+  && List.for_all
+       (fun (name, text) ->
+         valid_format_name name && String.is_valid_utf_8 text)
+       items
+  && c_clip_write_formats
+       (Array.of_list
+          (List.concat_map (fun (name, text) -> [ name; text ]) items))
+
+let clipboard_read_format name =
+  if valid_format_name name then c_clip_read_format name else None
+
 let clipboard_write = c_clip_write
 let clipboard_read = c_clip_read
 let clipboard_clear = c_clip_clear

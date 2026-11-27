@@ -332,6 +332,30 @@ external c_clip_write : string -> bool = "lui_shx_clip_write"
 external c_clip_read : unit -> string option = "lui_shx_clip_read"
 external c_clip_clear : unit -> int = "lui_shx_clip_clear"
 external c_clip_count : unit -> int = "lui_shx_clip_count"
+external c_clip_write_formats : string array -> bool = "lui_shx_clip_write_formats"
+external c_clip_read_format : string -> string option = "lui_shx_clip_read_format"
+
+let valid_format_name name =
+  let n = String.length name in
+  n > 0 && n < 256 && not (String.contains name '\000')
+
+let clipboard_write_formats items =
+  probe ();
+  let valid =
+    items <> []
+    && List.for_all
+         (fun (name, text) ->
+           valid_format_name name && String.is_valid_utf_8 text)
+         items
+  in
+  valid
+  && c_clip_write_formats
+       (Array.of_list
+          (List.concat_map (fun (name, text) -> [ name; text ]) items))
+
+let clipboard_read_format name =
+  probe ();
+  if valid_format_name name then c_clip_read_format name else None
 
 let clipboard_write s =
   probe ();

@@ -1,5 +1,26 @@
 # LUI API migration guide
 
+### Native shells can transport named clipboard formats
+
+`Lui_shell` (macOS) and `Lui_shell_linux` now expose
+`clipboard_write_formats` and `clipboard_read_format`. The write operation
+atomically replaces the system clipboard with every supplied MIME/type pair,
+so applications that need structured clipboard data must include the fallback
+`text/plain` representation in the same call rather than writing formats one
+at a time. On Linux a supplied `text/plain` value is also exposed through the
+legacy `UTF8_STRING`/`TEXT` targets. Values are UTF-8 strings; binary payloads
+must be encoded by the application before calling the API. Existing
+`clipboard_write`/`clipboard_read` behavior is unchanged, and applications
+that only transport plain text require no migration.
+
+```ocaml
+ignore
+  (Lui_shell.clipboard_write_formats
+     [ "text/plain", markdown
+     ; "text/html", html
+     ; "application/logseq", encoded_blocks ])
+```
+
 ### Native textareas can opt in to Shift+Enter navigation keys
 
 `textarea` now accepts `~on_navigation_key` for the existing `navigation-key`

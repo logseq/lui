@@ -754,6 +754,76 @@ CAMLprim value lui_sh_clip_write(value vstr)
   CAMLreturn(Val_bool(ok));
 }
 
+
+static BOOL lui_clip_valid_pair(value vname, value vtext)
+{
+  mlsize_t name_len = caml_string_length(vname);
+  mlsize_t text_len = caml_string_length(vtext);
+  return name_len > 0 && name_len < 256
+      && memchr(String_val(vname), '\0', name_len) == 0
+      && memchr(String_val(vtext), '\0', text_len) == 0;
+}
+
+/* OCaml passes a flat string array: type, text, type, text... */
+CAMLprim value lui_sh_clip_write_formats(value vitems)
+{
+  CAMLparam1(vitems);
+  BOOL ok = NO;
+  mlsize_t entries = Wosize_val(vitems);
+  if ((entries & 1) == 0 && entries > 0) {
+    @autoreleasepool {
+      @try {
+        NSPasteboard *pb = lui_pasteboard();
+        if (pb != nil) {
+          mlsize_t i;
+          BOOL valid = YES;
+          for (i = 0; i < entries; i += 2)
+            valid = valid && lui_clip_valid_pair(Field(vitems, i),
+                                                 Field(vitems, i + 1));
+          if (valid) {
+            [pb clearContents];
+            ok = YES;
+            for (i = 0; i < entries; i += 2) {
+              NSString *type = lui_nsstring(Field(vitems, i));
+              NSString *text = lui_nsstring(Field(vitems, i + 1));
+              ok = ok && [pb setString:text forType:type];
+            }
+          }
+        }
+      } @catch (NSException *e) {
+        ok = NO;
+      }
+    }
+  }
+  CAMLreturn(Val_bool(ok));
+}
+
+CAMLprim value lui_sh_clip_read_format(value vname)
+{
+  CAMLparam1(vname);
+  CAMLlocal2(vopt, vs);
+  mlsize_t name_len = caml_string_length(vname);
+  vopt = Val_int(0);
+  if (name_len > 0 && name_len < 256
+      && memchr(String_val(vname), '\0', name_len) == 0) {
+    @autoreleasepool {
+      @try {
+        NSPasteboard *pb = lui_pasteboard();
+        NSString *s = pb != nil
+          ? [pb stringForType:lui_nsstring(vname)] : nil;
+        if (s != nil) {
+          vs = lui_ocamlstring(s);
+          vopt = caml_alloc(1, 0);
+          Store_field(vopt, 0, vs);
+        }
+      } @catch (NSException *e) {
+        vopt = Val_int(0);
+      }
+    }
+  }
+  CAMLreturn(vopt);
+}
+
 CAMLprim value lui_sh_clip_read(value unit)
 {
   CAMLparam1(unit);
@@ -992,6 +1062,10 @@ CAMLprim value lui_sh_status_set_on_click(value a, value b) {
 CAMLprim value lui_sh_notify(value a, value b, value c, value d) {
   (void)a; (void)b; (void)c; (void)d; return unsupported(); }
 CAMLprim value lui_sh_clip_write(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_sh_clip_write_formats(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_sh_clip_read_format(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_sh_clip_read(value a) {
   (void)a; return unsupported(); }

@@ -264,6 +264,16 @@ val clipboard_change_count : unit -> int
     outside changes. [(-1)] when no clipboard exists. External changes
     are observed inside [pump]. *)
 
+
+val clipboard_write_formats : (string * string) list -> bool
+(** Atomically replaces the clipboard with several named MIME targets.
+    Each value must be valid UTF-8. [text/plain] also becomes available
+    through the platform's legacy text targets. *)
+
+val clipboard_read_format : string -> string option
+(** Reads one named MIME target. [None] when the clipboard is absent or
+    does not provide that target. *)
+
 (** {1 Dialogs} *)
 
 val can_present_dialogs : unit -> bool

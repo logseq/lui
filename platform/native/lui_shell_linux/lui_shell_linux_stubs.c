@@ -221,6 +221,13 @@ static int (*p_gtk_clipboard_set_with_data)(void *, const GtkTargetEntry *,
 static void (*p_gtk_clipboard_set_can_store)(void *, const GtkTargetEntry *,
                                             int) = 0;
 static int (*p_gtk_selection_data_set_text)(void *, const char *, int) = 0;
+static void *(*p_gtk_selection_data_get_target)(void *) = 0;
+static void (*p_gtk_selection_data_set)(void *, void *, int,
+                                        const void *, int) = 0;
+static const void *(*p_gtk_selection_data_get_data)(void *) = 0;
+static int (*p_gtk_selection_data_get_length)(void *) = 0;
+static void (*p_gtk_selection_data_free)(void *) = 0;
+static void *(*p_gtk_clipboard_wait_for_contents)(void *, void *) = 0;
 static void *(*p_gtk_target_list_new)(const GtkTargetEntry *, unsigned int) = 0;
 static void (*p_gtk_target_list_add_text_targets)(void *, unsigned int) = 0;
 static GtkTargetEntry *(*p_gtk_target_table_new_from_list)(void *, int *) = 0;
@@ -703,6 +710,18 @@ static int probe_gtk(void)
             (void **) &p_gtk_clipboard_set_can_store);
   ok &= sym(h, "gtk_selection_data_set_text",
             (void **) &p_gtk_selection_data_set_text);
+  ok &= sym(h, "gtk_selection_data_get_target",
+            (void **) &p_gtk_selection_data_get_target);
+  ok &= sym(h, "gtk_selection_data_set",
+            (void **) &p_gtk_selection_data_set);
+  ok &= sym(h, "gtk_selection_data_get_data",
+            (void **) &p_gtk_selection_data_get_data);
+  ok &= sym(h, "gtk_selection_data_get_length",
+            (void **) &p_gtk_selection_data_get_length);
+  ok &= sym(h, "gtk_selection_data_free",
+            (void **) &p_gtk_selection_data_free);
+  ok &= sym(h, "gtk_clipboard_wait_for_contents",
+            (void **) &p_gtk_clipboard_wait_for_contents);
   ok &= sym(h, "gtk_target_list_new", (void **) &p_gtk_target_list_new);
   ok &= sym(h, "gtk_target_list_add_text_targets",
             (void **) &p_gtk_target_list_add_text_targets);
@@ -1145,6 +1164,149 @@ CAMLprim value lui_shx_clip_write(value vstr)
     free(text);
   }
   CAMLreturn(Val_bool(ok));
+}
+
+
+typedef struct {
+  int count;
+  clip_text_t **items;
+} clip_formats_t;
+
+static void clip_formats_free(clip_formats_t *formats)
+{
+  int i;
+  if (formats == 0) return;
+  for (i = 0; i < formats->count; i++) free(formats->items[i]);
+  free(formats->items);
+  free(formats);
+}
+
+static void clip_get_format(void *board, void *selection,
+                            unsigned int info, void *data)
+{
+  clip_formats_t *formats = data;
+  clip_text_t *text;
+  (void) board;
+  if (info >= (unsigned int) formats->count) return;
+  text = formats->items[info];
+  p_gtk_selection_data_set(selection,
+      p_gtk_selection_data_get_target(selection), 8,
+      text->text, text->length);
+}
+
+static void clip_clear_formats(void *board, void *data)
+{
+  (void) board;
+  clip_formats_free(data);
+}
+
+static int clip_valid_text(const char *text, mlsize_t length)
+{
+  return length < INT_MAX
+      && memchr(text, '\0', length) == 0
+      && p_g_utf8_validate(text, (intptr_t) length, 0);
+}
+
+/* OCaml passes a flat string array: mime, text, mime, text...  GTK owns
+   the copies only after set_with_data accepts ownership. */
+CAMLprim value lui_shx_clip_write_formats(value vitems)
+{
+  CAMLparam1(vitems);
+  mlsize_t entries = Wosize_val(vitems);
+  int count, target_count = 0, plain = -1, ok = 0;
+  int i;
+  void *board = clip_board();
+  clip_formats_t *formats = 0;
+  GtkTargetEntry *targets = 0;
+  if ((entries & 1) != 0 || entries == 0 || entries / 2 > INT_MAX)
+    CAMLreturn(Val_false);
+  count = (int) (entries / 2);
+  if (board != 0) {
+    formats = calloc(1, sizeof(*formats));
+    if (formats != 0) {
+      formats->count = count;
+      formats->items = calloc((size_t) count, sizeof(*formats->items));
+      if (formats->items == 0) {
+        free(formats);
+        formats = 0;
+      }
+    }
+  }
+  if (formats == 0) CAMLreturn(Val_false);
+  for (i = 0; i < count; i++) {
+    value vname = Field(vitems, i * 2);
+    value vtext = Field(vitems, i * 2 + 1);
+    mlsize_t name_len = caml_string_length(vname);
+    mlsize_t text_len = caml_string_length(vtext);
+    clip_text_t *copy;
+    if (name_len == 0 || name_len >= 256
+        || memchr(String_val(vname), '\0', name_len) != 0
+        || !clip_valid_text(String_val(vtext), text_len))
+      goto done;
+    copy = malloc(sizeof(*copy) + text_len + 1);
+    if (copy == 0) goto done;
+    copy->length = (int) text_len;
+    memcpy(copy->text, String_val(vtext), text_len);
+    copy->text[text_len] = '\0';
+    formats->items[i] = copy;
+    if (strcmp(String_val(vname), "text/plain") == 0) plain = i;
+  }
+  target_count = count + (plain >= 0 ? 2 : 0);
+  targets = calloc((size_t) target_count, sizeof(*targets));
+  if (targets == 0) goto done;
+  for (i = 0; i < count; i++) {
+    targets[i].target = (char *) String_val(Field(vitems, i * 2));
+    targets[i].flags = 0;
+    targets[i].info = (unsigned int) i;
+  }
+  if (plain >= 0) {
+    targets[count].target = "UTF8_STRING";
+    targets[count].flags = 0;
+    targets[count].info = (unsigned int) plain;
+    targets[count + 1].target = "TEXT";
+    targets[count + 1].flags = 0;
+    targets[count + 1].info = (unsigned int) plain;
+  }
+  ok = p_gtk_clipboard_set_with_data(board, targets,
+      (unsigned int) target_count, clip_get_format, clip_clear_formats,
+      formats);
+  if (ok) {
+    p_gtk_clipboard_set_can_store(board, 0, 0);
+    clip_generation++;
+    formats = 0;
+  }
+
+done:
+  free(targets);
+  clip_formats_free(formats);
+  CAMLreturn(Val_bool(ok));
+}
+
+CAMLprim value lui_shx_clip_read_format(value vname)
+{
+  CAMLparam1(vname);
+  CAMLlocal2(vopt, vs);
+  void *board = clip_board();
+  void *selection = 0;
+  mlsize_t name_len = caml_string_length(vname);
+  vopt = Val_int(0);
+  if (board != 0 && name_len > 0 && name_len < 256
+      && memchr(String_val(vname), '\0', name_len) == 0) {
+    void *atom = p_gdk_atom_intern(String_val(vname), 0);
+    if (atom != 0)
+      selection = p_gtk_clipboard_wait_for_contents(board, atom);
+  }
+  if (selection != 0) {
+    int length = p_gtk_selection_data_get_length(selection);
+    const void *bytes = p_gtk_selection_data_get_data(selection);
+    if (length >= 0 && bytes != 0) {
+      vs = caml_alloc_initialized_string(length, bytes);
+      vopt = caml_alloc(1, 0);
+      Store_field(vopt, 0, vs);
+    }
+    p_gtk_selection_data_free(selection);
+  }
+  CAMLreturn(vopt);
 }
 
 CAMLprim value lui_shx_clip_read(value unit)
