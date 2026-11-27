@@ -571,7 +571,8 @@ module Ui = struct
     mutable tooltip_warm_until : float;
     mutable tooltip_origin_focus : bool;
     mutable tooltip_layout_dirty : bool;
-    tooltip_owner_index : (int, int) Hashtbl.t;
+    tooltip_direct_index : (int, int) Hashtbl.t;
+    tooltip_explicit_index : (int, int) Hashtbl.t;
     mutable tooltip_scan_rev : int;
     mutable menu_scope : int;
     mutable menu_typeahead_deadline : float;
@@ -631,7 +632,8 @@ module Ui = struct
       tooltip_show_deadline = 0.; tooltip_hide_deadline = 0.;
       tooltip_warm_until = 0.; tooltip_origin_focus = false;
       tooltip_layout_dirty = false;
-      tooltip_owner_index = Hashtbl.create 8; tooltip_scan_rev = -1;
+      tooltip_direct_index = Hashtbl.create 8;
+      tooltip_explicit_index = Hashtbl.create 8; tooltip_scan_rev = -1;
       menu_scope = 0; menu_typeahead_deadline = 0.; menu_reveal = 0; menu_picker = 0; pending_picker = None;
       menu_space_commit = false; keyboard_input = true; overlay_edit = None;
       scrolled = Hashtbl.create 8;
@@ -694,16 +696,30 @@ module Ui = struct
   let refresh_tooltip_index t store =
     let rev = Lui_store.layout_rev store in
     if t.tooltip_scan_rev <> rev then begin
-      Hashtbl.reset t.tooltip_owner_index;
+      Hashtbl.reset t.tooltip_direct_index;
+      Hashtbl.reset t.tooltip_explicit_index;
       Lui_store.iter_preorder store (fun id ->
         if anchored_tooltip store id then
-          match tooltip_owner store id with
-          | Some owner ->
-            if not (Hashtbl.mem t.tooltip_owner_index owner) then
-              Hashtbl.replace t.tooltip_owner_index owner id
-          | None -> ());
+          match Lui_store.string_prop store id "anchor-target" with
+          | Some identifier -> (
+            match Lui_store.find_identifier store identifier with
+            | Some owner ->
+              if not (Hashtbl.mem t.tooltip_explicit_index owner) then
+                Hashtbl.replace t.tooltip_explicit_index owner id
+            | None -> ())
+          | None -> (
+            match Lui_store.parent store id with
+            | Some owner ->
+              if not (Hashtbl.mem t.tooltip_direct_index owner) then
+                Hashtbl.replace t.tooltip_direct_index owner id
+            | None -> ()));
       t.tooltip_scan_rev <- rev
     end
+
+  let tooltip_owner_hit t id =
+    match Hashtbl.find_opt t.tooltip_direct_index id with
+    | Some _ as tip -> tip
+    | None -> Hashtbl.find_opt t.tooltip_explicit_index id
 
   let tooltip_in_path t store path =
     refresh_tooltip_index t store;
@@ -711,7 +727,7 @@ module Ui = struct
     List.iter
       (fun id ->
         if !found = None then
-          match Hashtbl.find_opt t.tooltip_owner_index id with
+          match tooltip_owner_hit t id with
           | Some _ as tip -> found := tip
           | None -> ())
       path;
@@ -721,7 +737,7 @@ module Ui = struct
     if id = 0 then None
     else begin
       refresh_tooltip_index t store;
-      match Hashtbl.find_opt t.tooltip_owner_index id with
+      match tooltip_owner_hit t id with
       | Some _ as tip -> tip
       | None -> tooltip_at_or_above t store
           (Option.value ~default:0 (Lui_store.parent store id))
