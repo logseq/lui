@@ -1,5 +1,15 @@
 # LUI API migration guide
 
+### Native typed images paint alt text while no bitmap is available
+
+The native layout and paint backends now treat a typed `image` with non-empty
+`alt` text like the browser's inline image fallback while its bitmap is loading
+or after decoding fails. If the host image lookup returns no bitmap, the alt
+text participates in intrinsic measurement and is painted clipped to the image
+box instead of the image collapsing to zero size. Hosts do not need a migration;
+applications that relied on broken native images occupying no space should use an
+empty `alt` value or explicit dimensions.
+
 ### Native shells can transport named clipboard formats
 
 `Lui_shell` (macOS) and `Lui_shell_linux` now expose

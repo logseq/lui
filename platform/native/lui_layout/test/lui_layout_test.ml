@@ -568,6 +568,24 @@ let test_text_measured () =
   Lui_layout.sync ~measure ~width:200. ~height:100. t store;
   check_some_rect "text" 0. 0. 80. 12. (Lui_layout.rect t 3)
 
+let test_image_alt_fallback_measure () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (10, Row); CreateNode (2, Image);
+      InsertChild (1, 10, 0); InsertChild (10, 2, 0);
+      SetProp (2, AltValue, StringValue "missing image") ];
+  let layout = Lui_layout.create () in
+  let measure id text _w _h =
+    if id = 2 && text = "missing image" then Some (64., 13.)
+    else if id = 2 && text = "a much longer missing image label" then Some (96., 13.)
+    else None
+  in
+  Lui_layout.sync ~measure ~width:200. ~height:100. layout store;
+  check_some_rect "image alt fallback" 0. 0. 64. 13. (Lui_layout.rect layout 2);
+  apply store [SetProp (2, AltValue, StringValue "a much longer missing image label")];
+  Lui_layout.sync ~measure ~width:200. ~height:100. layout store;
+  check_some_rect "image alt updates invalidate layout" 0. 0. 96. 13. (Lui_layout.rect layout 2)
+
 let test_inline_white_space () =
   List.iter (fun scale ->
     List.iter (fun width ->
@@ -2560,6 +2578,7 @@ let () =
          test_case "grid column spans" `Quick test_grid_column_spans;
          test_case "absolute inset" `Quick test_absolute_inset;
          test_case "text measured" `Quick test_text_measured;
+         test_case "image alt fallback measure" `Quick test_image_alt_fallback_measure;
          test_case "inline white-space inheritance" `Quick test_inline_white_space;
          test_case "nowrap label in row" `Quick test_nowrap_label_in_row;
          test_case "picker intrinsic width" `Quick test_picker_intrinsic_width;
