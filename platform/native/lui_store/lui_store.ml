@@ -91,7 +91,7 @@ let paint_props =
    links): they repaint and re-semantize but never move geometry. *)
 let paint_sem_prop_names =
   [ "visible"; "checked"; "indeterminate"; "href"; "target"; "rel";
-    "alt"; "draggable"; "drop-target"; "tooltip" ]
+    "draggable"; "drop-target"; "tooltip" ]
 
 let paint_sem_props =
   let t = Hashtbl.create 16 in
@@ -137,6 +137,7 @@ let mask_of_prop name : dirty_mask =
   else if name = "role" then d_layout_kids lor d_layout lor d_paint lor d_semantics
   else if Hashtbl.mem child_props name then d_layout_kids lor d_layout lor d_paint
   else if Hashtbl.mem layout_props name then d_layout lor d_paint
+  else if name = "alt" then d_layout lor d_paint lor d_semantics
   else if Hashtbl.mem semantics_props name then d_semantics
   else if Hashtbl.mem input_props name then d_input lor d_paint lor d_semantics
   else if List.exists (has_prefix name) state_prefixes then d_paint lor d_semantics

@@ -576,10 +576,15 @@ let test_image_alt_fallback_measure () =
       SetProp (2, AltValue, StringValue "missing image") ];
   let layout = Lui_layout.create () in
   let measure id text _w _h =
-    if id = 2 && text = "missing image" then Some (64., 13.) else None
+    if id = 2 && text = "missing image" then Some (64., 13.)
+    else if id = 2 && text = "a much longer missing image label" then Some (96., 13.)
+    else None
   in
   Lui_layout.sync ~measure ~width:200. ~height:100. layout store;
-  check_some_rect "image alt fallback" 0. 0. 64. 13. (Lui_layout.rect layout 2)
+  check_some_rect "image alt fallback" 0. 0. 64. 13. (Lui_layout.rect layout 2);
+  apply store [SetProp (2, AltValue, StringValue "a much longer missing image label")];
+  Lui_layout.sync ~measure ~width:200. ~height:100. layout store;
+  check_some_rect "image alt updates invalidate layout" 0. 0. 96. 13. (Lui_layout.rect layout 2)
 
 let test_inline_white_space () =
   List.iter (fun scale ->
