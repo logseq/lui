@@ -4023,3 +4023,18 @@ Applications can keep `column ~min_height:60 children`: the 60-point empty
 surface remains, and taller content determines the surface height. Use an
 explicit height or maximum height when a bounded surface is intended. No API,
 schema, event or imperative-scroll behavior changes are required.
+
+## Native anchored tooltip visibility and ink
+
+Native SDL hosts now treat anchored `tooltip` nodes as host-owned overlays
+like the web backend: they remain hidden at rest, open after the trigger's
+`tooltip-delay` while hovered (or immediately within the warm handoff window),
+close shortly after pointer leave, and close on press/Escape/store removal.
+Unanchored static tooltip elements still paint inline. Applications that
+previously relied on anchored tooltip nodes being permanently visible in the
+retained tree must drive visibility through pointer/focus interaction instead;
+there is no wire-contract change.
+
+Native `tooltip`, `alert`, and `bubble` chrome now paints the node's own text
+with inverse-surface foreground, matching the web backend. Previously only
+the bubble background painted unless the application nested a text child.
