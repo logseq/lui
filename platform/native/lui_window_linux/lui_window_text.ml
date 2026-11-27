@@ -34,6 +34,7 @@ type slot = {
   sl_left : int;
   sl_top : int;
   sl_colored : bool;
+  sl_subpixel : bool;
 }
 
 (* The text-side typography props, resolved as a unit so shaping,
@@ -355,6 +356,7 @@ let slot_of t run_font gid sub shade scale scene =
         (* The bitmap's own format decides the atlas: a color font can
            still rasterize a monochrome glyph (coverage mask). *)
         let colored = b.Lui_text.color in
+        let subpixel = colored && not (Lui_text.is_color run_font) in
         let atlas =
           if colored then scene.color_atlas else scene.mask_atlas
         in
@@ -362,7 +364,9 @@ let slot_of t run_font gid sub shade scale scene =
          | Some (x, y) ->
            Some
              { sl_x = x; sl_y = y; sl_w = b.w; sl_h = b.h;
-               sl_left = b.left; sl_top = b.top; sl_colored = colored }
+               sl_left = b.left; sl_top = b.top;
+               sl_colored = colored && not subpixel;
+               sl_subpixel = subpixel }
          | None -> None)
       | _ -> None
     in
@@ -404,7 +408,7 @@ let emit_glyph t scene ~scale ~nsub ~pen ~baseline ~font ~gid ~g_y ~fg =
         guw = s.sl_w; gvh = s.sl_h;
         gcolor = fg; gwide = 0;
         gcolored = s.sl_colored;
-        gsubpixel = false; gthin = false }
+        gsubpixel = s.sl_subpixel; gthin = false }
     in
     (* Cons, like the other engines: [scene.glyphs] is built reversed
        and the paint pass reverses it once when sealing, so the

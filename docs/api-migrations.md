@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+### Linux native text rasterizes with subpixel antialiasing by default
+
+The Linux Pango text backend now rasterizes monochrome glyphs as horizontal
+RGB subpixel coverage and native scenes mark those glyphs as subpixel, matching
+browser text more closely at scale 1. Color fonts still use color bitmaps, and
+color-atlas bytes are normalized to the documented RGBA order. Embedders can
+set `LUI_TEXT_ANTIALIAS=gray` or `LUI_TEXT_ANTIALIAS=none` before process
+startup to restore grayscale or aliased rasterization; the default is subpixel.
+Applications do not need source changes, but renderers must preserve the
+scene's existing `gsubpixel` semantics rather than treating subpixel glyph
+bitmaps as ordinary color glyphs.
+
 ### Native typed images paint alt text while no bitmap is available
 
 The native layout and paint backends now treat a typed `image` with non-empty
