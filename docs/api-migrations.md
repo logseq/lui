@@ -4,15 +4,26 @@
 
 `textarea` now accepts `~on_navigation_key` for the existing `navigation-key`
 wire event. The initial text-input admission is limited to `Enter`: when the
-handler is registered and the user presses Shift+Enter, native hosts dispatch
-`NavigationKey (node, "Enter", true)` instead of editing the caret, and the
-window host suppresses only the paired platform newline text commit. Plain
-Enter still inserts a newline through normal text input, and Ctrl/Cmd+Enter
+handler is registered and the user presses Shift+Enter, OCaml native hosts
+dispatch `NavigationKey (node, "Enter", true)` instead of editing the caret,
+and the window host suppresses only the paired platform newline text commit.
+Plain Enter still inserts a newline through normal text input, and Ctrl/Cmd+Enter
 keeps the existing submit behavior. Existing unmodified Up/Down
 `NavigatePrevious`/`NavigateNext` semantics are unchanged. Applications that
 do not register `on_navigation_key` require no migration; applications that do
 register it must handle the event and must not also insert their own newline
 for the same keypress.
+
+```ocaml
+Lui_elements.textarea
+  ~on_navigation_key:(fun nav ->
+    if nav.key = "Enter" && nav.shift then insert_sibling ())
+  []
+```
+
+The Apple SwiftUI and Android backends do not currently emit this textarea
+key event; hosts there should continue to use their existing keyboard path
+until backend coverage is added.
 
 ### Native video EOF waits for the audio transport clock
 

@@ -54,10 +54,19 @@ let () =
     "FocusWithinChanged", FocusWithinChanged (0, false);
     "VirtualRetention", VirtualRetention (0, 0, "");
   ] in
+  let admitted_kinds event =
+    List.filter_map (fun kind ->
+      if event_supported kind event then Some (`String (kind_name kind)) else None) kinds
+  in
+  let navigation_key_kinds =
+    List.sort_uniq compare
+      (admitted_kinds (NavigationKey (0, "ArrowRight", false))
+       @ admitted_kinds (NavigationKey (0, "Enter", false)))
+  in
   Yojson.Basic.to_channel stdout (`Assoc [
     "events", `Assoc (List.map (fun (name, event) -> name,
-      `List (List.filter_map (fun kind ->
-        if event_supported kind event then Some (`String (kind_name kind)) else None) kinds)) events);
+      `List (if name = "NavigationKey" then navigation_key_kinds
+             else admitted_kinds event)) events);
     "modalKinds", `List (List.filter_map (fun kind ->
       if modal_surface kind then Some (`String (kind_name kind)) else None) kinds);
     "kinds", `Assoc (List.map (fun kind -> kind_name kind,
