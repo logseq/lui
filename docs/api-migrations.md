@@ -4064,3 +4064,6 @@ Lui_store.iter_preorder store (fun id ->
 (* After: visit only the incrementally tracked tooltip nodes. *)
 Lui_store.iter_tooltips store visit_tooltip;
 ```
+
+Unlike `iter_preorder`, `iter_tooltips` does not promise sibling or tree order;
+callbacks must treat the visit sequence as unordered.
