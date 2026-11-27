@@ -49,6 +49,11 @@ val find_identifier : t -> string -> int option
 val anchor_available : t -> int -> bool
 val iter_anchor_targets : t -> (int -> unit) -> unit
 
+(** Visit retained tooltip nodes without walking the full tree. Tooltips are
+    indexed incrementally because input hit paths consult them on pointer
+    motion. *)
+val iter_tooltips : t -> (int -> unit) -> unit
+
 val find_opt : t -> int -> node option
 val mem : t -> int -> bool
 val node_id : node -> int

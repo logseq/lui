@@ -4049,3 +4049,9 @@ painted unless the application nested a text child.
 The Windows host loop now ticks the shared UI timer clock as macOS/Linux
 already did. Besides tooltip deadlines, this also allows existing Windows
 scrollbar auto-hide and menu-typeahead expiry deadlines to fire.
+
+## Native store tooltip iteration
+
+`Lui_store.iter_tooltips` is an additive native-store helper for input hit
+paths that need to inspect retained tooltip nodes without walking the full
+tree. Existing tree traversal and child-access APIs are unchanged.

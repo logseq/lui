@@ -698,7 +698,7 @@ module Ui = struct
     if t.tooltip_scan_rev <> rev then begin
       Hashtbl.reset t.tooltip_direct_index;
       Hashtbl.reset t.tooltip_explicit_index;
-      Lui_store.iter_preorder store (fun id ->
+      Lui_store.iter_tooltips store (fun id ->
         if anchored_tooltip store id then
           match Lui_store.string_prop store id "anchor-target" with
           | Some identifier -> (
