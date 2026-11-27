@@ -755,13 +755,24 @@ CAMLprim value lui_sh_clip_write(value vstr)
 }
 
 
+static NSString *lui_clipboard_type(value vname)
+{
+  mlsize_t len = caml_string_length(vname);
+  const char *name = String_val(vname);
+  if (len == 10 && memcmp(name, "text/plain", 10) == 0)
+    return NSPasteboardTypeString;
+  if (len == 9 && memcmp(name, "text/html", 9) == 0)
+    return NSPasteboardTypeHTML;
+  return lui_nsstring(vname);
+}
+
 static BOOL lui_clip_valid_pair(value vname, value vtext)
 {
   mlsize_t name_len = caml_string_length(vname);
   mlsize_t text_len = caml_string_length(vtext);
+  (void) text_len;
   return name_len > 0 && name_len < 256
-      && memchr(String_val(vname), '\0', name_len) == 0
-      && memchr(String_val(vtext), '\0', text_len) == 0;
+      && memchr(String_val(vname), '\0', name_len) == 0;
 }
 
 /* OCaml passes a flat string array: type, text, type, text... */
@@ -781,10 +792,14 @@ CAMLprim value lui_sh_clip_write_formats(value vitems)
             valid = valid && lui_clip_valid_pair(Field(vitems, i),
                                                  Field(vitems, i + 1));
           if (valid) {
-            [pb clearContents];
+            NSMutableArray *types =
+              [NSMutableArray arrayWithCapacity:(NSUInteger)(entries / 2)];
+            for (i = 0; i < entries; i += 2)
+              [types addObject:lui_clipboard_type(Field(vitems, i))];
+            [pb declareTypes:types owner:nil];
             ok = YES;
             for (i = 0; i < entries; i += 2) {
-              NSString *type = lui_nsstring(Field(vitems, i));
+              NSString *type = lui_clipboard_type(Field(vitems, i));
               NSString *text = lui_nsstring(Field(vitems, i + 1));
               ok = ok && [pb setString:text forType:type];
             }
@@ -810,7 +825,7 @@ CAMLprim value lui_sh_clip_read_format(value vname)
       @try {
         NSPasteboard *pb = lui_pasteboard();
         NSString *s = pb != nil
-          ? [pb stringForType:lui_nsstring(vname)] : nil;
+          ? [pb stringForType:lui_clipboard_type(vname)] : nil;
         if (s != nil) {
           vs = lui_ocamlstring(s);
           vopt = caml_alloc(1, 0);

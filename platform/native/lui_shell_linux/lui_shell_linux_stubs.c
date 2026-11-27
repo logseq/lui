@@ -1203,7 +1203,6 @@ static void clip_clear_formats(void *board, void *data)
 static int clip_valid_text(const char *text, mlsize_t length)
 {
   return length < INT_MAX
-      && memchr(text, '\0', length) == 0
       && p_g_utf8_validate(text, (intptr_t) length, 0);
 }
 
@@ -1251,7 +1250,7 @@ CAMLprim value lui_shx_clip_write_formats(value vitems)
     formats->items[i] = copy;
     if (strcmp(String_val(vname), "text/plain") == 0) plain = i;
   }
-  target_count = count + (plain >= 0 ? 2 : 0);
+  target_count = count + (plain >= 0 ? 1 : 0);
   targets = calloc((size_t) target_count, sizeof(*targets));
   if (targets == 0) goto done;
   for (i = 0; i < count; i++) {
@@ -1263,9 +1262,6 @@ CAMLprim value lui_shx_clip_write_formats(value vitems)
     targets[count].target = "UTF8_STRING";
     targets[count].flags = 0;
     targets[count].info = (unsigned int) plain;
-    targets[count + 1].target = "TEXT";
-    targets[count + 1].flags = 0;
-    targets[count + 1].info = (unsigned int) plain;
   }
   ok = p_gtk_clipboard_set_with_data(board, targets,
       (unsigned int) target_count, clip_get_format, clip_clear_formats,
