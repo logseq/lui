@@ -999,6 +999,7 @@ module Ui = struct
 
   let focus_move ?(kbd = false) t store id =
     let moved = id <> Lui_focus.focused t.focus in
+    let kbd_was = Lui_focus.kbd_visible t.focus in
     let previous = Lui_focus.focused t.focus in
     if moved && bool_prop store previous "submit-on-blur"
        && not (Lui_text_input.composing t.session)
@@ -1017,7 +1018,8 @@ module Ui = struct
       end;
       t.dirty <- true
     end;
-    note_tooltip_focus t store id ~kbd
+    if moved || (kbd && not kbd_was) then
+      note_tooltip_focus t store id ~kbd
 
   let set_focused ?(kbd = false) t store id = focus_move ~kbd t store id
 

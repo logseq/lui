@@ -693,6 +693,19 @@ let test_anchor_tooltip_lifecycle () =
     (Ui.hidden ui s 3);
   Ui.tick_scrollbars ui ~now_ms:172.;
   Alcotest.(check bool) "pointer leave hides tooltip" true
+    (Ui.hidden ui s 3);
+  Ui.set_focused ~kbd:true ui s 2;
+  Alcotest.(check bool) "keyboard focus opens tooltip" false
+    (Ui.hidden ui s 3);
+  ignore
+    (Ui.handle ui s rects
+       (Input.Key_down (Input.Escape, Input.mods_none, false)));
+  Alcotest.(check bool) "escape closes focus tooltip" true
+    (Ui.hidden ui s 3);
+  ignore
+    (Ui.handle ui s rects
+       (Input.Key_down (Input.Escape, Input.mods_none, false)));
+  Alcotest.(check bool) "escape does not reopen focus tooltip" true
     (Ui.hidden ui s 3)
 
 let test_context_menu () =
