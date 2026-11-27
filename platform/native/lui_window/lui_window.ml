@@ -575,6 +575,13 @@ module Ui = struct
     mutable toast_rev : int;
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
+    mutable tooltip_open : int;
+    mutable tooltip_candidate : int;
+    mutable tooltip_show_deadline : float;
+    mutable tooltip_hide_deadline : float;
+    mutable tooltip_warm_until : float;
+    mutable tooltip_origin_focus : bool;
+    mutable tooltip_layout_dirty : bool;
     mutable menu_scope : int;
     mutable menu_typeahead_deadline : float;
     mutable menu_reveal : int; (* Initial highlight waiting for layout geometry. *)
@@ -631,6 +638,10 @@ module Ui = struct
       toast_rev = -1;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
+      tooltip_open = 0; tooltip_candidate = 0;
+      tooltip_show_deadline = 0.; tooltip_hide_deadline = 0.;
+      tooltip_warm_until = 0.; tooltip_origin_focus = false;
+      tooltip_layout_dirty = false;
       menu_scope = 0; menu_typeahead_deadline = 0.; menu_reveal = 0; menu_picker = 0; pending_picker = None;
       menu_space_commit = false; keyboard_input = true; overlay_edit = None;
       scrolled = Hashtbl.create 8;
@@ -676,7 +687,132 @@ module Ui = struct
   let overlay_top t = Lui_overlay.top t.overlay
   let open_menu t = Lui_overlay.open_menu t.overlay
   let pointer t = Lui_pointer.position t.pointer
-  let hidden t store id = Lui_overlay.hidden store t.overlay id
+
+  (* Anchored tooltips are host-owned overlays: the declarative node stays
+     in the tree, but only the interaction runtime decides when it is
+     visible. The web backend uses the same contract — an anchored tooltip
+     without an open interaction must not paint at all. *)
+  let anchored_tooltip store id =
+    kind_name store id = "tooltip"
+    && Lui_store.string_prop store id "anchor" <> None
+
+  let tooltip_owner store id =
+    match Lui_store.string_prop store id "anchor-target" with
+    | Some identifier -> Lui_store.find_identifier store identifier
+    | None -> Lui_store.parent store id
+
+  let explicit_tooltip_for_owner store owner =
+    let found = ref None in
+    Lui_store.iter_anchor_targets store (fun id ->
+      if !found = None && anchored_tooltip store id
+         && tooltip_owner store id = Some owner then
+        found := Some id);
+    !found
+
+  let tooltip_for_trigger store trigger =
+    match
+      List.find_opt
+        (fun id -> anchored_tooltip store id)
+        (Lui_store.child_ids store trigger)
+    with
+    | Some id -> Some id
+    | None -> explicit_tooltip_for_owner store trigger
+
+  let tooltip_in_path store path =
+    List.find_map (tooltip_for_trigger store) path
+
+  let rec tooltip_at_or_above store id =
+    if id = 0 then None
+    else match tooltip_for_trigger store id with
+      | Some _ as tip -> tip
+      | None -> tooltip_at_or_above store
+          (Option.value ~default:0 (Lui_store.parent store id))
+
+  let tooltip_valid store id =
+    anchored_tooltip store id && tooltip_owner store id <> None
+
+  let set_tooltip_open t id =
+    if t.tooltip_open <> id then begin
+      t.tooltip_open <- id;
+      t.tooltip_layout_dirty <- true;
+      t.dirty <- true
+    end
+
+  let open_tooltip_now t id ~origin_focus =
+    set_tooltip_open t id;
+    t.tooltip_candidate <- 0;
+    t.tooltip_show_deadline <- 0.;
+    t.tooltip_hide_deadline <- 0.;
+    t.tooltip_origin_focus <- origin_focus
+
+  let close_tooltip_now t ~warm =
+    if t.tooltip_open <> 0 then begin
+      set_tooltip_open t 0;
+      if warm then t.tooltip_warm_until <- t.scroll_clock_ms +. 400.
+    end;
+    t.tooltip_candidate <- 0;
+    t.tooltip_show_deadline <- 0.;
+    t.tooltip_hide_deadline <- 0.;
+    t.tooltip_origin_focus <- false
+
+  let note_tooltip_path t store path =
+    let now = t.scroll_clock_ms in
+    match tooltip_in_path store path with
+    | Some tip ->
+      if tip = t.tooltip_open then begin
+        t.tooltip_hide_deadline <- 0.;
+        t.tooltip_origin_focus <- false
+      end else if tip <> t.tooltip_candidate then begin
+        if t.tooltip_open <> 0 then close_tooltip_now t ~warm:true;
+        t.tooltip_candidate <- tip;
+        let delay =
+          if now < t.tooltip_warm_until then 0
+          else Option.value ~default:600
+            (Lui_store.int_prop store tip "tooltip-delay")
+        in
+        t.tooltip_show_deadline <- now +. float delay;
+        if delay = 0 then open_tooltip_now t tip ~origin_focus:false
+      end
+    | None ->
+      t.tooltip_candidate <- 0;
+      t.tooltip_show_deadline <- 0.;
+      if t.tooltip_open <> 0 && not t.tooltip_origin_focus then begin
+        t.tooltip_hide_deadline <- now +. 50.;
+        if t.tooltip_warm_until < now +. 450. then
+          t.tooltip_warm_until <- now +. 450.
+      end
+
+  let note_tooltip_focus t store id ~kbd =
+    let tip =
+      if kbd && id <> 0 then tooltip_at_or_above store id else None
+    in
+    match tip with
+    | Some tip -> open_tooltip_now t tip ~origin_focus:true
+    | None ->
+      if t.tooltip_open <> 0 && t.tooltip_origin_focus then begin
+        let owner = tooltip_owner store t.tooltip_open in
+        let pointer_inside =
+          match owner with
+          | Some owner ->
+            let hovered = Lui_pointer.hovered t.pointer in
+            hovered <> 0
+            && (hovered = owner || Lui_query.is_desc store hovered owner)
+          | None -> false
+        in
+        if not pointer_inside then close_tooltip_now t ~warm:false
+      end
+
+  let validate_tooltip_store t store =
+    if t.tooltip_candidate <> 0 && not (tooltip_valid store t.tooltip_candidate) then begin
+      t.tooltip_candidate <- 0;
+      t.tooltip_show_deadline <- 0.
+    end;
+    if t.tooltip_open <> 0 && not (tooltip_valid store t.tooltip_open) then
+      close_tooltip_now t ~warm:false
+
+  let hidden t store id =
+    Lui_overlay.hidden store t.overlay id
+    || (anchored_tooltip store id && id <> t.tooltip_open)
   let scrollable = Lui_scroll.scrollable
 
   (* Scroll axes: y is the established vertical path; x adds
@@ -710,6 +846,12 @@ module Ui = struct
       t.menu_typeahead_deadline <- 0.;
       if t.menu_scope <> 0 then t.gesture <- Lui_gesture.reset_typeahead t.gesture
     end;
+    if t.tooltip_candidate <> 0 && t.tooltip_show_deadline > 0.
+       && now_ms >= t.tooltip_show_deadline then
+      open_tooltip_now t t.tooltip_candidate ~origin_focus:false;
+    if t.tooltip_open <> 0 && t.tooltip_hide_deadline > 0.
+       && now_ms >= t.tooltip_hide_deadline then
+      close_tooltip_now t ~warm:true;
     if Hashtbl.length t.scrollbar_deadlines > 0 then
     Hashtbl.filter_map_inplace (fun id deadline ->
       if deadline > now_ms then Some deadline
@@ -725,6 +867,14 @@ module Ui = struct
     let initial =
       if t.menu_typeahead_deadline > 0. then t.menu_typeahead_deadline
       else Float.infinity in
+    let initial =
+      if t.tooltip_candidate <> 0 && t.tooltip_show_deadline > 0. then
+        Float.min initial t.tooltip_show_deadline
+      else initial in
+    let initial =
+      if t.tooltip_open <> 0 && t.tooltip_hide_deadline > 0. then
+        Float.min initial t.tooltip_hide_deadline
+      else initial in
     let initial =
       Hashtbl.fold (fun _ deadline next -> Float.min deadline next)
         t.scrollbar_deadlines initial in
@@ -882,7 +1032,8 @@ module Ui = struct
         t.selection <- Lui_selection.clear t.selection
       end;
       t.dirty <- true
-    end
+    end;
+    note_tooltip_focus t store id ~kbd
 
   let set_focused ?(kbd = false) t store id = focus_move ~kbd t store id
 
@@ -1126,7 +1277,9 @@ module Ui = struct
     List.rev !acts
 
   let store_changed t store =
+    validate_tooltip_store t store;
     let acts = sync t store in
+    validate_tooltip_store t store;
     let rev = Lui_store.revision store in
     if rev <> t.toast_rev then begin
       schedule_toasts t store;
@@ -1289,10 +1442,12 @@ module Ui = struct
                   t.dirty <- true
                 end
               | None -> ());
-             run m
+             run m;
+             note_tooltip_path t store path
            end
        end
      | Input.Button_down (x, y, btn, clicks, mods) ->
+       close_tooltip_now t ~warm:false;
        t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
        (match btn with
         | Input.Left ->
@@ -1601,7 +1756,8 @@ module Ui = struct
          let prim = mods.Input.ctrl || mods.Input.meta in
          (match key with
           | Input.Escape ->
-            if Lui_drag.active t.drag then begin
+            if t.tooltip_open <> 0 then close_tooltip_now t ~warm:false
+            else if Lui_drag.active t.drag then begin
               (* cancel the drag: no drop, click consumed *)
               let d, m = Lui_drag.cancel t.drag in
               t.drag <- d;
@@ -1932,6 +2088,11 @@ module Ui = struct
       Lui_host.invalidate_layout host;
       Lui_host.invalidate_paint host;
       t.overlay <- Lui_overlay.menu_laid_out t.overlay
+    end;
+    if t.tooltip_layout_dirty then begin
+      Lui_host.invalidate_layout host;
+      Lui_host.invalidate_paint host;
+      t.tooltip_layout_dirty <- false
     end;
     t.dirty || Lui_host.wants_repaint host
 

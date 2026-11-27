@@ -661,6 +661,40 @@ let test_hover_ancestors () =
   Alcotest.(check bool) "switching controls invalidates both backgrounds" true
     (Hashtbl.mem dirty 2 && Hashtbl.mem dirty 5)
 
+let test_anchor_tooltip_lifecycle () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Button); CreateNode (3, Tooltip);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        SetProp (2, PointerEnabled, BoolValue true);
+        SetProp (3, AnchorValue, StringValue "above");
+        SetProp (3, TooltipDelay, IntValue 20);
+        SetProp (3, TextValue, StringValue "tip") ]
+  in
+  let rects =
+    rects_of
+      [ (1, rect 0. 0. 100. 100.); (2, rect 0. 0. 40. 20.);
+        (3, rect 0. 24. 50. 20.) ]
+  in
+  let ui = Ui.create () in
+  Ui.tick_scrollbars ui ~now_ms:100.;
+  Alcotest.(check bool) "anchored tooltip hidden at rest" true
+    (Ui.hidden ui s 3);
+  ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
+  Ui.tick_scrollbars ui ~now_ms:110.;
+  Alcotest.(check bool) "hover delay keeps tooltip hidden" true
+    (Ui.hidden ui s 3);
+  Ui.tick_scrollbars ui ~now_ms:121.;
+  Alcotest.(check bool) "hover delay opens tooltip" false
+    (Ui.hidden ui s 3);
+  ignore (Ui.handle ui s rects (Input.Move (90., 10.)));
+  Ui.tick_scrollbars ui ~now_ms:130.;
+  Alcotest.(check bool) "pointer leave hides after a short delay" false
+    (Ui.hidden ui s 3);
+  Ui.tick_scrollbars ui ~now_ms:172.;
+  Alcotest.(check bool) "pointer leave hides tooltip" true
+    (Ui.hidden ui s 3)
+
 let test_context_menu () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -5145,6 +5179,8 @@ let () =
           Alcotest.test_case "picker input ownership" `Quick test_picker_menu_input_ownership;
           Alcotest.test_case "menu row focus chrome" `Quick test_menu_row_focus_chrome;
           Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
+          Alcotest.test_case "anchored tooltip lifecycle" `Quick
+            test_anchor_tooltip_lifecycle;
           Alcotest.test_case "toast duration dismiss" `Quick
             test_toast_duration_dismiss;
           Alcotest.test_case "modal+esc" `Quick test_overlay_close;
