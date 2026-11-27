@@ -4055,3 +4055,12 @@ scrollbar auto-hide and menu-typeahead expiry deadlines to fire.
 `Lui_store.iter_tooltips` is an additive native-store helper for input hit
 paths that need to inspect retained tooltip nodes without walking the full
 tree. Existing tree traversal and child-access APIs are unchanged.
+
+```ocaml
+(* Before: walk every retained node and filter tooltip kinds. *)
+Lui_store.iter_preorder store (fun id ->
+  if Lui_store.kind store id = "tooltip" then visit_tooltip id);
+
+(* After: visit only the incrementally tracked tooltip nodes. *)
+Lui_store.iter_tooltips store visit_tooltip;
+```
