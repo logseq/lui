@@ -579,7 +579,6 @@ let child_ids t id =
   | Some n -> node_children n
   | None -> []
 
-
 (* Indexed access for virtualized containers: walks the intrusive
    list from the nearer end — O(min(i, count-i)). Meant for one-shot
    lookups (scroll-target); per-frame window slices come from the
