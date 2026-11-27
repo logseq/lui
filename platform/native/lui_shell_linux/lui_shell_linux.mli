@@ -268,7 +268,9 @@ val clipboard_change_count : unit -> int
 val clipboard_write_formats : (string * string) list -> bool
 (** Atomically replaces the clipboard with several named MIME targets.
     Each value must be valid UTF-8. [text/plain] also becomes available
-    through the platform's legacy text targets. *)
+    through the platform's legacy text targets and must not contain
+    embedded NUL bytes; the whole write returns [false] if it does.
+    Custom formats may contain embedded NUL bytes. *)
 
 val clipboard_read_format : string -> string option
 (** Reads one named MIME target. [None] when the clipboard is absent or
