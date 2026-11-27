@@ -273,6 +273,7 @@ enum class LuiProperty(val wireName: String) {
     transition("transition"),
     inert("inert"),
     navigateEnabled("navigate-enabled"),
+    navigationKeyEnabled("navigation-key-enabled"),
     firstPaneWidth("first-pane-width"),
     gridColumnSpan("grid-column-span"),
     labelOpacity("label-opacity"),
@@ -365,7 +366,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.secureField to setOf(LuiProperty.readOnly),
         LuiNodeKind.input to setOf(LuiProperty.readOnly),
         LuiNodeKind.searchField to setOf(LuiProperty.readOnly),
-        LuiNodeKind.textarea to setOf(LuiProperty.readOnly),
+        LuiNodeKind.textarea to setOf(LuiProperty.readOnly, LuiProperty.navigationKeyEnabled),
         LuiNodeKind.combobox to setOf(LuiProperty.readOnly),
     )
 }

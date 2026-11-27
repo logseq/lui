@@ -287,6 +287,7 @@ type property =
   | Transition
   | Inert
   | NavigateEnabled
+  | NavigationKeyEnabled
   | FirstPaneWidth
   | GridColumnSpan
   | LabelOpacity
@@ -528,10 +529,11 @@ let event_supported kind event =
     kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
   | NavigationKey (_, key, _) ->
-    (kind = Button || kind = Row || kind = Box) &&
-    (List.mem key
-      ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
-    || (kind = Row || kind = Box) && List.mem key ["Enter";" ";"Escape"])
+    (kind = Textarea && key = "Enter")
+    || (kind = Button || kind = Row || kind = Box)
+       && (List.mem key
+             ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
+           || (kind = Row || kind = Box) && List.mem key ["Enter";" ";"Escape"])
   | TextChanged _ ->
     (match kind with
     | TextField
@@ -634,8 +636,13 @@ let event_supported_for_lookup kind lookup event =
   match event with
   | FocusWithinChanged _ -> enabled FocusWithinEnabled && event_supported kind event
   | (Press _ | PressModifiers _) when kind = Link -> enabled PressEnabled
-  | NavigatePrevious _ | NavigateNext _ | NavigationKey _ ->
+  | NavigatePrevious _ | NavigateNext _ ->
     enabled NavigateEnabled
+    && lookup Enabled <> Some (BoolValue false)
+    && event_supported kind event
+  | NavigationKey _ ->
+    (if kind = Textarea then enabled NavigationKeyEnabled
+     else enabled NavigateEnabled)
     && lookup Enabled <> Some (BoolValue false)
     && event_supported kind event
   | _ ->
@@ -1153,6 +1160,7 @@ let common_property_supported kind property =
     kind = Button || kind = Row || kind = Box
     || kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
+  | NavigationKeyEnabled -> kind = Textarea
   | SubmitEnabled -> event_supported kind (Submit 0)
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
@@ -1732,6 +1740,7 @@ let property_value_supported property value =
   | ToggleEnabled, BoolValue _ -> true
   | PressEnabled, BoolValue _ -> true
   | NavigateEnabled, BoolValue _
+  | NavigationKeyEnabled, BoolValue _
   | SubmitEnabled, BoolValue _ -> true
   | DoublePressEnabled, BoolValue _ -> true
   | AppearEnabled, BoolValue _ -> true

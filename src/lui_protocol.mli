@@ -285,6 +285,7 @@ type property =
   | Transition
   | Inert
   | NavigateEnabled
+  | NavigationKeyEnabled
   | FirstPaneWidth
   | GridColumnSpan
   | LabelOpacity

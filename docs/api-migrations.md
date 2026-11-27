@@ -1,5 +1,31 @@
 # LUI API migration guide
 
+### Native textareas can opt in to Shift+Enter navigation keys
+
+`textarea` now accepts `~on_navigation_key` for the existing `navigation-key`
+wire event. The initial text-input admission is limited to `Enter`: when the
+handler is registered and the user presses Shift+Enter. Registration sets the additive
+`navigation-key-enabled` machine property, leaving `navigate-enabled` dedicated
+to Up/Down `NavigatePrevious`/`NavigateNext`; OCaml native hosts then dispatch `NavigationKey (node, "Enter", true)` instead of editing the caret,
+and the window host suppresses only the paired platform newline text commit.
+Plain Enter still inserts a newline through normal text input, and Ctrl/Cmd+Enter
+keeps the existing submit behavior. Existing unmodified Up/Down
+`NavigatePrevious`/`NavigateNext` semantics are unchanged even when only
+`on_navigation_key` is registered. Applications that do not register `on_navigation_key` require no migration; applications that do
+register it must handle the event and must not also insert their own newline
+for the same keypress.
+
+```ocaml
+Lui_elements.textarea
+  ~on_navigation_key:(fun nav ->
+    if nav.key = "Enter" && nav.shift then insert_sibling ())
+  []
+```
+
+The Apple SwiftUI and Android backends do not currently emit this textarea
+key event; hosts there should continue to use their existing keyboard path
+until backend coverage is added.
+
 ### Native video EOF waits for the audio transport clock
 
 A playing native video no longer transitions to `Ended` merely because its

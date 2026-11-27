@@ -2218,6 +2218,11 @@
       "swift": "navigateEnabled"
     },
     {
+      "lg": "NavigationKeyEnabled",
+      "wire": "navigation-key-enabled",
+      "swift": "navigationKeyEnabled"
+    },
+    {
       "lg": "FirstPaneWidth",
       "wire": "first-pane-width",
       "swift": "firstPaneWidth"
@@ -2865,7 +2870,8 @@
       "read-only"
     ],
     "textarea": [
-      "read-only"
+      "read-only",
+      "navigation-key-enabled"
     ],
     "combobox": [
       "read-only"

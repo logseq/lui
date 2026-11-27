@@ -583,6 +583,9 @@ module Ui = struct
     mutable overlay_edit : Lui_text_input.state option;
     (* Space activation may dispose the menu before its text commit arrives. *)
     mutable menu_space_commit : bool;
+    (* Shift+Enter navigation may consume the platform newline commit that
+       follows the key event. *)
+    mutable suppress_return_commit : bool;
     (* Paint-hint channels for the retained fragment pass: scroll
        containers whose offset moved this frame (their whole subtree
        re-derives — ops embed shifted rects), containers whose
@@ -635,7 +638,7 @@ module Ui = struct
       tooltip_direct_index = Hashtbl.create 8;
       tooltip_explicit_index = Hashtbl.create 8; tooltip_scan_rev = -1;
       menu_scope = 0; menu_typeahead_deadline = 0.; menu_reveal = 0; menu_picker = 0; pending_picker = None;
-      menu_space_commit = false; keyboard_input = true; overlay_edit = None;
+      menu_space_commit = false; suppress_return_commit = false; keyboard_input = true; overlay_edit = None;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
       paint_snap =
@@ -1346,6 +1349,17 @@ module Ui = struct
         false
       | _ -> false
     in
+    let suppress_return =
+      match input with
+      | Input.Text_input s ->
+        let pending = t.suppress_return_commit in
+        t.suppress_return_commit <- false;
+        pending && (s = "\r" || s = "\n")
+      | Input.Key_down _ | Input.Button_down _ ->
+        t.suppress_return_commit <- false;
+        false
+      | _ -> false
+    in
     let acts = ref [] in
     let emit_all l = acts := List.rev_append l !acts in
     let run m_acts = emit_all (perform_all t store m_acts) in
@@ -1618,7 +1632,8 @@ module Ui = struct
           t.pointer <- Lui_pointer.clear_press t.pointer;
           t.dirty <- true
         | _ -> ())
-     | Input.Text_input _ when suppress_space -> on_component_input ()
+     | Input.Text_input _ when suppress_space || suppress_return ->
+       on_component_input ()
      | Input.Text_input s when Option.is_some (active_menu t store)
          && kind_name store (focused t) <> "combobox" ->
        on_component_input ();
@@ -1853,6 +1868,12 @@ module Ui = struct
                   ~k:(conv_key key) ~mods:(conv_mods mods) ~prim
               in
               t.session <- s';
+              if List.exists
+                   (function
+                     | `Dispatch (NavigationKey (_, "Enter", true)) -> true
+                     | _ -> false)
+                   m
+              then t.suppress_return_commit <- true;
               run m
             end
             else if Lui_focus.focused t.focus <> 0 && not focused_list then begin
