@@ -1202,8 +1202,8 @@ static void clip_clear_formats(void *board, void *data)
 
 static int clip_valid_text(const char *text, mlsize_t length)
 {
-  return length < INT_MAX
-      && p_g_utf8_validate(text, (intptr_t) length, 0);
+  (void) text;
+  return length < INT_MAX;
 }
 
 /* OCaml passes a flat string array: mime, text, mime, text...  GTK owns

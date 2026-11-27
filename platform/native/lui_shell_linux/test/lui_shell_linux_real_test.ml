@@ -63,7 +63,7 @@ let test_clipboard () =
     let items =
       [ "text/plain", "plain blocks"
       ; "text/html", "<b>blocks</b>"
-      ; "application/logseq", "{:blocks []}" ]
+      ; "application/logseq", "payload\000end" ]
     in
     check "write formats" true (clipboard_write_formats items);
     List.iter
