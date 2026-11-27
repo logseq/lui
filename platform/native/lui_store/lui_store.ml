@@ -171,6 +171,7 @@ type t = {
   nodes : (int, node) Hashtbl.t;
   identifiers : (string, int) Hashtbl.t;
   anchor_targets : (int, string) Hashtbl.t;
+  tooltips : (int, unit) Hashtbl.t;
   roots : (int, unit) Hashtbl.t;
     (* Ids whose node is stored with no live parent — kept
        incrementally so [root_ids] does not fold the whole table on
@@ -195,7 +196,7 @@ type t = {
 let journal_cap = 8192
 
 let create () =
-  { nodes = Hashtbl.create 64; identifiers = Hashtbl.create 16; anchor_targets = Hashtbl.create 4; roots = Hashtbl.create 8;
+  { nodes = Hashtbl.create 64; identifiers = Hashtbl.create 16; anchor_targets = Hashtbl.create 4; tooltips = Hashtbl.create 4; roots = Hashtbl.create 8;
     dirty = Hashtbl.create 64; extension_masks = Hashtbl.create 16;
     generation = 0; revision = 0; layout_rev = 0;
     journal = Queue.create (); journal_len = 0; journal_base = -1 }
@@ -344,6 +345,7 @@ let insert_at (p : node) (c : node) index =
 
 let find_identifier t identifier = Hashtbl.find_opt t.identifiers identifier
 let iter_anchor_targets t f = Hashtbl.iter (fun id _ -> f id) t.anchor_targets
+let iter_tooltips t f = Hashtbl.iter (fun id _ -> f id) t.tooltips
 
 let forget_identifier t node =
   match Hashtbl.find_opt node.props "accessibility-identifier" with
@@ -385,6 +387,7 @@ let rec drop t id =
        | None -> ())
      | None -> ());
     Hashtbl.remove t.anchor_targets id;
+    Hashtbl.remove t.tooltips id;
     forget_identifier t node;
     Hashtbl.remove t.nodes id;
     Hashtbl.remove t.roots id;
@@ -434,7 +437,9 @@ let apply_op t = function
        Hashtbl.replace leaves former children with parent=Some id while
        the new node starts with an empty child list — orphans. *)
     if Hashtbl.mem t.nodes id then drop t id;
-    Hashtbl.replace t.nodes id (new_node id (Lui_wire_schema.node_kind_name k));
+    let kind_name = Lui_wire_schema.node_kind_name k in
+    Hashtbl.replace t.nodes id (new_node id kind_name);
+    if kind_name = "tooltip" then Hashtbl.replace t.tooltips id ();
     Hashtbl.replace t.roots id ();
     mark_dirty_mask t id d_all;
     journal_push t op

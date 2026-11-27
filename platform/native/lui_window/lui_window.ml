@@ -571,6 +571,9 @@ module Ui = struct
     mutable tooltip_warm_until : float;
     mutable tooltip_origin_focus : bool;
     mutable tooltip_layout_dirty : bool;
+    tooltip_direct_index : (int, int) Hashtbl.t;
+    tooltip_explicit_index : (int, int) Hashtbl.t;
+    mutable tooltip_scan_rev : int;
     mutable menu_scope : int;
     mutable menu_typeahead_deadline : float;
     mutable menu_reveal : int; (* Initial highlight waiting for layout geometry. *)
@@ -629,6 +632,8 @@ module Ui = struct
       tooltip_show_deadline = 0.; tooltip_hide_deadline = 0.;
       tooltip_warm_until = 0.; tooltip_origin_focus = false;
       tooltip_layout_dirty = false;
+      tooltip_direct_index = Hashtbl.create 8;
+      tooltip_explicit_index = Hashtbl.create 8; tooltip_scan_rev = -1;
       menu_scope = 0; menu_typeahead_deadline = 0.; menu_reveal = 0; menu_picker = 0; pending_picker = None;
       menu_space_commit = false; keyboard_input = true; overlay_edit = None;
       scrolled = Hashtbl.create 8;
@@ -688,32 +693,67 @@ module Ui = struct
     | Some identifier -> Lui_store.find_identifier store identifier
     | None -> Lui_store.parent store id
 
-  let explicit_tooltip_for_owner store owner =
+  let direct_child_before store parent a b =
+    let rec scan = function
+      | [] -> false
+      | id :: _ when id = a -> true
+      | id :: _ when id = b -> false
+      | _ :: rest -> scan rest
+    in
+    scan (Lui_store.child_ids store parent)
+
+  let refresh_tooltip_index t store =
+    let rev = Lui_store.layout_rev store in
+    if t.tooltip_scan_rev <> rev then begin
+      Hashtbl.reset t.tooltip_direct_index;
+      Hashtbl.reset t.tooltip_explicit_index;
+      Lui_store.iter_tooltips store (fun id ->
+        if anchored_tooltip store id then
+          match Lui_store.string_prop store id "anchor-target" with
+          | Some identifier -> (
+            match Lui_store.find_identifier store identifier with
+            | Some owner ->
+              if not (Hashtbl.mem t.tooltip_explicit_index owner) then
+                Hashtbl.replace t.tooltip_explicit_index owner id
+            | None -> ())
+          | None -> (
+            match Lui_store.parent store id with
+            | Some owner -> (
+              match Hashtbl.find_opt t.tooltip_direct_index owner with
+              | None -> Hashtbl.replace t.tooltip_direct_index owner id
+              | Some existing ->
+                if direct_child_before store owner id existing then
+                  Hashtbl.replace t.tooltip_direct_index owner id)
+            | None -> ()));
+      t.tooltip_scan_rev <- rev
+    end
+
+  let tooltip_owner_hit t id =
+    match Hashtbl.find_opt t.tooltip_direct_index id with
+    | Some _ as tip -> tip
+    | None -> Hashtbl.find_opt t.tooltip_explicit_index id
+
+  let tooltip_in_path t store path =
+    refresh_tooltip_index t store;
     let found = ref None in
-    Lui_store.iter_anchor_targets store (fun id ->
-      if !found = None && anchored_tooltip store id
-         && tooltip_owner store id = Some owner then
-        found := Some id);
+    List.iter
+      (fun id ->
+        if !found = None then
+          match tooltip_owner_hit t id with
+          | Some _ as tip -> found := tip
+          | None -> ())
+      path;
     !found
 
-  let tooltip_for_trigger store trigger =
-    match
-      List.find_opt
-        (fun id -> anchored_tooltip store id)
-        (Lui_store.child_ids store trigger)
-    with
-    | Some id -> Some id
-    | None -> explicit_tooltip_for_owner store trigger
-
-  let tooltip_in_path store path =
-    List.find_map (tooltip_for_trigger store) path
-
-  let rec tooltip_at_or_above store id =
+  let rec tooltip_at_or_above t store id =
     if id = 0 then None
-    else match tooltip_for_trigger store id with
+    else begin
+      refresh_tooltip_index t store;
+      match tooltip_owner_hit t id with
       | Some _ as tip -> tip
-      | None -> tooltip_at_or_above store
+      | None -> tooltip_at_or_above t store
           (Option.value ~default:0 (Lui_store.parent store id))
+    end
 
   let tooltip_valid store id =
     anchored_tooltip store id && tooltip_owner store id <> None
@@ -744,7 +784,7 @@ module Ui = struct
 
   let note_tooltip_path t store path =
     let now = t.scroll_clock_ms in
-    match tooltip_in_path store path with
+    match tooltip_in_path t store path with
     | Some tip ->
       if tip = t.tooltip_open then begin
         t.tooltip_hide_deadline <- 0.;
@@ -771,7 +811,7 @@ module Ui = struct
 
   let note_tooltip_focus t store id ~kbd =
     let tip =
-      if kbd && id <> 0 then tooltip_at_or_above store id else None
+      if kbd && id <> 0 then tooltip_at_or_above t store id else None
     in
     match tip with
     | Some tip -> open_tooltip_now t tip ~origin_focus:true

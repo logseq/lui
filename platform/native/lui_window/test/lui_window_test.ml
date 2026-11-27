@@ -665,11 +665,15 @@ let test_anchor_tooltip_lifecycle () =
   let s =
     store_of
       [ CreateNode (1, Root); CreateNode (2, Button); CreateNode (3, Tooltip);
-        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        CreateNode (4, Tooltip);
+        InsertChild (1, 4, 0); InsertChild (1, 2, 1); InsertChild (2, 3, 0);
         SetProp (2, PointerEnabled, BoolValue true);
+        SetProp (2, AccessibilityIdentifier, StringValue "trigger");
         SetProp (3, AnchorValue, StringValue "above");
         SetProp (3, TooltipDelay, IntValue 20);
-        SetProp (3, TextValue, StringValue "tip") ]
+        SetProp (3, TextValue, StringValue "tip");
+        SetProp (4, AnchorValue, StringValue "above");
+        SetProp (4, AnchorTarget, StringValue "trigger") ]
   in
   let rects =
     rects_of
@@ -687,6 +691,8 @@ let test_anchor_tooltip_lifecycle () =
   Ui.tick_scrollbars ui ~now_ms:121.;
   Alcotest.(check bool) "hover delay opens tooltip" false
     (Ui.hidden ui s 3);
+  Alcotest.(check bool) "direct tooltip wins over an explicit raw anchor" true
+    (Ui.hidden ui s 4);
   ignore (Ui.handle ui s rects (Input.Move (90., 10.)));
   Ui.tick_scrollbars ui ~now_ms:130.;
   Alcotest.(check bool) "pointer leave hides after a short delay" false
@@ -709,6 +715,43 @@ let test_anchor_tooltip_lifecycle () =
     (Ui.hidden ui s 3);
   Alcotest.(check int) "second escape reaches focus dismissal" 0
     (Ui.focused ui)
+
+let test_anchor_tooltip_child_order () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Button);
+        CreateNode (3, Tooltip); CreateNode (4, Tooltip);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (2, PointerEnabled, BoolValue true);
+        SetProp (3, AnchorValue, StringValue "above");
+        SetProp (4, AnchorValue, StringValue "above");
+        SetProp (3, TooltipDelay, IntValue 20);
+        SetProp (4, TooltipDelay, IntValue 20) ]
+  in
+  let rects =
+    rects_of
+      [ (1, rect 0. 0. 100. 100.); (2, rect 0. 0. 40. 20.) ]
+  in
+  let ui = Ui.create () in
+  let hover now =
+    Ui.tick_scrollbars ui ~now_ms:now;
+    ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
+    Ui.tick_scrollbars ui ~now_ms:(now +. 21.)
+  in
+  hover 100.;
+  Alcotest.(check bool) "first direct tooltip opens" false (Ui.hidden ui s 3);
+  Alcotest.(check bool) "second direct tooltip stays hidden" true (Ui.hidden ui s 4);
+  ignore (Ui.handle ui s rects (Input.Move (90., 10.)));
+  Ui.tick_scrollbars ui ~now_ms:180.;
+  Alcotest.(check bool) "initial tooltip closes before reordering" true
+    (Ui.hidden ui s 3);
+  Lui_store.apply_op s (MoveChild (2, 4, 0));
+  ignore (Ui.store_changed ui s);
+  hover 200.;
+  Alcotest.(check bool) "reordered direct tooltip opens from refreshed index" false
+    (Ui.hidden ui s 4);
+  Alcotest.(check bool) "moved direct tooltip stays hidden" true (Ui.hidden ui s 3)
 
 let test_context_menu () =
   let s, rects = ui_store_fresh () in
@@ -5106,6 +5149,8 @@ let () =
           Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
           Alcotest.test_case "anchored tooltip lifecycle" `Quick
             test_anchor_tooltip_lifecycle;
+          Alcotest.test_case "anchored tooltip child order" `Quick
+            test_anchor_tooltip_child_order;
           Alcotest.test_case "modal+esc" `Quick test_overlay_close;
           Alcotest.test_case "retained anchor scroll shift" `Quick test_retained_anchor_scroll_shift;
           Alcotest.test_case "retained popover input" `Quick test_retained_popover_input;
