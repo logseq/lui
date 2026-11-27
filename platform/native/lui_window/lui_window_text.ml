@@ -355,7 +355,8 @@ let slot_of t run_font gid sub shade scale scene =
          | Some (x, y) ->
            Some
              { sl_x = x; sl_y = y; sl_w = b.w; sl_h = b.h;
-               sl_left = b.left; sl_top = b.top; sl_colored = colored;
+               sl_left = b.left; sl_top = b.top;
+               sl_colored = colored && not subpixel;
                sl_subpixel = subpixel }
          | None -> None)
       | _ -> None
