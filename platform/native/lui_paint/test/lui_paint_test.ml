@@ -370,16 +370,22 @@ let test_image_alt_fallback_paint () =
   let scene = paint_with h t () in
   check (option string) "alt text paints while no bitmap is available"
     (Some "missing image") !painted;
-  let rec scan in_clip clip_rect marker_inside = function
-    | [] -> (not in_clip) && marker_inside && clip_rect = Some (rect 0. 0. 100. 40.)
-    | Lui_scene.Push_clip c :: rest -> scan true (Some c.crect) marker_inside rest
-    | Lui_scene.Pop_clip :: rest -> scan false clip_rect marker_inside rest
+  let rec scan depth pushes clip_rect marker_inside = function
+    | [] ->
+        depth = 0 && pushes = 1 && marker_inside
+        && clip_rect = Some (rect 0. 0. 100. 40.)
+    | Lui_scene.Push_clip c :: rest ->
+        scan (depth + 1) (pushes + 1)
+          (if depth = 0 then Some c.crect else clip_rect)
+          marker_inside rest
+    | Lui_scene.Pop_clip :: rest ->
+        scan (depth - 1) pushes clip_rect marker_inside rest
     | Hole h :: rest when h.hrect = rect 1. 2. 3. 4. ->
-        scan in_clip clip_rect (marker_inside || in_clip) rest
-    | _ :: rest -> scan in_clip clip_rect marker_inside rest
+        scan depth pushes clip_rect (marker_inside || depth > 0) rest
+    | _ :: rest -> scan depth pushes clip_rect marker_inside rest
   in
   check bool "alt text is clipped to the image bounds" true
-    (scan false None false scene.ops)
+    (scan 0 0 None false scene.ops)
 
 let test_image_fill_crop () =
   List.iter (fun kind -> List.iter (fun scale -> List.iter
