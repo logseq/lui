@@ -4045,3 +4045,7 @@ button ~label:"Settings"
 Native `tooltip` chrome now paints the node's own text with inverse-surface
 foreground, matching the web backend. Previously only the bubble background
 painted unless the application nested a text child.
+
+The Windows host loop now ticks the shared UI timer clock as macOS/Linux
+already did. Besides tooltip deadlines, this also allows existing Windows
+scrollbar auto-hide and menu-typeahead expiry deadlines to fire.
