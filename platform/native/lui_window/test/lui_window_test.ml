@@ -717,33 +717,41 @@ let test_anchor_tooltip_lifecycle () =
     (Ui.focused ui)
 
 let test_anchor_tooltip_child_order () =
-  let selected_first first second =
-    let s =
-      store_of
-        [ CreateNode (1, Root); CreateNode (2, Button);
-          CreateNode (3, Tooltip); CreateNode (4, Tooltip);
-          InsertChild (1, 2, 0);
-          InsertChild (2, first, 0); InsertChild (2, second, 1);
-          SetProp (2, PointerEnabled, BoolValue true);
-          SetProp (3, AnchorValue, StringValue "above");
-          SetProp (4, AnchorValue, StringValue "above");
-          SetProp (3, TooltipDelay, IntValue 20);
-          SetProp (4, TooltipDelay, IntValue 20) ]
-    in
-    let rects =
-      rects_of
-        [ (1, rect 0. 0. 100. 100.); (2, rect 0. 0. 40. 20.) ]
-    in
-    let ui = Ui.create () in
-    Ui.tick_scrollbars ui ~now_ms:100.;
-    ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
-    Ui.tick_scrollbars ui ~now_ms:121.;
-    (not (Ui.hidden ui s first)) && Ui.hidden ui s second
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Button);
+        CreateNode (3, Tooltip); CreateNode (4, Tooltip);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (2, PointerEnabled, BoolValue true);
+        SetProp (3, AnchorValue, StringValue "above");
+        SetProp (4, AnchorValue, StringValue "above");
+        SetProp (3, TooltipDelay, IntValue 20);
+        SetProp (4, TooltipDelay, IntValue 20) ]
   in
-  Alcotest.(check bool) "first direct tooltip wins in forward order" true
-    (selected_first 3 4);
-  Alcotest.(check bool) "first direct tooltip wins after reordering" true
-    (selected_first 4 3)
+  let rects =
+    rects_of
+      [ (1, rect 0. 0. 100. 100.); (2, rect 0. 0. 40. 20.) ]
+  in
+  let ui = Ui.create () in
+  let hover now =
+    Ui.tick_scrollbars ui ~now_ms:now;
+    ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
+    Ui.tick_scrollbars ui ~now_ms:(now +. 21.)
+  in
+  hover 100.;
+  Alcotest.(check bool) "first direct tooltip opens" false (Ui.hidden ui s 3);
+  Alcotest.(check bool) "second direct tooltip stays hidden" true (Ui.hidden ui s 4);
+  ignore (Ui.handle ui s rects (Input.Move (90., 10.)));
+  Ui.tick_scrollbars ui ~now_ms:180.;
+  Alcotest.(check bool) "initial tooltip closes before reordering" true
+    (Ui.hidden ui s 3);
+  Lui_store.apply_op s (MoveChild (2, 4, 0));
+  ignore (Ui.store_changed ui s);
+  hover 200.;
+  Alcotest.(check bool) "reordered direct tooltip opens from refreshed index" false
+    (Ui.hidden ui s 4);
+  Alcotest.(check bool) "moved direct tooltip stays hidden" true (Ui.hidden ui s 3)
 
 let test_context_menu () =
   let s, rects = ui_store_fresh () in
