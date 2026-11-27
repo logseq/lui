@@ -4023,3 +4023,29 @@ Applications can keep `column ~min_height:60 children`: the 60-point empty
 surface remains, and taller content determines the surface height. Use an
 explicit height or maximum height when a bounded surface is intended. No API,
 schema, event or imperative-scroll behavior changes are required.
+
+## Native anchored tooltip visibility and ink
+
+Native SDL hosts now treat anchored `tooltip` nodes as host-owned overlays
+like the web backend: they remain hidden at rest, open after the trigger's
+`tooltip-delay` while hovered (or immediately within the warm handoff window),
+close shortly after pointer leave, and close on press/Escape/store removal.
+`tooltip-delay` remains a property of the tooltip node itself. Unanchored
+static tooltip elements still paint inline. Applications that previously
+relied on anchored tooltip nodes being permanently visible in the retained
+tree must drive visibility through pointer/focus interaction instead; there
+is no wire-contract change.
+
+```ocaml
+(* The trigger owns the tooltip structurally; the tooltip owns its delay. *)
+button ~label:"Settings"
+  [ tooltip ~anchor:`above ~tooltip_delay:500 ~text:"Set query" [] ]
+```
+
+Native `tooltip` chrome now paints the node's own text with inverse-surface
+foreground, matching the web backend. Previously only the bubble background
+painted unless the application nested a text child.
+
+The Windows host loop now ticks the shared UI timer clock as macOS/Linux
+already did. Besides tooltip deadlines, this also allows existing Windows
+scrollbar auto-hide and menu-typeahead expiry deadlines to fire.

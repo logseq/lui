@@ -2966,7 +2966,8 @@ let paint_own ctx store id st kind r rs alpha =
               ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
           @ scale_ops alpha (ctx.hooks.text_ops id r (color 255 255 255 255) s)
         | _ -> box_ops ctx store id rs r alpha))
-    | "text" | "label" | "heading" | "paragraph" | "link" | "kbd" ->
+    | "text" | "label" | "heading" | "paragraph" | "link" | "kbd"
+    | "tooltip" ->
       box_ops ctx store id rs r alpha
       @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
     | "select" | "combobox" -> select_ops ctx store id rs r alpha fg

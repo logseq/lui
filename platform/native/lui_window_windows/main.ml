@@ -512,6 +512,7 @@ let () =
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
+    Ui.tick_scrollbars ui ~now_ms:(t0 *. 1000.);
     drain_events ();
     (* Patches queued by dispatched events land in the store here;
        the engine re-syncs inside the next repaint. *)
