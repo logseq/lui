@@ -22,8 +22,30 @@
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 /* ---------------------------------------------------------------- fonts */
+
+static cairo_antialias_t lui_cairo_antialias(void)
+{
+  const char *v = getenv("LUI_TEXT_ANTIALIAS");
+  if (v != NULL) {
+    if (strcmp(v, "gray") == 0) return CAIRO_ANTIALIAS_GRAY;
+    if (strcmp(v, "none") == 0) return CAIRO_ANTIALIAS_NONE;
+  }
+  return CAIRO_ANTIALIAS_SUBPIXEL;
+}
+
+static int lui_font_is_color_font(PangoFont *font)
+{
+  if (!PANGO_IS_FC_FONT(font)) return 0;
+  FcPattern *pat = pango_fc_font_get_pattern(PANGO_FC_FONT(font));
+  FcBool b = FcFalse;
+  return pat != NULL &&
+    FcPatternGetBool(pat, FC_COLOR, 0, &b) == FcResultMatch &&
+    b == FcTrue;
+}
+
 
 /* A font handle keeps the resolved PangoFont plus the font description
    to shape with: the description's family may be a list (requested
@@ -188,11 +210,13 @@ static void lui_ensure(void)
   if (lui_ctx == NULL)
     caml_failwith("lui_text_pango: cannot create a context");
   lui_under_klass_init();
-  /* Grayscale antialiasing (what a coverage mask wants), metrics hinted
-     to whole pixels, and glyph positions kept fractional so shaping and
-     rasterizing can place pens inside a pixel. */
+  /* Match browser text on ordinary RGB LCDs unless the embedder asks
+     for grayscale; metrics are hinted to whole pixels, and glyph
+     positions stay fractional so shaping and rasterizing can place pens
+     inside a pixel. */
   cairo_font_options_t *o = cairo_font_options_create();
-  cairo_font_options_set_antialias(o, CAIRO_ANTIALIAS_GRAY);
+  cairo_font_options_set_antialias(o, lui_cairo_antialias());
+  cairo_font_options_set_subpixel_order(o, CAIRO_SUBPIXEL_ORDER_RGB);
   cairo_font_options_set_hint_metrics(o, CAIRO_HINT_METRICS_ON);
   cairo_font_options_set_hint_style(o, CAIRO_HINT_STYLE_MEDIUM);
   pango_cairo_context_set_font_options(lui_ctx, o);
@@ -944,8 +968,9 @@ CAMLprim value lui_pango_rasterize(value vfont, value vid, value vscale,
   cairo_matrix_init_identity(&identity);
   cairo_font_options_t *opts = cairo_font_options_create();
   cairo_scaled_font_get_font_options(src, opts);
-  /* Masks and bitmaps want grayscale coverage, not LCD filtering. */
-  cairo_font_options_set_antialias(opts, CAIRO_ANTIALIAS_GRAY);
+  cairo_antialias_t aa = lui_cairo_antialias();
+  cairo_font_options_set_antialias(opts, aa);
+  cairo_font_options_set_subpixel_order(opts, CAIRO_SUBPIXEL_ORDER_RGB);
   cairo_scaled_font_t *sf =
     cairo_scaled_font_create(cairo_scaled_font_get_font_face(src),
                              &m, &identity, opts);
@@ -963,7 +988,9 @@ CAMLprim value lui_pango_rasterize(value vfont, value vid, value vscale,
     CAMLreturn(Val_int(0));
   }
 
-  int pad = 1;
+  int subpixel = aa == CAIRO_ANTIALIAS_SUBPIXEL &&
+    !lui_font_is_color_font(h->font);
+  int pad = subpixel ? 2 : 1;
   int left = (int)floor(ext.x_bearing + dx) - pad;
   int top = (int)floor(ext.y_bearing) - pad;
   int right = (int)ceil(ext.x_bearing + ext.width + dx) + pad;
@@ -994,9 +1021,11 @@ CAMLprim value lui_pango_rasterize(value vfont, value vid, value vscale,
     CAMLreturn(Val_int(0));
   }
 
-  /* White on transparent: a plain font's glyph blends to equal channel
-     values (the alpha is the coverage); anything else is colored. */
-  int color = 0;
+  /* Subpixel masks are per-channel coverage and therefore need the
+     color atlas even though the font is monochrome. Otherwise white on
+     transparent blends a plain font's glyph to equal channel values
+     (the alpha is the coverage); anything else is colored. */
+  int color = subpixel;
   for (int y = 0; y < hgt && !color; y++) {
     unsigned char *row = data + y * stride;
     for (int x = 0; x < w; x++) {
@@ -1011,11 +1040,19 @@ CAMLprim value lui_pango_rasterize(value vfont, value vid, value vscale,
 
   vbytes = caml_alloc_string((mlsize_t)(w * hgt * (color ? 4 : 1)));
   if (color) {
-    /* ARGB32 little-endian is already premultiplied BGRA in memory. */
+    /* ARGB32 little-endian is premultiplied BGRA in memory; scene
+       atlases use RGBA bytes. */
     unsigned char *dst = Bytes_val(vbytes);
     for (int y = 0; y < hgt; y++) {
-      memcpy(dst + (size_t)y * 4 * w, data + y * stride,
-             (size_t)(4 * w));
+      unsigned char *row = data + y * stride;
+      for (int x = 0; x < w; x++) {
+        unsigned char *q = row + 4 * x;
+        unsigned char *d = dst + (size_t)(y * w + x) * 4;
+        d[0] = q[2];
+        d[1] = q[1];
+        d[2] = q[0];
+        d[3] = q[3];
+      }
     }
   } else {
     unsigned char *dst = Bytes_val(vbytes);

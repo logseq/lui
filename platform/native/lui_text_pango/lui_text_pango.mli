@@ -109,8 +109,8 @@ type bitmap = {
   top : int;    (** pixel offset of the box's top edge from the baseline *)
   w : int;
   h : int;
-  color : bool;     (** premultiplied BGRA when set, coverage mask else *)
-  pixels : bytes;   (** top-first rows: [w*h] mask bytes or [w*h*4] BGRA *)
+  color : bool;     (** premultiplied RGBA when set, coverage mask else *)
+  pixels : bytes;   (** top-first rows: [w*h] mask bytes or [w*h*4] RGBA *)
 }
 (** A rasterized glyph, ready for the atlas:
     [Atlas.put a ~x ~y ~w:b.w ~h:b.h ~src:b.pixels
@@ -128,7 +128,11 @@ val rasterize : ?scale:float -> ?dx:float -> ?shade:float -> font ->
 
     [shade] is the ink's relative luminance (0 black .. 1 white,
     default 1): platforms that thicken glyphs by fill luminance use it.
-    [None] when the glyph has no ink or is too large. *)
+    [None] when the glyph has no ink or is too large.
+
+    Monochrome glyphs use horizontal RGB subpixel coverage by default;
+    set [LUI_TEXT_ANTIALIAS=gray] or [LUI_TEXT_ANTIALIAS=none] before
+    process startup for grayscale or aliased coverage instead. *)
 
 val subpixel_positions : ?scale:float -> font -> int
 (** [subpixel_positions ?scale f] is how many positions within a device
