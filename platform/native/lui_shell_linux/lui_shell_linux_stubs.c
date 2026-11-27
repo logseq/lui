@@ -1593,7 +1593,7 @@ CAMLprim value lui_shx_clip_write(value a) {
 CAMLprim value lui_shx_clip_write_formats(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_shx_clip_store(value a) {
-  (void)a; return unsupported(); }
+  (void)a; return Val_unit; }
 CAMLprim value lui_shx_clip_read_format(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_shx_clip_read(value a) {
