@@ -1139,7 +1139,16 @@ let popup_min_style ctx id cids kids (style : Lui_flex.style) : Lui_flex.style =
 
 let image_measure_of ctx id _node ~width ~width_mode ~height ~height_mode =
   match ctx.image_measure id with
-  | None -> {Lui_flex.width=0.;height=0.}
+  | None -> (
+    (* Browser images expose their alt text as the inline fallback while
+       loading or after a decode failure. Measure that text instead of
+       collapsing the element to zero when it has no intrinsic bitmap. *)
+    match Lui_store.string_prop ctx.store id "alt" with
+    | Some alt when alt <> "" -> (
+      match ctx.tm id alt width height with
+      | Some (width, height) -> { Lui_flex.width; height }
+      | None -> { Lui_flex.width = 0.; height = 0. })
+    | _ -> {Lui_flex.width=0.;height=0.})
   | Some (natural_width,natural_height) ->
       let source_width=Option.value (pnum ctx.store id "source-width") ~default:natural_width
       and source_height=Option.value (pnum ctx.store id "source-height") ~default:natural_height in

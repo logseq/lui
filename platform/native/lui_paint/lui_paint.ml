@@ -1884,7 +1884,11 @@ let icon_ops ctx store id rs r alpha =
 (* image rect + source rect from the source-* props and image-fit. *)
 let image_ops ctx store id r alpha radii =
   match ctx.hooks.image_of id with
-  | None -> []
+  | None -> (
+    match Lui_store.kind store id, pstr store id "alt" with
+    | "image", Some alt when alt <> "" ->
+      scale_ops alpha (ctx.hooks.text_ops id r (text_fg ctx store id) alt)
+    | _ -> [])
   | Some img ->
     let sw, sh = float img.iw, float img.ih in
     let isrc =

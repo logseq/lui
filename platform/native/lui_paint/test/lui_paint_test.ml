@@ -349,6 +349,23 @@ let test_select_indicator () =
         [ 1.; 2. ])
     [ Lui_protocol.Select; Combobox ]
 
+let test_image_alt_fallback_paint () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Lui_protocol.Image);
+      SetProp (1, AltValue, StringValue "missing image") ];
+  let painted = ref None in
+  let h =
+    { (hooks ()) with
+      Lui_paint.text_ops =
+        (fun _ _ _ text ->
+          painted := Some text;
+          []) }
+  in
+  ignore (paint_with h t ());
+  check (option string) "alt text paints while no bitmap is available"
+    (Some "missing image") !painted
+
 let test_image_fill_crop () =
   List.iter (fun kind -> List.iter (fun scale -> List.iter
     (fun (width, height, expected) ->
@@ -2084,6 +2101,7 @@ let () =
          test_case "button icon gap" `Quick test_button_icon_gap;
          test_case "icon opacity" `Quick test_icon_opacity;
          test_case "image fill crop" `Quick test_image_fill_crop;
+         test_case "image alt fallback paint" `Quick test_image_alt_fallback_paint;
          test_case "edges" `Quick test_edges ]);
       ("ops",
        [ test_case "fill" `Quick test_fill_op;
