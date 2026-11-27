@@ -693,6 +693,15 @@ module Ui = struct
     | Some identifier -> Lui_store.find_identifier store identifier
     | None -> Lui_store.parent store id
 
+  let direct_child_before store parent a b =
+    let rec scan = function
+      | [] -> false
+      | id :: _ when id = a -> true
+      | id :: _ when id = b -> false
+      | _ :: rest -> scan rest
+    in
+    scan (Lui_store.child_ids store parent)
+
   let refresh_tooltip_index t store =
     let rev = Lui_store.layout_rev store in
     if t.tooltip_scan_rev <> rev then begin
@@ -709,9 +718,12 @@ module Ui = struct
             | None -> ())
           | None -> (
             match Lui_store.parent store id with
-            | Some owner ->
-              if not (Hashtbl.mem t.tooltip_direct_index owner) then
-                Hashtbl.replace t.tooltip_direct_index owner id
+            | Some owner -> (
+              match Hashtbl.find_opt t.tooltip_direct_index owner with
+              | None -> Hashtbl.replace t.tooltip_direct_index owner id
+              | Some existing ->
+                if direct_child_before store owner id existing then
+                  Hashtbl.replace t.tooltip_direct_index owner id)
             | None -> ()));
       t.tooltip_scan_rev <- rev
     end
