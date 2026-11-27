@@ -355,26 +355,31 @@ let test_image_alt_fallback_paint () =
     [ Lui_protocol.CreateNode (1, Lui_protocol.Image);
       SetProp (1, AltValue, StringValue "missing image") ];
   let painted = ref None in
+  let marker =
+    Hole
+      { hrect = rect 1. 2. 3. 4.; hradii = (0., 0., 0., 0.);
+        hcontinuous = false; hopacity = 1. }
+  in
   let h =
     { (hooks ()) with
       Lui_paint.text_ops =
         (fun _ _ _ text ->
           painted := Some text;
-          []) }
+          [ marker ]) }
   in
   let scene = paint_with h t () in
   check (option string) "alt text paints while no bitmap is available"
     (Some "missing image") !painted;
-  let rec clip_balance depth pushes = function
-    | [] -> pushes, depth
-    | Lui_scene.Push_clip _ :: rest -> clip_balance (depth + 1) (pushes + 1) rest
-    | Lui_scene.Pop_clip :: rest -> clip_balance (depth - 1) pushes rest
-    | _ :: rest -> clip_balance depth pushes rest
+  let rec scan in_clip clip_rect marker_inside = function
+    | [] -> (not in_clip) && marker_inside && clip_rect = Some (rect 0. 0. 100. 40.)
+    | Lui_scene.Push_clip c :: rest -> scan true (Some c.crect) marker_inside rest
+    | Lui_scene.Pop_clip :: rest -> scan false clip_rect marker_inside rest
+    | Hole h :: rest when h.hrect = rect 1. 2. 3. 4. ->
+        scan in_clip clip_rect (marker_inside || in_clip) rest
+    | _ :: rest -> scan in_clip clip_rect marker_inside rest
   in
   check bool "alt text is clipped to the image bounds" true
-    (match clip_balance 0 0 scene.ops with
-     | 1, 0 -> true
-     | _ -> false)
+    (scan false None false scene.ops)
 
 let test_image_fill_crop () =
   List.iter (fun kind -> List.iter (fun scale -> List.iter
