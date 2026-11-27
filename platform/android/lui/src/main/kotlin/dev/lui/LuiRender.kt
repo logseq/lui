@@ -415,19 +415,16 @@ internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
             LocalTextStyle provides nextTextStyle,
         ) {
             val resolved = if (foreground != null) luiThemeColor(foreground, foreground = true) else null
-            if (resolved != null || scopedScheme != null) {
-                CompositionLocalProvider(
-                    LocalLuiInheritedForeground provides (resolved ?: inheritedForeground),
-                    LocalContentColor provides (resolved ?: contentColor),
-                ) { content() }
-            } else {
-                content()
-            }
+            CompositionLocalProvider(
+                LocalLuiInheritedForeground provides (resolved ?: inheritedForeground),
+                LocalContentColor provides (resolved ?: contentColor),
+            ) { content() }
         }
     }
-    // Keep MaterialExpressiveTheme mounted on nodes that declare theme-mode so
-    // toggling light/dark does not remount children, without wrapping every container.
-    if (themeMode != null && LuiKindRules.canContainChildren(node.kind)) {
+    // Keep MaterialExpressiveTheme mounted on the root (ambientDark == null) and on
+    // nodes that declare theme-mode so toggling light/dark does not remount children,
+    // without wrapping every descendant container.
+    if ((themeMode != null || ambientDark == null) && LuiKindRules.canContainChildren(node.kind)) {
         MaterialExpressiveTheme(
             colorScheme = scopedScheme ?: MaterialTheme.colorScheme,
             typography = MaterialTheme.typography,

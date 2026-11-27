@@ -86,7 +86,7 @@ class LuiBackend(
     internal val mediaSurfaces = mutableStateMapOf<Int, ImageBitmap>()
 
     /** Resolver hook for `file-image` paths (e.g. remap asset paths). */
-    var filePathResolver: ((String) -> String)? = null
+    var filePathResolver: ((String) -> String)? by mutableStateOf(null)
 
     var lastError: String? = null
         private set
