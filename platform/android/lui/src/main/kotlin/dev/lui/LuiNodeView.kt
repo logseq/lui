@@ -200,10 +200,8 @@ fun LuiNodeView(backend: LuiBackend, id: Long) {
  */
 @Composable
 private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
-    var contextMenuAt by remember(id) { mutableStateOf(Offset.Zero) }
-    var contextMenuOpen by remember(id) { mutableStateOf(false) }
     val contextMenuId =
-        node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
+        node.children.firstOrNull { backend.nodeKind(it) == LuiNodeKind.contextMenu }
     val hidden = node.propString("display") == "none" ||
         (node.kind == LuiNodeKind.virtualList && node.prop("selected")?.boolValue == false)
     val retainedVisibility = if (hidden) {
@@ -212,6 +210,16 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
             layout(0, 0) { }
         }
     } else Modifier
+    if (contextMenuId == null) {
+        val modifier = retainedVisibility
+            .luiInspection(backend, id)
+            .luiChrome(node)
+            .luiGestures(backend, node, id) {}
+        LuiNodeContent(backend, node, id, modifier, onContextMenu = null)
+        return
+    }
+    var contextMenuAt by remember(id) { mutableStateOf(Offset.Zero) }
+    var contextMenuOpen by remember(id) { mutableStateOf(false) }
     val modifier = retainedVisibility
         .luiInspection(backend, id)
         .luiChrome(node)
@@ -222,30 +230,25 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
 
     Box(propagateMinConstraints = true) {
         LuiNodeContent(backend, node, id, modifier,
-            onContextMenu = if (contextMenuId == null) null else {
-                {
-                    contextMenuAt = Offset.Zero
-                    contextMenuOpen = true
-                    backend.emit(LuiEvent.ContextMenuPress(id, LuiPointerDetail()))
-                }
+            onContextMenu = {
+                contextMenuAt = Offset.Zero
+                contextMenuOpen = true
+                backend.emit(LuiEvent.ContextMenuPress(id, LuiPointerDetail()))
             })
-        val menuId = contextMenuId
         val anchor = contextMenuAt
-        if (menuId != null) {
-            val menu = backend.node(menuId)
-            if (menu != null) {
-                LuiMenuPopup(
-                    expanded = contextMenuOpen,
-                    onDismissRequest = {
-                        contextMenuOpen = false
-                        backend.emit(LuiEvent.Dismiss(menuId))
-                    },
-                    offset = with(LocalDensity.current) { DpOffset(anchor.x.toDp(), 0.dp) },
-                    backend = backend,
-                    menu = menu,
-                    onSelect = { contextMenuOpen = false },
-                )
-            }
+        val menu = backend.node(contextMenuId)
+        if (menu != null) {
+            LuiMenuPopup(
+                expanded = contextMenuOpen,
+                onDismissRequest = {
+                    contextMenuOpen = false
+                    backend.emit(LuiEvent.Dismiss(contextMenuId))
+                },
+                offset = with(LocalDensity.current) { DpOffset(anchor.x.toDp(), 0.dp) },
+                backend = backend,
+                menu = menu,
+                onSelect = { contextMenuOpen = false },
+            )
         }
     }
 }
@@ -462,8 +465,13 @@ private fun LuiNodeContent(
     modifier: Modifier,
     onContextMenu: (() -> Unit)?,
 ) {
-    val children = node.children.filter { childId ->
-        val kind = backend.node(childId)?.kind
+    val rawChildren = node.children
+    val hasAuxChild = rawChildren.any { childId ->
+        val kind = backend.nodeKind(childId)
+        kind == LuiNodeKind.contextMenu || kind == LuiNodeKind.swipeActions
+    }
+    val children = if (!hasAuxChild) rawChildren else rawChildren.filter { childId ->
+        val kind = backend.nodeKind(childId)
         kind != LuiNodeKind.contextMenu && kind != LuiNodeKind.swipeActions
     }
     val enabled = node.isEnabled()
