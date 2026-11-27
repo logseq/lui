@@ -1,6 +1,7 @@
 package dev.lui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.asImageBitmap
  * setContent { backend.Content(rootId) }
  * ```
  */
+@Stable
 class LuiBackend(
     val onEvent: (LuiEvent) -> Unit = {},
     val extensions: LuiExtensionRegistry = LuiExtensionRegistry(),

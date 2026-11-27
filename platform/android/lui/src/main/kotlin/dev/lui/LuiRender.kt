@@ -176,8 +176,8 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
     val radius = node.prop("corner-radius")?.intValue
         ?: if (isSurface) 12 else if (node.kind == LuiNodeKind.tabs) 8 else 0
     val borderWidth = node.prop("border-width")?.intValue ?: if (isSurface) 1 else 0
-    val background = luiThemeColor(node.propString("background"))
-    val borderColor = luiThemeColor(node.propString("border-color"))
+    val background = node.propString("background")?.let { luiThemeColor(it) }
+    val borderColor = node.propString("border-color")?.let { luiThemeColor(it) }
     val shape: Shape = if (radius > 0) {
         androidx.compose.foundation.shape.RoundedCornerShape(radius.dp)
     } else {
@@ -248,19 +248,26 @@ internal fun Modifier.luiGestures(
     id: Long,
     onContextMenu: (Offset) -> Unit = {},
 ): Modifier {
-    var modifier: Modifier = this
     val enabled = node.isEnabled()
+    if (!enabled) return this
 
-    val contextMenuId = node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
-    var contextMenuPosition by remember(id) { mutableStateOf(Offset.Zero) }
-
-    val pressable = enabled &&
-        (node.propBool("press-enabled") ||
+    val contextMenuId = node.children.firstOrNull { backend.nodeKind(it) == LuiNodeKind.contextMenu }
+    val pressable =
+        node.propBool("press-enabled") ||
             (node.propBool("change-enabled") && LuiKindRules.isTreeRowKind(node.kind)) ||
-            (node.propBool("toggle-enabled") && LuiKindRules.isTreeRowKind(node.kind)))
-    val longPressable = enabled && node.propBool("long-press-enabled")
-    val doublePressable = enabled && node.propBool("double-press-enabled")
-    if (pressable || longPressable || doublePressable || (enabled && contextMenuId != null)) {
+            (node.propBool("toggle-enabled") && LuiKindRules.isTreeRowKind(node.kind))
+    val longPressable = node.propBool("long-press-enabled")
+    val doublePressable = node.propBool("double-press-enabled")
+    val reportPointer = node.propBool("pointer-enabled") &&
+        (LuiKindRules.supportsPointerDownUp(node.kind) || node.propString("role") == "treeitem")
+    if (!pressable && !longPressable && !doublePressable && contextMenuId == null && !reportPointer) {
+        return this
+    }
+    val contextMenuPosition = if (contextMenuId != null) {
+        remember(id) { object { var value = Offset.Zero } }
+    } else null
+    var modifier: Modifier = this
+    if (pressable || longPressable || doublePressable || contextMenuId != null) {
         modifier = modifier.combinedClickable(
             onClick = {
                 if (node.propBool("press-enabled")) {
@@ -272,11 +279,12 @@ internal fun Modifier.luiGestures(
                     backend.emit(LuiEvent.ToggleChanged(id, !node.propBool("expanded")))
                 }
             },
-            onLongClick = if (contextMenuId != null && enabled) {
+            onLongClick = if (contextMenuId != null) {
                 {
-                    onContextMenu(contextMenuPosition)
+                    val pos = contextMenuPosition!!.value
+                    onContextMenu(pos)
                     backend.emit(LuiEvent.ContextMenuPress(id,
-                        LuiPointerDetail(x = contextMenuPosition.x.toDouble(), y = contextMenuPosition.y.toDouble())))
+                        LuiPointerDetail(x = pos.x.toDouble(), y = pos.y.toDouble())))
                 }
             } else if (longPressable) {
                 { backend.emit(LuiEvent.LongPress(id)) }
@@ -293,8 +301,8 @@ internal fun Modifier.luiGestures(
     // Material buttons install an inner clickable that owns the Main pass.
     // Observe their long press in Initial, then consume the remaining gesture
     // so releasing a context menu cannot also activate the button.
-    if (enabled && (contextMenuId != null || longPressable) &&
-        node.kind in setOf(LuiNodeKind.button, LuiNodeKind.toggleButton)) {
+    if ((contextMenuId != null || longPressable) &&
+        (node.kind == LuiNodeKind.button || node.kind == LuiNodeKind.toggleButton)) {
         modifier = modifier.pointerInput(id, contextMenuId, longPressable) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -321,15 +329,13 @@ internal fun Modifier.luiGestures(
             }
         }
     }
-    val reportPointer = node.propBool("pointer-enabled") &&
-        (LuiKindRules.supportsPointerDownUp(node.kind) || node.propString("role") == "treeitem")
-    if (enabled && (reportPointer || contextMenuId != null)) {
+    if (reportPointer || contextMenuId != null) {
         modifier = modifier.pointerInput(id, reportPointer) {
             awaitEachGesture {
                 // Observe without consuming the touch needed by native click handlers.
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val detail = LuiPointerDetail(x = down.position.x.toDouble(), y = down.position.y.toDouble())
-                contextMenuPosition = down.position
+                contextMenuPosition?.value = down.position
                 if (reportPointer) backend.emit(LuiEvent.PointerDown(id, detail))
                 do { val event = awaitPointerEvent(PointerEventPass.Initial) }
                 while (event.changes.any { it.pressed })
@@ -357,22 +363,25 @@ internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
     val themeSource = props["theme"]?.stringValue
     val themeMode = props["theme-mode"]?.stringValue
     val foreground = props["foreground"]?.stringValue?.takeUnless { it.isBlank() }
+    val hasTypography = props.isNotEmpty() && props.keys.any { it in LuiTypography.propNames }
+    val ambientDark = LocalLuiThemeDark.current
+    if (themeSource == null && themeMode == null && foreground == null && !hasTypography && ambientDark != null) {
+        content()
+        return
+    }
     // Decode once per changed property map, not once per recomposition:
     // nodeSpec runs regexes, string splits and a native Typeface lookup.
-    val relativeSize = props["font-size"]?.stringValue?.trim()?.endsWith("em") == true
+    val relativeSize = hasTypography && props["font-size"]?.stringValue?.trim()?.endsWith("em") == true
     val bodySize = if (relativeSize) MaterialTheme.typography.bodyLarge.fontSize else 16.sp
     val inheritedSize = if (relativeSize) {
         LocalLuiTypography.current.fontSize.let { if (it == TextUnit.Unspecified) bodySize else it }
     } else bodySize
-    val typography = remember(props, inheritedSize, bodySize) {
-        if (props.keys.any { it in LuiTypography.propNames }) {
+    val typography = if (hasTypography) {
+        remember(props, inheritedSize, bodySize) {
             LuiTypography.nodeSpec(props, inheritedSize, bodySize)
-        } else {
-            null
         }
-    }
+    } else null
     val inherited = LocalLuiSemanticColors.current
-    val ambientDark = LocalLuiThemeDark.current
     val host = LocalLuiHostPalette.current
     val dark = when (themeMode) {
         "system" -> host?.effectiveDark ?: isSystemInDarkTheme()
@@ -384,9 +393,11 @@ internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
         else host?.light ?: LuiThemeDefaults.lightScheme()
     } else null
     // colors() is a full JSON DOM parse — decode once per (source, dark).
-    val own = remember(themeSource, dark) {
-        LuiThemeTokenDecoder.colors(themeSource, dark)
-    }
+    val own = if (themeSource != null) {
+        remember(themeSource, dark) {
+            LuiThemeTokenDecoder.colors(themeSource, dark)
+        }
+    } else emptyMap()
     val inheritedForeground = LocalLuiInheritedForeground.current
     val contentColor = if (scopedScheme != null) {
         inheritedForeground ?: scopedScheme.onSurface
@@ -394,25 +405,29 @@ internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
     val inheritedTypography = LocalLuiTypography.current
     val inheritedTextStyle = LocalTextStyle.current
     val themedContent: @Composable () -> Unit = {
+        val nextColors = if (own.isEmpty()) inherited else inherited + own
+        val nextTypography = if (typography == null) inheritedTypography else inheritedTypography.merge(typography)
+        val nextTextStyle = if (typography == null) inheritedTextStyle else inheritedTextStyle.merge(typography)
         CompositionLocalProvider(
-            LocalLuiSemanticColors provides if (own.isEmpty()) inherited else inherited + own,
+            LocalLuiSemanticColors provides nextColors,
             LocalLuiThemeDark provides dark,
-            LocalLuiTypography provides inheritedTypography.merge(
-                typography ?: TextStyle(),
-            ),
-            LocalTextStyle provides inheritedTextStyle.merge(
-                typography ?: TextStyle(),
-            ),
+            LocalLuiTypography provides nextTypography,
+            LocalTextStyle provides nextTextStyle,
         ) {
-            val resolved = luiThemeColor(foreground, foreground = true)
-            CompositionLocalProvider(
-                LocalLuiInheritedForeground provides (resolved ?: inheritedForeground),
-                LocalContentColor provides (resolved ?: contentColor),
-            ) { content() }
+            val resolved = if (foreground != null) luiThemeColor(foreground, foreground = true) else null
+            if (resolved != null || scopedScheme != null) {
+                CompositionLocalProvider(
+                    LocalLuiInheritedForeground provides (resolved ?: inheritedForeground),
+                    LocalContentColor provides (resolved ?: contentColor),
+                ) { content() }
+            } else {
+                content()
+            }
         }
     }
-    // Keep provider structure stable across set/remove to retain mounted controls.
-    if (LuiKindRules.canContainChildren(node.kind)) {
+    // Keep MaterialExpressiveTheme mounted on nodes that declare theme-mode so
+    // toggling light/dark does not remount children, without wrapping every container.
+    if (themeMode != null && LuiKindRules.canContainChildren(node.kind)) {
         MaterialExpressiveTheme(
             colorScheme = scopedScheme ?: MaterialTheme.colorScheme,
             typography = MaterialTheme.typography,

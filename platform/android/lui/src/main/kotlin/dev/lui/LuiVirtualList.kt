@@ -1,5 +1,6 @@
 package dev.lui
 
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -81,7 +83,8 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
     val length = attributes["data-virtual-length"]?.toIntOrNull() ?: rows.size
     val initial = remember(identity) { backend.scrollPositions[identity] ?: LuiScrollPosition() }
     val state = remember(identity) { LazyListState(initial.index, initial.offset) }
-    val heights = remember(identity) { mutableMapOf<Int, Int>() }
+    val heightStore = remember(identity) { RowHeightStore() }
+    val heights = heightStore.heights
     val density = LocalDensity.current
     val titleChanged = LocalLuiSectionTitleChanged.current
     val visible = node.prop("selected")?.boolValue != false
@@ -110,9 +113,18 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
             val index = content.before.size + pinned
             val layout = state.layoutInfo
             val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
-            if (item == null || item.offset < layout.viewportStartOffset ||
-                item.offset + item.size > layout.viewportEndOffset) {
-                state.scrollToItem(index)
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            when {
+                item == null && lastVisible >= 0 && index > lastVisible -> {
+                    val estimatedHeight = heights[pinned] ?: with(density) { extent.dp.roundToPx() }
+                    val offset = -(layout.viewportEndOffset - layout.viewportStartOffset - estimatedHeight).coerceAtLeast(0)
+                    state.scrollToItem(index, offset)
+                }
+                item == null -> state.scrollToItem(index)
+                item.offset < layout.viewportStartOffset ->
+                    state.scrollBy((item.offset - layout.viewportStartOffset).toFloat())
+                item.offset + item.size > layout.viewportEndOffset ->
+                    state.scrollBy((item.offset + item.size - layout.viewportEndOffset).toFloat())
             }
         }
     }
@@ -151,14 +163,37 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
             val slot = if (index == pinned && index !in start until start + length) length else index - start
             val id = rows.getOrNull(slot)
             if (id != null) {
-                Box(Modifier.fillMaxWidth().onSizeChanged { heights[index] = it.height }) {
-                    LuiNodeView(backend, id)
-                }
+                val indexRef = remember(id) { RowIndexRef(index) }
+                indexRef.index = index
+                LuiVirtualRowItem(backend, id, heightStore, indexRef)
             } else {
                 val height = heights[index]?.let { with(density) { it.toDp() } } ?: extent.toFloat().dp
                 Spacer(Modifier.fillMaxWidth().height(height))
             }
         }
         content.after.forEach { id -> item(key = "fixed:$id") { LuiNodeView(backend, id) } }
+    }
+}
+
+@Stable
+private class RowHeightStore {
+    val heights = mutableMapOf<Int, Int>()
+}
+
+@Stable
+private class RowIndexRef(var index: Int)
+
+@Composable
+private fun LuiVirtualRowItem(
+    backend: LuiBackend,
+    id: Long,
+    heightStore: RowHeightStore,
+    indexRef: RowIndexRef,
+) {
+    val sizeModifier = remember(id, heightStore, indexRef) {
+        Modifier.fillMaxWidth().onSizeChanged { heightStore.heights[indexRef.index] = it.height }
+    }
+    Box(sizeModifier) {
+        LuiNodeView(backend, id)
     }
 }
