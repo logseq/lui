@@ -1240,7 +1240,9 @@ CAMLprim value lui_shx_clip_write_formats(value vitems)
     clip_text_t *copy;
     if (name_len == 0 || name_len >= 256
         || memchr(String_val(vname), '\0', name_len) != 0
-        || !clip_valid_text(String_val(vtext), text_len))
+        || !clip_valid_text(String_val(vtext), text_len)
+        || (strcmp(String_val(vname), "text/plain") == 0
+            && memchr(String_val(vtext), '\0', text_len) != 0))
       goto done;
     copy = malloc(sizeof(*copy) + text_len + 1);
     if (copy == 0) goto done;
