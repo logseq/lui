@@ -437,7 +437,7 @@ let kind_extra_properties kind =
   | SecureField -> [ ReadOnly ]
   | Input -> [ ReadOnly ]
   | SearchField -> [ ReadOnly ]
-  | Textarea -> [ ReadOnly ]
+  | Textarea -> [ ReadOnly; NavigationKeyEnabled ]
   | Combobox -> [ ReadOnly ]
   | _ -> []
 

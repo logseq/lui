@@ -2870,7 +2870,8 @@
       "read-only"
     ],
     "textarea": [
-      "read-only"
+      "read-only",
+      "navigation-key-enabled"
     ],
     "combobox": [
       "read-only"

@@ -366,7 +366,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.secureField to setOf(LuiProperty.readOnly),
         LuiNodeKind.input to setOf(LuiProperty.readOnly),
         LuiNodeKind.searchField to setOf(LuiProperty.readOnly),
-        LuiNodeKind.textarea to setOf(LuiProperty.readOnly),
+        LuiNodeKind.textarea to setOf(LuiProperty.readOnly, LuiProperty.navigationKeyEnabled),
         LuiNodeKind.combobox to setOf(LuiProperty.readOnly),
     )
 }

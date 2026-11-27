@@ -435,7 +435,7 @@ enum LUISchemaMatrix {
         .secureField: [.readOnly],
         .input: [.readOnly],
         .searchField: [.readOnly],
-        .textarea: [.readOnly],
+        .textarea: [.readOnly, .navigationKeyEnabled],
         .combobox: [.readOnly],
     ]
 }
