@@ -175,6 +175,14 @@ val clipboard_change_count : unit -> int
 (** The pasteboard's change counter: it increments on every write, so
     polling it detects outside changes. [(-1)] when no pasteboard. *)
 
+
+val clipboard_write_formats : (string * string) list -> bool
+(** Atomically replaces the pasteboard with several named types. Each
+    value must be valid UTF-8. *)
+
+val clipboard_read_format : string -> string option
+(** Reads one named pasteboard type. [None] when unavailable. *)
+
 (** {1 Dialogs} *)
 
 val can_present_dialogs : unit -> bool

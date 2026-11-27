@@ -60,6 +60,18 @@ let test_clipboard () =
   if clipboard_write "lui-clip" then begin
     check "count-bumped" true (clipboard_change_count () > n0);
     check "readback" true (clipboard_read () = Some "lui-clip");
+    let items =
+      [ "text/plain", "plain blocks"
+      ; "text/html", "<b>blocks</b>"
+      ; "application/logseq", "payload\000end" ]
+    in
+    check "write formats" true (clipboard_write_formats items);
+    List.iter
+      (fun (name, expected) ->
+        check ("read format " ^ name) true
+          (clipboard_read_format name = Some expected))
+      items;
+    check "plain fallback" true (clipboard_read () = Some "plain blocks");
     ignore (clipboard_clear ())
   end else
     check "no-clipboard" true (n0 < 0 || not (gui_available ()))

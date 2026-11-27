@@ -754,6 +754,126 @@ CAMLprim value lui_sh_clip_write(value vstr)
   CAMLreturn(Val_bool(ok));
 }
 
+
+static NSString *lui_clipboard_native_type(value vname)
+{
+  mlsize_t len = caml_string_length(vname);
+  const char *name = String_val(vname);
+  if (len == 10 && memcmp(name, "text/plain", 10) == 0)
+    return NSPasteboardTypeString;
+  if (len == 9 && memcmp(name, "text/html", 9) == 0)
+    return NSPasteboardTypeHTML;
+  return nil;
+}
+
+static void lui_clipboard_add_type(NSMutableArray *types, NSString *type)
+{
+  if (![types containsObject:type]) [types addObject:type];
+}
+
+static BOOL lui_clip_valid_pair(value vname, value vtext)
+{
+  mlsize_t name_len = caml_string_length(vname);
+  mlsize_t text_len = caml_string_length(vtext);
+  (void) text_len;
+  return name_len > 0 && name_len < 256
+      && memchr(String_val(vname), '\0', name_len) == 0;
+}
+
+/* OCaml passes a flat string array: type, text, type, text... */
+CAMLprim value lui_sh_clip_write_formats(value vitems)
+{
+  CAMLparam1(vitems);
+  BOOL ok = NO;
+  mlsize_t entries = Wosize_val(vitems);
+  if ((entries & 1) == 0 && entries > 0) {
+    @autoreleasepool {
+      @try {
+        NSPasteboard *pb = lui_pasteboard();
+        if (pb != nil) {
+          mlsize_t i;
+          BOOL valid = YES;
+          for (i = 0; i < entries; i += 2)
+            valid = valid && lui_clip_valid_pair(Field(vitems, i),
+                                                 Field(vitems, i + 1));
+          if (valid) {
+            BOOL explicit_plain = NO;
+            BOOL explicit_html = NO;
+            NSMutableArray *types =
+              [NSMutableArray arrayWithCapacity:(NSUInteger)(entries / 2 + 2)];
+            for (i = 0; i < entries; i += 2) {
+              NSString *exact = lui_nsstring(Field(vitems, i));
+              if ([exact isEqualToString:NSPasteboardTypeString])
+                explicit_plain = YES;
+              if ([exact isEqualToString:NSPasteboardTypeHTML])
+                explicit_html = YES;
+            }
+            for (i = 0; i < entries; i += 2) {
+              value vname = Field(vitems, i);
+              NSString *native = lui_clipboard_native_type(vname);
+              lui_clipboard_add_type(types, lui_nsstring(vname));
+              if (native != nil
+                  && !([native isEqualToString:NSPasteboardTypeString]
+                       && explicit_plain)
+                  && !([native isEqualToString:NSPasteboardTypeHTML]
+                       && explicit_html))
+                lui_clipboard_add_type(types, native);
+            }
+            [pb declareTypes:types owner:nil];
+            ok = YES;
+            for (i = 0; i < entries; i += 2) {
+              value vname = Field(vitems, i);
+              NSString *exact = lui_nsstring(vname);
+              NSString *native = lui_clipboard_native_type(vname);
+              NSString *text = lui_nsstring(Field(vitems, i + 1));
+              ok = ok && [pb setString:text forType:exact];
+              if (native != nil
+                  && !([native isEqualToString:NSPasteboardTypeString]
+                       && explicit_plain)
+                  && !([native isEqualToString:NSPasteboardTypeHTML]
+                       && explicit_html))
+                ok = ok && [pb setString:text forType:native];
+            }
+          }
+        }
+      } @catch (NSException *e) {
+        ok = NO;
+      }
+    }
+  }
+  CAMLreturn(Val_bool(ok));
+}
+
+CAMLprim value lui_sh_clip_read_format(value vname)
+{
+  CAMLparam1(vname);
+  CAMLlocal2(vopt, vs);
+  mlsize_t name_len = caml_string_length(vname);
+  vopt = Val_int(0);
+  if (name_len > 0 && name_len < 256
+      && memchr(String_val(vname), '\0', name_len) == 0) {
+    @autoreleasepool {
+      @try {
+        NSPasteboard *pb = lui_pasteboard();
+        NSString *s = pb != nil
+          ? [pb stringForType:lui_nsstring(vname)] : nil;
+        if (s == nil && pb != nil) {
+          NSString *native = lui_clipboard_native_type(vname);
+          if (native != nil) s = [pb stringForType:native];
+        }
+        if (s != nil) {
+          vs = lui_ocamlstring(s);
+          vopt = caml_alloc(1, 0);
+          Store_field(vopt, 0, vs);
+        }
+      } @catch (NSException *e) {
+        vopt = Val_int(0);
+      }
+    }
+  }
+  CAMLreturn(vopt);
+}
+
 CAMLprim value lui_sh_clip_read(value unit)
 {
   CAMLparam1(unit);
@@ -992,6 +1112,10 @@ CAMLprim value lui_sh_status_set_on_click(value a, value b) {
 CAMLprim value lui_sh_notify(value a, value b, value c, value d) {
   (void)a; (void)b; (void)c; (void)d; return unsupported(); }
 CAMLprim value lui_sh_clip_write(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_sh_clip_write_formats(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_sh_clip_read_format(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_sh_clip_read(value a) {
   (void)a; return unsupported(); }

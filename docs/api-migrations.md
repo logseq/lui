@@ -1,5 +1,38 @@
 # LUI API migration guide
 
+### Native shells can transport named clipboard formats
+
+`Lui_shell` (macOS) and `Lui_shell_linux` now expose
+`clipboard_write_formats` and `clipboard_read_format`. The write operation
+atomically replaces the system clipboard with every supplied MIME/type pair,
+so applications that need structured clipboard data must include the fallback
+`text/plain` representation in the same call rather than writing formats one
+at a time. On Linux a supplied `text/plain` value is also exposed through the
+legacy `UTF8_STRING` target. Values are UTF-8 strings and may contain embedded
+NUL bytes; binary payloads must otherwise be encoded by the application before
+calling the API. On Linux, clipboard ownership and reads follow the existing
+GTK requirements: call on the GTK UI thread and keep servicing `pump` while
+the application owns the clipboard. The Linux shell requests clipboard-manager
+persistence during process shutdown rather than blocking after each copy. A
+Linux `text/plain` value must not
+contain embedded NUL bytes because GTK's plain-text paste API is
+NUL-terminated; custom formats may contain them. On macOS `text/plain` and
+`text/html` are written both under their exact MIME names and under the
+corresponding native pasteboard types when those native types are not
+explicitly present. If both forms are present, the exact MIME value remains
+authoritative for `clipboard_read_format` while native paste uses the explicit
+native value. Existing
+`clipboard_write`/`clipboard_read` behavior is unchanged, and applications
+that only transport plain text require no migration.
+
+```ocaml
+ignore
+  (Lui_shell.clipboard_write_formats
+     [ "text/plain", markdown
+     ; "text/html", html
+     ; "application/logseq", encoded_blocks ])
+```
+
 ### Native textareas can opt in to Shift+Enter navigation keys
 
 `textarea` now accepts `~on_navigation_key` for the existing `navigation-key`
