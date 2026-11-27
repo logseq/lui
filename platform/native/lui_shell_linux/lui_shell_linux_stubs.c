@@ -1578,6 +1578,10 @@ CAMLprim value lui_shx_status_set_on_click(value a, value b) {
   (void)a; (void)b; return unsupported(); }
 CAMLprim value lui_shx_clip_write(value a) {
   (void)a; return unsupported(); }
+CAMLprim value lui_shx_clip_write_formats(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_shx_clip_read_format(value a) {
+  (void)a; return unsupported(); }
 CAMLprim value lui_shx_clip_read(value a) {
   (void)a; return unsupported(); }
 CAMLprim value lui_shx_clip_clear(value a) {
