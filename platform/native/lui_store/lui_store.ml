@@ -275,14 +275,6 @@ let map_children f n =
 
 let node_children_list n = map_children Fun.id n
 
-let iter_children f n =
-  let cur = ref n.first_child in
-  while !cur <> None do
-    let c = Option.get !cur in
-    f c;
-    cur := c.next_sib
-  done
-
 (* Detach [c] from its recorded parent's list. O(1): the sibling links
    carry the position. Callers fix [c.parent] themselves — this only
    cuts the links. *)
@@ -587,10 +579,6 @@ let child_ids t id =
   | Some n -> node_children n
   | None -> []
 
-let iter_child_ids t id f =
-  match find_opt t id with
-  | Some n -> iter_children (fun child -> f child.id) n
-  | None -> ()
 
 (* Indexed access for virtualized containers: walks the intrusive
    list from the nearer end — O(min(i, count-i)). Meant for one-shot

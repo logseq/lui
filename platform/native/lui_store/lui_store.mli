@@ -84,10 +84,6 @@ val ext_id : t -> int -> string option
 val parent : t -> int -> int option
 val children : t -> int -> node list
 val child_ids : t -> int -> int list
-
-(** Visit child ids without materializing a child list. Intended for
-    allocation-sensitive input hit paths. *)
-val iter_child_ids : t -> int -> (int -> unit) -> unit
 val child_count : t -> int -> int
 
 (** [child_id_at t id i] is the [i]-th child id of [id], or [-1] when

@@ -4049,9 +4049,3 @@ painted unless the application nested a text child.
 The Windows host loop now ticks the shared UI timer clock as macOS/Linux
 already did. Besides tooltip deadlines, this also allows existing Windows
 scrollbar auto-hide and menu-typeahead expiry deadlines to fire.
-
-## Native store child iteration without allocation
-
-`Lui_store.iter_child_ids` is an additive native-store helper for hot input
-paths that need to inspect children without materializing an intermediate
-child list. Existing `children`/`child_ids` behavior is unchanged.
