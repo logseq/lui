@@ -692,7 +692,7 @@ module Ui = struct
     | None -> Lui_store.parent store id
 
   let refresh_tooltip_index t store =
-    let rev = Lui_store.revision store in
+    let rev = Lui_store.layout_rev store in
     if t.tooltip_scan_rev <> rev then begin
       Hashtbl.reset t.tooltip_owner_index;
       Lui_store.iter_preorder store (fun id ->
