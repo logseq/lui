@@ -26,8 +26,17 @@ let all_glyphs lines =
 
 let ink_count b =
   let n = ref 0 in
-  for i = 0 to Bytes.length b.pixels - 1 do
-    if Bytes.get_uint8 b.pixels i > 0 then incr n
+  let stride = if b.color then 4 else 1 in
+  for i = 0 to (Bytes.length b.pixels / stride) - 1 do
+    let o = i * stride in
+    let inked =
+      if stride = 1 then Bytes.get_uint8 b.pixels o > 0
+      else
+        Bytes.get_uint8 b.pixels o > 0
+        || Bytes.get_uint8 b.pixels (o + 1) > 0
+        || Bytes.get_uint8 b.pixels (o + 2) > 0
+    in
+    if inked then incr n
   done;
   !n
 
@@ -218,14 +227,14 @@ let test_fallback_font () =
       Alcotest.(check bool) "color fallback" true (is_color f)
     | None -> Alcotest.fail "expected a fallback font")
 
-let test_rasterize_mask () =
+let test_rasterize_subpixel_coverage () =
   let f = create ~families:[ "DejaVu Sans" ] ~size:20. () in
   let id = glyph_id_of f 'A' in
   match rasterize f id with
   | Some b ->
-    Alcotest.(check bool) "mask" false b.color;
+    Alcotest.(check bool) "subpixel coverage" true b.color;
     Alcotest.(check bool) "size" true
-      (Bytes.length b.pixels = b.w * b.h);
+      (Bytes.length b.pixels = b.w * b.h * 4);
     Alcotest.(check bool) "has ink" true (ink_count b > 0);
     let frac = float (ink_count b) /. float (b.w * b.h) in
     Alcotest.(check bool) "ink fraction sane" true
@@ -898,7 +907,7 @@ let () =
       ( "rasterize",
         [ test_case "emoji color" `Quick test_emoji_color_glyph;
           test_case "fallback" `Quick test_fallback_font;
-          test_case "mask" `Quick test_rasterize_mask;
+          test_case "subpixel coverage" `Quick test_rasterize_subpixel_coverage;
           test_case "determinism" `Quick test_rasterize_determinism;
           test_case "subpixel" `Quick test_rasterize_subpixel;
           test_case "scale" `Quick test_rasterize_scale;
