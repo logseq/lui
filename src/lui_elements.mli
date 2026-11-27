@@ -2963,6 +2963,7 @@ val textarea :
   ?on_input:(string -> unit) ->
   ?on_submit:(unit -> unit) ->
   ?on_navigate:(navigation -> unit) ->
+  ?on_navigation_key:(navigation_key -> unit) ->
   ?on_context_menu:(pointer_detail -> unit) ->
   ?transition:string -> t list -> t
 val input_group :

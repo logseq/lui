@@ -528,10 +528,11 @@ let event_supported kind event =
     kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
   | NavigationKey (_, key, _) ->
-    (kind = Button || kind = Row || kind = Box) &&
-    (List.mem key
-      ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
-    || (kind = Row || kind = Box) && List.mem key ["Enter";" ";"Escape"])
+    (kind = Textarea && key = "Enter")
+    || (kind = Button || kind = Row || kind = Box)
+       && (List.mem key
+             ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
+           || (kind = Row || kind = Box) && List.mem key ["Enter";" ";"Escape"])
   | TextChanged _ ->
     (match kind with
     | TextField

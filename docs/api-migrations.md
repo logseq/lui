@@ -1,5 +1,19 @@
 # LUI API migration guide
 
+### Native textareas can opt in to Shift+Enter navigation keys
+
+`textarea` now accepts `~on_navigation_key` for the existing `navigation-key`
+wire event. The initial text-input admission is limited to `Enter`: when the
+handler is registered and the user presses Shift+Enter, native hosts dispatch
+`NavigationKey (node, "Enter", true)` instead of editing the caret, and the
+window host suppresses only the paired platform newline text commit. Plain
+Enter still inserts a newline through normal text input, and Ctrl/Cmd+Enter
+keeps the existing submit behavior. Existing unmodified Up/Down
+`NavigatePrevious`/`NavigateNext` semantics are unchanged. Applications that
+do not register `on_navigation_key` require no migration; applications that do
+register it must handle the event and must not also insert their own newline
+for the same keypress.
+
 ### Native video EOF waits for the audio transport clock
 
 A playing native video no longer transitions to `Ended` merely because its

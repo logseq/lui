@@ -773,8 +773,11 @@ let register_navigate context node handler =
 
 let register_navigation_key context node handler =
   enable context node NavigateEnabled;
+  let probe =
+    if Lui_ui.node_kind context node = Textarea then "Enter" else "ArrowRight"
+  in
   require_event_supported context node
-    (NavigationKey (node, "ArrowRight", false)) "navigation-key";
+    (NavigationKey (node, probe, false)) "navigation-key";
   ignore (on_event context node
     (function NavigationKey _ -> true | _ -> false)
     (typed_handler "on_navigation_key" Lui_event_payloads.on_navigation_key handler))
@@ -2147,7 +2150,7 @@ let search_field ?style ?key ?grow ?padding ?padding_horizontal ?padding_vertica
   mount_children context node children;
   node
 
-let textarea ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?placeholder ?placeholder_signal ?label ?autofocus ?submit_on_enter ?submit_on_blur ?read_only ?read_only_signal ?disabled ?disabled_signal ?on_input ?on_submit ?on_navigate ?on_context_menu ?transition (children : t list) : t =
+let textarea ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?placeholder ?placeholder_signal ?label ?autofocus ?submit_on_enter ?submit_on_blur ?read_only ?read_only_signal ?disabled ?disabled_signal ?on_input ?on_submit ?on_navigate ?on_navigation_key ?on_context_menu ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.textarea context in
   apply_universal ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?transition context node;
@@ -2174,6 +2177,7 @@ let textarea ?key ?grow ?padding ?padding_horizontal ?padding_vertical ?margin ?
      register_submit context node handler
    | None -> ());
   Option.iter (register_navigate context node) on_navigate;
+  Option.iter (register_navigation_key context node) on_navigation_key;
   apply_pointer_events context node ?on_context_menu ();
   attach context parent node;
   mount_children context node children;

@@ -283,8 +283,12 @@ let key hooks store rects st ~(k : Lui_input.key)
   if composing st || not (Lui_query.node_enabled store st.node) then (st, [])
   else
     let navigation =
-      if mods.ctrl || mods.meta || mods.alt || mods.shift then None
-      else match k with
+      if mods.ctrl || mods.meta || mods.alt then None
+      else
+        match k with
+        | Lui_input.Return when mods.shift ->
+          Some (NavigationKey (st.node, "Enter", true))
+        | _ when mods.shift -> None
         | Lui_input.Arrow_up -> Some (NavigatePrevious st.node)
         | Lui_input.Arrow_down -> Some (NavigateNext st.node)
         | _ -> None

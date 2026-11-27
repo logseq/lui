@@ -3742,6 +3742,36 @@ let test_async_popover_focus_return () =
     Alcotest.(check int) "async popover returns focus without overriding outside focus"
       (if outside_focus then 3 else 2) (Ui.focused ui)) [false;true]
 
+let test_textarea_shift_enter_commit_suppression () =
+  let store = store_of
+    [ CreateNode (1, Root);
+      CreateNode (2, Textarea);
+      InsertChild (1, 2, 0);
+      SetProp (2, TextValue, StringValue "abc");
+      SetProp (2, NavigateEnabled, BoolValue true);
+      SetProp (2, SubmitEnabled, BoolValue true) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh store rects ~width:200 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  Ui.set_focused ui store 2;
+  let shift = { Input.mods_none with Input.shift = true } in
+  let acts = Ui.handle ui store rects (Input.Key_down (Input.Return, shift, false)) in
+  Alcotest.(check bool) "shift enter reaches the opt-in navigation channel" true
+    (press_actions acts = [ NavigationKey (2, "Enter", true) ]);
+  let acts = Ui.handle ui store rects (Input.Text_input "\r") in
+  Alcotest.(check bool) "the paired newline commit is consumed" true (acts = []);
+  Alcotest.(check string) "shift enter does not alter the text" "abc" (Ui.shadow ui);
+  ignore (Ui.handle ui store rects (Input.Key_down (Input.Return, Input.mods_none, false)));
+  let acts = Ui.handle ui store rects (Input.Text_input "\r") in
+  Alcotest.(check bool) "plain enter still inserts its newline commit" true
+    (press_actions acts = [ TextChanged (2, "abc\r") ]);
+  let ctrl = { Input.mods_none with Input.ctrl = true } in
+  let acts = Ui.handle ui store rects (Input.Key_down (Input.Return, ctrl, false)) in
+  Alcotest.(check bool) "ctrl enter still submits" true
+    (press_actions acts = [ Submit 2 ])
+
 let test_control_keyboard_ownership () =
   let store=store_of
     [CreateNode (1,Root);CreateNode (2,SearchField);InsertChild (1,2,0);
@@ -5114,6 +5144,7 @@ let () =
           Alcotest.test_case "nested popover focus return" `Quick test_nested_popover_focus_return;
           Alcotest.test_case "async popover focus return" `Quick test_async_popover_focus_return;
           Alcotest.test_case "control keyboard ownership" `Quick test_control_keyboard_ownership;
+          Alcotest.test_case "textarea shift-enter commit suppression" `Quick test_textarea_shift_enter_commit_suppression;
           Alcotest.test_case "anchored popover handoff" `Quick test_anchored_popover_handoff;
           Alcotest.test_case "focus within paint" `Quick test_focus_within_paint;
           Alcotest.test_case "appear once" `Quick test_appear_once;

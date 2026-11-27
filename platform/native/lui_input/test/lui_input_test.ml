@@ -352,6 +352,32 @@ let test_text_navigation () =
       (List.exists (function `Dispatch (NavigatePrevious _ | NavigateNext _) -> true | _ -> false) actions))
     [TextField;SecureField;Input;SearchField;Textarea]
 
+let test_textarea_enter_navigation_key () =
+  let store = store_of
+    [ CreateNode (1, Textarea);
+      SetProp (1, TextValue, StringValue "first");
+      SetProp (1, NavigateEnabled, BoolValue true);
+      SetProp (1, SubmitEnabled, BoolValue true) ]
+  in
+  let rects = rects_of [ 1, rect 0. 0. 200. 60. ] in
+  let st = Lui_text_input.attach Lui_text_input.initial ~node:1 ~text:"first" in
+  let run mods key = Lui_text_input.key hooks store rects st ~k:key ~mods ~prim:false in
+  let shift = { none with Lui_input.shift = true } in
+  let next, actions = run shift Lui_input.Return in
+  Alcotest.(check bool) "opted-in shift enter dispatches navigation key" true
+    (actions = [ `Dispatch (NavigationKey (1, "Enter", true)) ] && next = st);
+  let next, actions = run none Lui_input.Return in
+  Alcotest.(check bool) "plain enter keeps textarea newline semantics" true
+    (actions = [] && next = st);
+  let ctrl_shift = { shift with Lui_input.ctrl = true } in
+  let _, actions = run ctrl_shift Lui_input.Return in
+  Alcotest.(check bool) "ctrl enter retains submit semantics" true
+    (actions = [ `Dispatch (Submit 1) ]);
+  Lui_store.apply_op store (RemoveProp (1, NavigateEnabled));
+  let next, actions = run shift Lui_input.Return in
+  Alcotest.(check bool) "unregistered shift enter falls back to editing" true
+    (actions = [] && next = st)
+
 let test_scroll_anchor_alignment () =
   List.iter (fun scale ->
     let store = store_of [CreateNode (1,ListContainer);CreateNode (2,ListItem);
@@ -1331,6 +1357,7 @@ let () =
             test_list_modal_scope ] );
       ( "text input",
         [ Alcotest.test_case "navigation" `Quick test_text_navigation;
+          Alcotest.test_case "textarea enter navigation key" `Quick test_textarea_enter_navigation_key;
           Alcotest.test_case "splice" `Quick test_text_session;
           Alcotest.test_case "unchanged committed replacement" `Quick test_unchanged_committed_replacement;
           Alcotest.test_case "undo" `Quick test_text_undo;
