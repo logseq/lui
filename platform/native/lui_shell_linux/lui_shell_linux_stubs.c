@@ -235,6 +235,7 @@ static void (*p_gtk_target_list_unref)(void *) = 0;
 static void (*p_gtk_target_table_free)(GtkTargetEntry *, int) = 0;
 static char *(*p_gtk_clipboard_wait_for_text)(void *) = 0;
 static void (*p_gtk_clipboard_clear)(void *) = 0;
+static void (*p_gtk_clipboard_store)(void *) = 0;
 static void *(*p_gtk_file_chooser_native_new)(const char *, void *,
                                               int, const char *,
                                               const char *) = 0;
@@ -733,6 +734,8 @@ static int probe_gtk(void)
             (void **) &p_gtk_clipboard_wait_for_text);
   ok &= sym(h, "gtk_clipboard_clear",
             (void **) &p_gtk_clipboard_clear);
+  ok &= sym(h, "gtk_clipboard_store",
+            (void **) &p_gtk_clipboard_store);
   ok &= sym(h, "gtk_file_chooser_native_new",
             (void **) &p_gtk_file_chooser_native_new);
   ok &= sym(h, "gtk_native_dialog_run",
@@ -1159,6 +1162,7 @@ CAMLprim value lui_shx_clip_write(value vstr)
   /* GTK ignores both callbacks on failure; otherwise clear owns the copy. */
   if (ok) {
     p_gtk_clipboard_set_can_store(board, 0, 0);
+    p_gtk_clipboard_store(board);
     clip_generation++;
   } else {
     free(text);
@@ -1270,6 +1274,7 @@ CAMLprim value lui_shx_clip_write_formats(value vitems)
       formats);
   if (ok) {
     p_gtk_clipboard_set_can_store(board, 0, 0);
+    p_gtk_clipboard_store(board);
     clip_generation++;
     formats = 0;
   }
