@@ -141,7 +141,7 @@ let decode_next v =
   else v.eof <- true
 
 let check_ended v =
-  if v.eof && v.vstate = Playing then begin
+  if v.eof && v.vstate = Playing && video_position v >= v.vdur then begin
     v.vstate <- Ended;
     Queue.add ("video", v.vid, "ended") events;
     match v.vecb with
