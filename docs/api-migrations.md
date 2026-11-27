@@ -8,8 +8,11 @@ atomically replaces the system clipboard with every supplied MIME/type pair,
 so applications that need structured clipboard data must include the fallback
 `text/plain` representation in the same call rather than writing formats one
 at a time. On Linux a supplied `text/plain` value is also exposed through the
-legacy `UTF8_STRING`/`TEXT` targets. Values are UTF-8 strings; binary payloads
-must be encoded by the application before calling the API. Existing
+legacy `UTF8_STRING` target. Values are UTF-8 strings and may contain embedded
+NUL bytes; binary payloads must otherwise be encoded by the application before
+calling the API. On Linux, clipboard ownership and reads follow the existing
+GTK requirements: call on the GTK UI thread and keep servicing `pump` while
+the application owns the clipboard. Existing
 `clipboard_write`/`clipboard_read` behavior is unchanged, and applications
 that only transport plain text require no migration.
 
