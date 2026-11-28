@@ -1,5 +1,16 @@
 # LUI API migration guide
 
+### Native macOS open/save panels restore application keyboard focus
+
+After an `NSOpenPanel` or `NSSavePanel` modal session ends, the macOS native
+shell now explicitly reactivates the application and restores a visible
+key-capable non-panel window as key. Previously the SDL host window could
+continue drawing a focused caret while the application itself remained inactive,
+so real keyboard input was dropped until the user clicked the window. Hosts do
+not need source or migration changes; keyboard input after both accepted and
+cancelled panels now has the same ownership as input after ordinary window
+activation.
+
 ### Native hosts can set the editable selection programmatically
 
 `Lui_window.Ui.set_selection ui store id ~anchor ~caret` focuses the node when
