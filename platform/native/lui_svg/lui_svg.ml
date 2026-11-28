@@ -592,6 +592,18 @@ let parse_path_d s : pcmd list list =
     | None -> bad "expected number in path data near '%s'"
                 (String.sub s !i (Int.min 8 (n - !i)))
   in
+  (* svg spec: the arc large-arc/sweep flags are single characters and
+     need no separator, so compact arcs like "a8 8 0 100-16 8 8" read as
+     flag '1', flag '0', x 0, y -16 — scanning them as ordinary numbers
+     swallows following coordinates and breaks real-world glyphs *)
+  let flag () =
+    skip_ws ();
+    match peek () with
+    | Some '0' -> incr i; false
+    | Some '1' -> incr i; true
+    | _ -> bad "expected arc flag in path data near '%s'"
+             (String.sub s !i (Int.min 8 (n - !i)))
+  in
   let iscmd = function
     | 'M' | 'm' | 'L' | 'l' | 'H' | 'h' | 'V' | 'v' | 'C' | 'c' | 'S' | 's'
     | 'Q' | 'q' | 'T' | 't' | 'A' | 'a' | 'Z' | 'z' -> true
@@ -739,9 +751,9 @@ let parse_path_d s : pcmd list list =
              let dx, dy = origin () in
              let rx = num () and ry = num () in
              let phi = num () in
-             let fa = num () and fs = num () in
+             let fa = flag () and fs = flag () in
              let px = num () +. dx and py = num () +. dy in
-             emit (PArc (rx, ry, phi, fa <> 0., fs <> 0., (px, py)));
+             emit (PArc (rx, ry, phi, fa, fs, (px, py)));
              x := px; y := py; more ()
            | _ -> ()
          in
