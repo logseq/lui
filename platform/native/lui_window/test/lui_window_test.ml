@@ -475,20 +475,27 @@ let test_set_selection_programmatic () =
   ignore (Ui.handle ui s rects (Input.Text_input "abcdef"));
   (* mid-range selection: typing replaces the middle instead of
      appending at the caret *)
-  Ui.set_selection ui s 4 ~anchor:2 ~caret:4;
+  ignore (Ui.set_selection ui s 4 ~anchor:2 ~caret:4);
   Alcotest.(check int) "caret lands on the range end" 4 (Ui.caret ui);
   Alcotest.(check int) "anchor lands on the range start" 2 (Ui.sel_anchor ui);
   (match press_actions (Ui.handle ui s rects (Input.Text_input "X")) with
    | [ TextChanged (4, "abXef") ] -> ()
    | _ -> Alcotest.fail "expected typing to replace the selected middle");
+  (* selecting an unfocused field focuses it and reports the move *)
+  Ui.set_focused ui s 0;
+  (match Ui.set_selection ui s 4 ~anchor:0 ~caret:1 with
+   | [ Focus_changed 4 ] -> ()
+   | _ -> Alcotest.fail "expected Focus_changed when selection focuses");
   (* backwards and out-of-range offsets clamp like the browser's *)
-  Ui.set_selection ui s 4 ~anchor:1000 ~caret:1;
+  ignore (Ui.set_selection ui s 4 ~anchor:1000 ~caret:1);
   Alcotest.(check int) "caret clamps into the text" 1 (Ui.caret ui);
   Alcotest.(check int) "anchor clamps to the text length" 5 (Ui.sel_anchor ui);
   (* offsets inside a multi-byte sequence round back to its start *)
   Lui_store.apply_op s (SetProp (4, TextValue, StringValue "a字z"));
   ignore (Ui.store_changed ui s);
-  Ui.set_selection ui s 4 ~anchor:2 ~caret:3;
+  (match Ui.set_selection ui s 4 ~anchor:2 ~caret:3 with
+   | [] -> ()
+   | _ -> Alcotest.fail "re-selecting the focused node emits no actions");
   Alcotest.(check int) "anchor rounds back to a UTF-8 boundary" 1 (Ui.sel_anchor ui);
   Alcotest.(check int) "caret rounds back to a UTF-8 boundary" 1 (Ui.caret ui)
 

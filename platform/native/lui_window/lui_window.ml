@@ -1072,9 +1072,12 @@ module Ui = struct
      session text. Offsets are byte positions clamped like the browser
      clamps to the field length. *)
   let set_selection t store id ~anchor ~caret =
-    if id <> 0 && Lui_store.kind store id <> "" then begin
-      if Lui_focus.focused t.focus <> id then focus_move t store id;
-      if Lui_text_input.node t.session = id then begin
+    if id = 0 || Lui_store.kind store id = "" then []
+    else begin
+      let moved = Lui_focus.focused t.focus <> id in
+      if moved then focus_move t store id;
+      if Lui_text_input.node t.session <> id then []
+      else begin
         let text = Lui_text_input.text t.session in
         let clamp = Lui_query.clamp_boundary text in
         let caret = clamp caret and anchor = clamp anchor in
@@ -1085,7 +1088,8 @@ module Ui = struct
         if session != t.session then begin
           t.session <- session;
           t.dirty <- true
-        end
+        end;
+        if moved then [ Focus_changed id ] else []
       end
     end
 

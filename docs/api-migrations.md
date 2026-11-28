@@ -11,6 +11,12 @@ the primary-modifier+A accelerator should call this API instead; keyboard and
 pointer selection behavior is unchanged, and no application migration is
 required.
 
+```ocaml
+(* select-all, replacing the primary-modifier+A accelerator hack: *)
+let text = Lui_store.string_prop store id "text" |> Option.value ~default:"" in
+ignore (Ui.set_selection ui store id ~anchor:0 ~caret:(String.length text))
+```
+
 
 ### Linux native text rasterizes with subpixel antialiasing by default
 
