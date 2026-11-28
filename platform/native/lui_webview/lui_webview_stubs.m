@@ -536,7 +536,9 @@ typedef struct {
   void (*webkit_web_view_set_background_color)(void *, const double *);
   void (*webkit_web_view_run_javascript)(void *, const char *, void *,
                                        void *, void *);
-  void *(*webkit_web_view_run_javascript_finish)(void *, void *, void *);
+  void (*webkit_web_view_evaluate_javascript)(void *, const char *, long,
+                                              const char *, const char *,
+                                              void *, void *, void *);
   void *(*webkit_web_view_get_user_content_manager)(void *);
   int (*webkit_user_content_manager_register_script_message_handler)(
       void *, const char *);
@@ -639,8 +641,19 @@ static int lui_gtk_init(void)
   BIND(G.webkit, webkit_settings_set_user_agent);
   BIND(G.webkit, webkit_settings_get_user_agent);
   BIND(G.webkit, webkit_web_view_set_background_color);
-  BIND(G.webkit, webkit_web_view_run_javascript);
-  BIND(G.webkit, webkit_web_view_run_javascript_finish);
+  /* evaluate_javascript is the non-deprecated API but only exists in
+     WebKitGTK 2.40+. Keep the legacy entry as a fallback for older 4.0
+     runtimes; modern runtimes must prefer evaluate because the legacy
+     entry can reject host-injected scripts with Unexpected EOF. */
+  G.webkit_web_view_evaluate_javascript =
+      dlsym(G.webkit, "webkit_web_view_evaluate_javascript");
+  G.webkit_web_view_run_javascript =
+      dlsym(G.webkit, "webkit_web_view_run_javascript");
+  if (G.webkit_web_view_evaluate_javascript == NULL
+      && G.webkit_web_view_run_javascript == NULL) {
+    snprintf(G.err, sizeof G.err, "missing JavaScript evaluation entry");
+    return -1;
+  }
   BIND(G.webkit, webkit_web_view_get_user_content_manager);
   BIND(G.webkit,
        webkit_user_content_manager_register_script_message_handler);
@@ -777,11 +790,11 @@ static void lui_gtk_create(LuiWv *w, value vhost,
                           NULL, 0);
   {
     void *ucc = G.webkit_web_view_get_user_content_manager(w->web);
-    G.webkit_user_content_manager_register_script_message_handler(
-        ucc, "lui_wv");
     G.g_signal_connect_data(ucc, "script-message-received::lui_wv",
                             (void *)lui_gtk_on_script_message, w->core,
                             NULL, 0);
+    G.webkit_user_content_manager_register_script_message_handler(
+        ucc, "lui_wv");
   }
   /* Realize, then reparent the GTK window's X11 window into the SDL
      host's XID — best-effort foreign embedding; falls back to a
@@ -861,9 +874,18 @@ static int lui_gtk_is_loading(LuiWv *w)
   return G.webkit_web_view_is_loading(w->web);
 }
 
+static void lui_gtk_run_js(LuiWv *w, const char *js)
+{
+  if (G.webkit_web_view_evaluate_javascript != NULL)
+    G.webkit_web_view_evaluate_javascript(w->web, js, -1, NULL, NULL,
+                                          NULL, NULL, NULL);
+  else
+    G.webkit_web_view_run_javascript(w->web, js, NULL, NULL, NULL);
+}
+
 static void lui_gtk_eval(LuiWv *w, const char *js)
 {
-  G.webkit_web_view_run_javascript(w->web, js, NULL, NULL, NULL);
+  lui_gtk_run_js(w, js);
 }
 
 static void lui_gtk_call_async(LuiWv *w, int tok, const char *js)
@@ -875,11 +897,11 @@ static void lui_gtk_call_async(LuiWv *w, int tok, const char *js)
     "(async()=>{try{var v=await(async()=>{%s})();"
     "webkit.messageHandlers.lui_wv.postMessage('%d\\n'+JSON.stringify(v))}"
     "catch(e){webkit.messageHandlers.lui_wv.postMessage("
-    "'%d\\n\"Error: \"+e)}})()";
+    "'%d\\nError: '+String(e))}})()";
   char *buf = (char *)malloc(strlen(tmpl) + strlen(js) + 64);
   if (buf == NULL) caml_raise_out_of_memory();
   sprintf(buf, tmpl, js, tok, tok);
-  G.webkit_web_view_run_javascript(w->web, buf, NULL, NULL, NULL);
+  lui_gtk_run_js(w, buf);
   free(buf);
 }
 
