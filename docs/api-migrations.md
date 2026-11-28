@@ -4211,3 +4211,18 @@ Lui_store.iter_tooltips store visit_tooltip;
 
 Unlike `iter_preorder`, `iter_tooltips` does not promise sibling or tree order;
 callbacks must treat the visit sequence as unordered.
+
+## Linux webview JavaScript evaluation
+
+Linux `Lui_webview.eval` and `call_async` now use WebKitGTK's
+`webkit_web_view_evaluate_javascript` entry point when it is available
+(WebKitGTK 2.40 and later). The legacy `webkit_web_view_run_javascript`
+entry remains only as a runtime fallback for older WebKitGTK 4.0
+installations. Script-message callbacks are connected before the `lui_wv`
+handler is registered, matching WebKitGTK's recommended ordering.
+
+This restores host-injected JavaScript and asynchronous `call_async`
+results on current WebKitGTK 4.1 runtimes, where the legacy entry can
+reject injected scripts with `SyntaxError: Unexpected EOF`. The OCaml API,
+event tags, result encoding and supported runtime libraries are unchanged;
+no application migration is required.
