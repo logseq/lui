@@ -1900,6 +1900,12 @@ module Ui = struct
                      | `Dispatch (NavigationKey (_, "Enter", true)) -> true
                      | _ -> false)
                    m
+                 || (key = Input.Return
+                     && not (mods.Input.ctrl || mods.Input.meta)
+                     && kind_name store (focused t) = "textarea"
+                     && not
+                          (Lui_store.bool_prop store (focused t) "submit-on-enter"
+                           && not mods.Input.shift))
               then t.suppress_return_commit <- true;
               run m
             end

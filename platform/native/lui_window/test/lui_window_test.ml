@@ -3839,10 +3839,12 @@ let test_textarea_shift_enter_commit_suppression () =
   let acts = Ui.handle ui store rects (Input.Text_input "\r") in
   Alcotest.(check bool) "the paired newline commit is consumed" true (acts = []);
   Alcotest.(check string) "shift enter does not alter the text" "abc" (Ui.shadow ui);
-  ignore (Ui.handle ui store rects (Input.Key_down (Input.Return, Input.mods_none, false)));
+  let acts = Ui.handle ui store rects (Input.Key_down (Input.Return, Input.mods_none, false)) in
+  Alcotest.(check bool) "plain enter inserts its newline on keydown" true
+    (press_actions acts = [ TextChanged (2, "abc\n") ]);
   let acts = Ui.handle ui store rects (Input.Text_input "\r") in
-  Alcotest.(check bool) "plain enter still inserts its newline commit" true
-    (press_actions acts = [ TextChanged (2, "abc\r") ]);
+  Alcotest.(check bool) "the paired plain-enter commit is consumed" true (acts = []);
+  Alcotest.(check string) "plain enter does not insert twice" "abc\n" (Ui.shadow ui);
   let ctrl = { Input.mods_none with Input.ctrl = true } in
   let acts = Ui.handle ui store rects (Input.Key_down (Input.Return, ctrl, false)) in
   Alcotest.(check bool) "ctrl enter still submits" true

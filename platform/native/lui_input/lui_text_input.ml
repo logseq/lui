@@ -234,13 +234,13 @@ let edit_key hooks store rects st ~(k : Lui_input.key)
   in
   match k with
   | Lui_input.Return ->
-    ( st,
-      (match Lui_query.kind_name store n with
-       | "textarea" ->
-         if (Lui_store.bool_prop store n "submit-on-enter" && not mods.shift)
-            || mods.ctrl || mods.meta
-         then Lui_query.submit store n else []
-       | _ -> Lui_query.submit store n) )
+    (match Lui_query.kind_name store n with
+     | "textarea" ->
+       if (Lui_store.bool_prop store n "submit-on-enter" && not mods.shift)
+          || mods.ctrl || mods.meta
+       then (st, Lui_query.submit store n)
+       else splice st "\n"
+     | _ -> (st, Lui_query.submit store n))
   | Lui_input.Backspace ->
     if sel_hi st > sel_lo st then splice st ""
     else if caret > 0 then delete_between st (prev caret) caret

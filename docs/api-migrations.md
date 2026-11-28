@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+### Native textareas insert Enter newlines on keydown
+
+Plain Enter in a native `textarea` now inserts `\n` through the same local
+edit path as other text input instead of depending on the platform to emit a
+later carriage-return text commit. Platforms that do emit the paired commit
+have that echo consumed exactly once, so the observable contract is one
+newline on every native backend. `submit-on-enter`, Ctrl/Meta+Enter, and an
+opted-in Shift+Enter navigation event keep their existing behavior and do not
+insert a newline. Applications do not need source migration; any host
+workaround that injected its own newline after Return should remove it to
+avoid double insertion.
+
 ### SVG arc flags parse as single characters per spec
 
 The native SVG path parser now reads the arc `large-arc-flag` and `sweep-flag`

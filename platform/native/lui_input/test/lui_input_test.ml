@@ -367,8 +367,12 @@ let test_textarea_enter_navigation_key () =
   Alcotest.(check bool) "opted-in shift enter dispatches navigation key" true
     (actions = [ `Dispatch (NavigationKey (1, "Enter", true)) ] && next = st);
   let next, actions = run none Lui_input.Return in
-  Alcotest.(check bool) "plain enter keeps textarea newline semantics" true
-    (actions = [] && next = st);
+  Alcotest.(check bool) "plain enter inserts a textarea newline" true
+    (actions =
+       [ `Dispatch (TextChanged (1, "first\n"));
+         `Mirror_text (1, "first\n");
+         `Repaint ]
+     && Lui_text_input.text next = "first\n");
   let _, actions = run none Lui_input.Arrow_up in
   Alcotest.(check bool) "navigation-key opt-in alone keeps arrow editing local" true
     (not (List.exists (function `Dispatch _ -> true | _ -> false) actions));
@@ -378,8 +382,12 @@ let test_textarea_enter_navigation_key () =
     (actions = [ `Dispatch (Submit 1) ]);
   Lui_store.apply_op store (RemoveProp (1, NavigationKeyEnabled));
   let next, actions = run shift Lui_input.Return in
-  Alcotest.(check bool) "unregistered shift enter falls back to editing" true
-    (actions = [] && next = st)
+  Alcotest.(check bool) "unregistered shift enter falls back to newline editing" true
+    (actions =
+       [ `Dispatch (TextChanged (1, "first\n"));
+         `Mirror_text (1, "first\n");
+         `Repaint ]
+     && Lui_text_input.text next = "first\n")
 
 let test_scroll_anchor_alignment () =
   List.iter (fun scale ->
