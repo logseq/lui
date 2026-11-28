@@ -965,10 +965,10 @@ static void lui_restore_key_window(NSWindow *excluded)
 {
   if (![NSThread isMainThread]) return;
   NSApplication *app = lui_app();
-  NSWindow *window = [app mainWindow];
+  NSWindow *window = [app keyWindow];
   if (window == nil || window == excluded || ![window isVisible]
       || ![window canBecomeKeyWindow])
-    window = [app keyWindow];
+    window = [app mainWindow];
   if (window == nil || window == excluded || ![window isVisible]
       || ![window canBecomeKeyWindow]) {
     window = nil;
