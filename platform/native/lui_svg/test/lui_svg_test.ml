@@ -333,6 +333,11 @@ let test_implicit_path_repetition () =
       ( "relative arc",
         "M2 3a3 4 0 0 1 5 6 3 4 0 0 1 5 -2",
         "M2 3a3 4 0 0 1 5 6a3 4 0 0 1 5 -2" );
+      (* svg spec: arc flags are single characters needing no separator,
+         so the compact form tokenizes as flag, flag, x, y *)
+      ( "compact arc flags",
+        "M10 18a8 8 0 100-16 8 8 0 000 16z",
+        "M10 18a8 8 0 1 0 0 -16a8 8 0 0 0 0 16z" );
     ]
 
 let read_file path =

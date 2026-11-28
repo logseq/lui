@@ -1,5 +1,15 @@
 # LUI API migration guide
 
+### SVG arc flags parse as single characters per spec
+
+The native SVG path parser now reads the arc `large-arc-flag` and `sweep-flag`
+as single characters, matching the SVG specification: compact arc data such as
+`a8 8 0 100-16 8 8` — produced by real-world icon sets like Heroicons — now
+tokenizes as flag `1`, flag `0`, x `0`, y `-16` instead of failing the whole
+document with `expected number in path data`. Paths that already parsed are
+unaffected; paths that previously errored out (and rendered nothing) now render.
+No application migration is required.
+
 ### Native macOS open/save panels restore application keyboard focus
 
 After an `NSOpenPanel` or `NSSavePanel` modal session ends, the macOS native
