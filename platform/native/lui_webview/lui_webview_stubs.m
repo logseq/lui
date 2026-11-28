@@ -897,7 +897,7 @@ static void lui_gtk_call_async(LuiWv *w, int tok, const char *js)
     "(async()=>{try{var v=await(async()=>{%s})();"
     "webkit.messageHandlers.lui_wv.postMessage('%d\\n'+JSON.stringify(v))}"
     "catch(e){webkit.messageHandlers.lui_wv.postMessage("
-    "'%d\\n\"Error: \"+e)}})()";
+    "'%d\\nError: '+String(e))}})()";
   char *buf = (char *)malloc(strlen(tmpl) + strlen(js) + 64);
   if (buf == NULL) caml_raise_out_of_memory();
   sprintf(buf, tmpl, js, tok, tok);
