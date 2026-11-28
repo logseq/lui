@@ -394,6 +394,16 @@ module Ui : sig
       {!focus_visible}); the default is pointer/programmatic focus. *)
   val set_focused : ?kbd:bool -> t -> Lui_store.t -> int -> unit
 
+  (** Programmatic selection, the native counterpart of the DOM's
+      [setSelectionRange]: focuses [id] when it is not focused, then
+      sets the editable selection to [min anchor caret .. max anchor
+      caret). Offsets are byte positions into the node's text, clamped
+      to the text length and rounded back to UTF-8 sequence starts —
+      the browser's clamping semantics applied to UTF-8 storage.
+      No-op for node 0 or unknown nodes. *)
+  val set_selection :
+    t -> Lui_store.t -> int -> anchor:int -> caret:int -> unit
+
   (** Effects that react to store changes: dead-focus cleanup, modal
       overlay focus save/restore, Appear lifecycle events,
       scroll-target requests and track-visible-range reports. The

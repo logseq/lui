@@ -1066,6 +1066,29 @@ module Ui = struct
 
   let set_focused ?(kbd = false) t store id = focus_move ~kbd t store id
 
+  (* Programmatic selection, the native counterpart of the DOM's
+     setSelectionRange: focus the node when needed (which attaches the
+     session), then place anchor and caret on UTF-8 boundaries of the
+     session text. Offsets are byte positions clamped like the browser
+     clamps to the field length. *)
+  let set_selection t store id ~anchor ~caret =
+    if id <> 0 && Lui_store.kind store id <> "" then begin
+      if Lui_focus.focused t.focus <> id then focus_move t store id;
+      if Lui_text_input.node t.session = id then begin
+        let text = Lui_text_input.text t.session in
+        let clamp = Lui_query.clamp_boundary text in
+        let caret = clamp caret and anchor = clamp anchor in
+        let session =
+          Lui_text_input.set_caret t.session ~off:anchor ~extend:false
+        in
+        let session = Lui_text_input.set_caret session ~off:caret ~extend:true in
+        if session != t.session then begin
+          t.session <- session;
+          t.dirty <- true
+        end
+      end
+    end
+
   (* Perform one machine intent: side effects land on the composer
      state here and the driver-facing [action] list comes back. *)
   let rec perform t store = function

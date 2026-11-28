@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+### Native hosts can set the editable selection programmatically
+
+`Lui_window.Ui.set_selection ui store id ~anchor ~caret` focuses the node when
+needed and places the editable selection at byte offsets into the node's text,
+the native counterpart of the DOM's `setSelectionRange`. Offsets clamp to the
+text length and round back to UTF-8 sequence starts, mirroring how the browser
+clamps to the field length. Hosts that previously emulated select-all through
+the primary-modifier+A accelerator should call this API instead; keyboard and
+pointer selection behavior is unchanged, and no application migration is
+required.
+
+
 ### Linux native text rasterizes with subpixel antialiasing by default
 
 The Linux Pango text backend now rasterizes monochrome glyphs as horizontal

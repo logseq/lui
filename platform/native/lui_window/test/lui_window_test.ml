@@ -466,6 +466,32 @@ let test_modal_pointer_scope () =
       click 230. 80.)
     [ 1.; 2. ]
 
+let test_set_selection_programmatic () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (5., 40., Input.Left, 1, Input.mods_none)));
+  ignore (Ui.handle ui s rects (Input.Text_input "abcdef"));
+  (* mid-range selection: typing replaces the middle instead of
+     appending at the caret *)
+  Ui.set_selection ui s 4 ~anchor:2 ~caret:4;
+  Alcotest.(check int) "caret lands on the range end" 4 (Ui.caret ui);
+  Alcotest.(check int) "anchor lands on the range start" 2 (Ui.sel_anchor ui);
+  (match press_actions (Ui.handle ui s rects (Input.Text_input "X")) with
+   | [ TextChanged (4, "abXef") ] -> ()
+   | _ -> Alcotest.fail "expected typing to replace the selected middle");
+  (* backwards and out-of-range offsets clamp like the browser's *)
+  Ui.set_selection ui s 4 ~anchor:1000 ~caret:1;
+  Alcotest.(check int) "caret clamps into the text" 1 (Ui.caret ui);
+  Alcotest.(check int) "anchor clamps to the text length" 5 (Ui.sel_anchor ui);
+  (* offsets inside a multi-byte sequence round back to its start *)
+  Lui_store.apply_op s (SetProp (4, TextValue, StringValue "a字z"));
+  ignore (Ui.store_changed ui s);
+  Ui.set_selection ui s 4 ~anchor:2 ~caret:3;
+  Alcotest.(check int) "anchor rounds back to a UTF-8 boundary" 1 (Ui.sel_anchor ui);
+  Alcotest.(check int) "caret rounds back to a UTF-8 boundary" 1 (Ui.caret ui)
+
 let test_click_focus () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -5088,6 +5114,8 @@ let () =
             test_click_release_elsewhere;
           Alcotest.test_case "focus" `Quick test_click_focus;
           Alcotest.test_case "text+keys" `Quick test_text_input_and_keys;
+          Alcotest.test_case "programmatic set_selection" `Quick
+            test_set_selection_programmatic;
           Alcotest.test_case "caret ops" `Quick test_caret_ops_wiring;
           Alcotest.test_case "text revisions" `Quick
             test_text_revisions;
