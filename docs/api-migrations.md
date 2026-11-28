@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+### Linux WebKitGTK webviews initialize once successfully
+
+Repeated native webview creation on Linux now reuses the successful GTK/WebKit
+backend initialization instead of treating the cached success value as a
+failure. The first embed no longer consumes the only usable initialization:
+multiple independent webviews can be created, destroyed, and recreated in one
+process. Hosts do not need source migration; any workaround that limited a
+window or page to one Linux webview should remove it.
+
 ### Native textareas insert Enter newlines on keydown
 
 Plain Enter in a native `textarea` now inserts `\n` through the same local

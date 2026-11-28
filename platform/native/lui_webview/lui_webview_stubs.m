@@ -572,7 +572,7 @@ static int lui_bind(void *lib, void **fp, const char *sym)
 
 static int lui_gtk_init(void)
 {
-  if (G.tried) return G.ok;
+  if (G.tried) return G.ok ? 0 : -1;
   G.tried = 1;
 #define TRY_LIB(field, ...) \
   do { \
