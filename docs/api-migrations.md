@@ -8,7 +8,10 @@ as single characters, matching the SVG specification: compact arc data such as
 tokenizes as flag `1`, flag `0`, x `0`, y `-16` instead of failing the whole
 document with `expected number in path data`. Paths that already parsed are
 unaffected; paths that previously errored out (and rendered nothing) now render.
-No application migration is required.
+One tightening matches the specification and browser behavior: a signed flag
+such as `+1` was previously accepted by accident and is now rejected — replace
+it with `1` in any asset that carried one. No other application migration is
+required.
 
 ### Native macOS open/save panels restore application keyboard focus
 
