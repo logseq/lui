@@ -956,6 +956,37 @@ static BOOL lui_can_present(void)
   return ok;
 }
 
+/* Modal panels run inside the SDL-driven event loop and can leave the
+   application inactive after they close: the SDL window still looks focused
+   and may even draw a caret, while key events go nowhere and the first click
+   is swallowed as activation. Restore the app's key window explicitly once
+   the modal session ends. */
+static void lui_restore_key_window(NSWindow *excluded)
+{
+  if (![NSThread isMainThread]) return;
+  NSApplication *app = lui_app();
+  NSWindow *window = [app mainWindow];
+  if (window == nil || window == excluded || ![window isVisible]
+      || ![window canBecomeKeyWindow])
+    window = [app keyWindow];
+  if (window == nil || window == excluded || ![window isVisible]
+      || ![window canBecomeKeyWindow]) {
+    window = nil;
+    for (NSWindow *candidate in [app windows]) {
+      if (candidate != excluded && [candidate isVisible]
+          && [candidate canBecomeKeyWindow]) {
+        window = candidate;
+        break;
+      }
+    }
+  }
+  if (window == nil) return;
+  /* activateIgnoringOtherApps is deprecated, but remains the single API
+     available across the macOS versions supported by the SDL host. */
+  [app activateIgnoringOtherApps:YES];
+  [window makeKeyAndOrderFront:nil];
+}
+
 CAMLprim value lui_sh_can_present(value unit)
 {
   CAMLparam1(unit);
@@ -994,7 +1025,9 @@ CAMLprim value lui_sh_open_panel(value vfiles, value vdirs,
           if ([types count] > 0) [panel setAllowedFileTypes:types];
           [types release];
         }
-        if ([panel runModal] == NSModalResponseOK) {
+        NSInteger response = [panel runModal];
+        lui_restore_key_window(panel);
+        if (response == NSModalResponseOK) {
           NSArray *urls = [panel URLs];
           NSUInteger n = [urls count];
           varr = caml_alloc((mlsize_t)n, 0);
@@ -1024,7 +1057,9 @@ CAMLprim value lui_sh_save_panel(value vname)
         NSSavePanel *panel = [NSSavePanel savePanel];
         NSString *name = lui_nsstring(vname);
         if ([name length] > 0) [panel setNameFieldStringValue:name];
-        if ([panel runModal] == NSModalResponseOK) {
+        NSInteger response = [panel runModal];
+        lui_restore_key_window(panel);
+        if (response == NSModalResponseOK) {
           NSString *path = [[panel URL] path];
           if (path != nil) {
             vs = lui_ocamlstring(path);
